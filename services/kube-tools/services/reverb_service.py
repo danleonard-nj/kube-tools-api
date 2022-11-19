@@ -121,8 +121,8 @@ class ReverbListingProcessor:
             logger.info(
                 f'Listing: {listing.listing_bk}: Product: {listing.product_id}: No comparison records')
 
-            product = await self.__product_service.get_product_by_key(
-                product_key=)
+            # product = await self.__product_service.get_product_by_key(
+            #     product_key=)
 
             logger.info(f'Listing: {listing.listing_bk}: ')
 
