@@ -146,6 +146,5 @@ config.dev.json
 config.local.json
 .env
 git-*
-*Dockerfile
 **/__pycache__
 **/.vscode
