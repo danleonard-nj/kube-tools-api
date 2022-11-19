@@ -1,0 +1,12 @@
+pandas
+kubernetes
+xmltodict
+swagger-gen
+google-api-python-client 
+google-auth-httplib2 
+google-auth-oauthlib
+lxml
+myfitnesspal
+aiogoogle
+uvicorn
+azure-storage-blob

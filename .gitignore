@@ -1,0 +1,5 @@
+services/kube-tools/clients/certificates/ca.crt
+services/kube-tools/credentials.json
+services/kube-tools/myfitnesspal.json
+services/kube-tools/oauth.json
+services/kube-tools/token.json

@@ -1,0 +1,22 @@
+version: '3.9'
+services:
+  tests:
+    build:
+      context: ../
+      dockerfile: ./tests/Dockerfile
+    networks:
+      - isolated
+    environment:
+      - REDIS_HOST=redis
+      - MONGO_HOST=mongo
+  redis:
+    image: 'redis'
+    networks:
+      - isolated
+  mongo:
+    image: 'mongo:4.4.17'
+    networks:
+      - isolated
+
+networks:
+  isolated:

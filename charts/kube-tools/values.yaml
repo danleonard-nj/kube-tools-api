@@ -1,0 +1,58 @@
+replicaCount: 1
+
+image:
+  repository: azureks.azurecr.io/kube-tools/kube-tools
+  pullPolicy: Always
+  tag: "latest"
+
+imagePullSecrets:
+  - name: regcred
+
+nameOverride: "kube-tools"
+fullnameOverride: "kube-tools"
+
+environment:
+  environmentVariables: []
+  environmentSecrets:
+    - name: az-client-id
+      key: AZURE_CLIENT_ID
+    - name: az-client-secret
+      key: AZURE_CLIENT_SECRET
+    - name: az-tenant-id
+      key: AZURE_TENANT_ID
+    - name: az-storage-connection-string
+      key: AzureWebJobsStorage
+
+probes:
+  endpoints:
+    liveness: "/api/health/alive"
+    readiness: "/api/health/ready"
+  initialDelay: 5
+  interval: 10
+  timeout: 120
+  
+serviceAccount:
+  create: true
+  name: "kube-tools"
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  
+resources:
+  limits:
+    cpu: 125m
+    memory: 750Mi
+  requests:
+    cpu: 50m
+    memory: 500Mi
+    
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 85
+  targetMemoryUtilizationPercentage: 90

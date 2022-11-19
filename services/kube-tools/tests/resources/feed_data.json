@@ -1,0 +1,131 @@
+{
+  "rss": {
+    "@version": "2.0",
+    "@xmlns:atom": "http://www.w3.org/2005/Atom",
+    "@xmlns:googleplay": "http://www.google.com/schemas/play-podcasts/1.0",
+    "@xmlns:itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd",
+    "@xmlns:media": "http://search.yahoo.com/mrss/",
+    "@xmlns:podaccess": "https://access.acast.com/schema/1.0/",
+    "@xmlns:acast": "https://schema.acast.com/1.0/",
+    "channel": {
+      "ttl": "60",
+      "generator": "",
+      "title": "",
+      "link": "",
+      "atom:link": {
+        "@href": "",
+        "@rel": "self",
+        "@type": "application/rss+xml"
+      },
+      "language": "en",
+      "copyright": "",
+      "itunes:keywords": null,
+      "itunes:author": "",
+      "itunes:subtitle": null,
+      "itunes:summary": "",
+      "description": "",
+      "itunes:explicit": "no",
+      "itunes:owner": {
+        "itunes:name": "",
+        "itunes:email": ""
+      },
+      "acast:showId": "62d5a5c759902c0011c439d6",
+      "acast:showUrl": "",
+      "acast:signature": {
+        "@key": "EXAMPLE",
+        "@algorithm": "aes-256-cbc",
+        "#text": ""
+      },
+      "acast:settings": "",
+      "itunes:type": "episodic",
+      "itunes:image": {
+        "@href": ""
+      },
+      "image": {
+        "url": "",
+        "link": "",
+        "title": ""
+      },
+      "googleplay:block": "yes",
+      "itunes:block": "yes",
+      "item": [
+        {
+          "title": "",
+          "itunes:title": "",
+          "pubDate": "Tue, 30 Aug 2022 04:54:01 GMT",
+          "itunes:duration": "",
+          "enclosure": {
+            "@url": "",
+            "@length": "",
+            "@type": "audio/mpeg"
+          },
+          "guid": {
+            "@isPermaLink": "false",
+            "#text": "630d97e9217a210012bb4dcc"
+          },
+          "itunes:explicit": "no",
+          "acast:episodeId": "630d97e9217a210012bb4dcc",
+          "acast:episodeUrl": "",
+          "acast:settings": "",
+          "itunes:episodeType": "full",
+          "itunes:image": {
+            "@href": ""
+          },
+          "description": "",
+          "itunes:summary": ""
+        },
+        {
+          "title": "",
+          "itunes:title": "",
+          "pubDate": "Mon, 29 Aug 2022 00:32:37 GMT",
+          "itunes:duration": "",
+          "enclosure": {
+            "@url": "",
+            "@length": "",
+            "@type": "audio/mpeg"
+          },
+          "guid": {
+            "@isPermaLink": "false",
+            "#text": "630c0925cde9dd00120f2bd6"
+          },
+          "itunes:explicit": "no",
+          "acast:episodeId": "630c0925cde9dd00120f2bd6",
+          "acast:episodeUrl": "",
+          "acast:settings": "",
+          "itunes:episodeType": "full",
+          "itunes:image": {
+            "@href": ""
+          },
+          "description": "",
+          "itunes:summary": ""
+        },
+        {
+          "title": "",
+          "itunes:title": "",
+          "pubDate": "Sun, 28 Aug 2022 01:07:58 GMT",
+          "itunes:duration": "",
+          "enclosure": {
+            "@url": "",
+            "@length": "272941568",
+            "@type": "audio/mpeg"
+          },
+          "guid": {
+            "@isPermaLink": "false",
+            "#text": "630abfeecde9dd00120acde8"
+          },
+          "itunes:explicit": "no",
+          "acast:episodeId": "630abfeecde9dd00120acde8",
+          "acast:episodeUrl": "",
+          "acast:settings": "",
+          "itunes:episodeType": "full",
+          "itunes:image": {
+            "@href": ""
+          },
+          "description": "",
+          "itunes:summary": ""
+        }
+      ],
+      "itunes:category": [{ "@text": "Comedy" }]
+    }
+  }
+}

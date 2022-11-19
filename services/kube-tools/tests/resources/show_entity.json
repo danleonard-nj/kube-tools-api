@@ -1,0 +1,21 @@
+{
+  "show_id": "62d5a5c759902c0011c439d6",
+  "show_title": "d8ae2a4a-e108-463c-a88c-1b00c404c4cb",
+  "episodes": [
+    {
+      "episode_id": "630d97e9217a210012bb4dcc",
+      "episode_title": "0014a93b-0883-4852-a59c-13c212d73195",
+      "audio": "http://nothing"
+    },
+    {
+      "episode_id": "630c0925cde9dd00120f2bd6",
+      "episode_title": "f9730c28-63cb-4fc2-98e9-9dcfedb089c8",
+      "audio": "http://nothing"
+    },
+    {
+      "episode_id": "630abfeecde9dd00120acde8",
+      "episode_title": "6b9fce11-1d48-4391-8dfe-0414761a0871",
+      "audio": "http://nothing"
+    }
+  ]
+}
