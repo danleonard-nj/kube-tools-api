@@ -1,15 +1,16 @@
-from unicodedata import name
-from domain.auth import ClientScope
-from domain.azure_gateway import AzureGatewayCacheKey
+from typing import Dict
+
+import httpx
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from framework.logger.providers import get_logger
 from framework.serialization.utilities import serialize
-from utilities.utils import build_url
-import httpx
 
 from clients.abstractions.gateway_client import GatewayClient
 from clients.identity_client import IdentityClient
+from domain.auth import ClientScope
+from domain.azure_gateway import AzureGatewayCacheKey
+from utilities.utils import build_url
 
 logger = get_logger(__name__)
 
@@ -75,7 +76,7 @@ class AzureGatewayClient(GatewayClient):
 
     async def acr_get_repositories(
         self
-    ) -> dict:
+    ) -> Dict:
         headers = await self.get_headers()
         response = await self.http_client.get(
             url=f'{self.base_url}/api/azure/acr/repositories',
@@ -88,7 +89,7 @@ class AzureGatewayClient(GatewayClient):
 
     async def get_pod_images(
         self
-    ) -> dict:
+    ) -> Dict:
         logger.info('ACR: Get pod images')
 
         headers = await self.get_headers()
@@ -102,7 +103,7 @@ class AzureGatewayClient(GatewayClient):
     async def usage(
         self,
         **kwargs
-    ) -> dict:
+    ) -> Dict:
         url = build_url(
             base=f'{self.base_url}/api/azure/usage',
             **kwargs)
@@ -137,7 +138,7 @@ class AzureGatewayClient(GatewayClient):
     async def get_cost_management_data(
         self,
         **kwargs
-    ) -> dict:
+    ) -> Dict:
         url = build_url(
             base=f'{self.base_url}/api/azure/cost/timeframe/daily/groupby/product',
             **kwargs)
@@ -153,7 +154,7 @@ class AzureGatewayClient(GatewayClient):
 
     async def get_pods(
         self
-    ) -> dict:
+    ) -> Dict:
         url = f'{self.base_url}/api/azure/aks/pods/names'
 
         headers = await self.get_headers()
@@ -174,7 +175,7 @@ class AzureGatewayClient(GatewayClient):
         self,
         namespace: str,
         pod: str
-    ) -> dict:
+    ) -> Dict:
         url = f'{self.base_url}/api/azure/aks/{namespace}/{pod}/logs'
 
         headers = await self.get_headers()

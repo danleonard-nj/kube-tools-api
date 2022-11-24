@@ -1,12 +1,9 @@
-from typing import List
+from framework.logger import get_logger
 
 from data.google.google_location_history_repository import \
     GoogleLocationHistoryRepository
 from domain.location_history import (LocationAggregatePipeline,
-                                     LocationHistoryAggregateModel,
-                                     LocationHistoryModel)
-from framework.logger import get_logger
-
+                                     LocationHistoryAggregateModel)
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
 
 logger = get_logger(__name__)
@@ -21,19 +18,66 @@ class LocationHistoryService:
         self.__repository = repository
         self.__reverse_geo_service = reverse_geo_service
 
-    def transform_location_history_models(self, models: List[LocationHistoryModel]):
-        distinct_locations = dict()
-        for model in models:
-            if not model.coordinate_key in distinct_locations:
-                distinct_locations[model.coordinate_key] = {
-                    'location': model.to_dict(),
-                    'visits': [model.timestamp]
-                }
-            else:
-                distinct_locations[model.coordinate_key]['visits'].append(
-                    model.timestamp)
+    # def transform_location_history_models(
+    #     self,
+    #     models: List[LocationHistoryModel]
+    # ):
 
-        return list(distinct_locations.values())
+    #     distinct_locations = dict()
+    #     for model in models:
+    #         if not model.coordinate_key in distinct_locations:
+    #             distinct_locations[model.coordinate_key] = {
+    #                 'location': model.to_dict(),
+    #                 'visits': [model.timestamp]
+    #             }
+    #         else:
+    #             distinct_locations[model.coordinate_key]['visits'].append(
+    #                 model.timestamp)
+
+    #     return list(distinct_locations.values())
+
+    def __get_location_history_aggregate_models(
+        self,
+        location_results,
+        include_timestamps: bool
+    ):
+        '''
+        Create location history result models
+        '''
+
+        return [
+            LocationHistoryAggregateModel(
+                data=result,
+                include_timestamps=include_timestamps)
+            for result in location_results
+        ]
+
+    def __get_coordinate_pairs(
+        self,
+        location_history
+    ):
+        '''
+        Get coordinate pairs from location history
+        '''
+
+        return [
+            (model.latitude, model.longitude)
+            for model in location_history
+        ]
+
+    def __get_reverse_geo_lookup(
+        self,
+        reverse_geo
+    ):
+        '''
+        Build a lookup for reverse geo results to
+        map to location history
+        '''
+
+        return {
+            rg.key: rg.get_truncated_data()
+            for rg in reverse_geo
+        }
 
     async def get_locations(
         self,
@@ -51,63 +95,34 @@ class LocationHistoryService:
             latitude=latitude,
             longitude=longitude,
             max_distance=max_distance,
-            limit=limit
-        )
+            limit=limit)
 
-        results = await self.__repository.collection.aggregate(
+        # Query locations on geospatial index
+        location_results = await self.__repository.collection.aggregate(
             pipeline=pipeline.get_pipeline(),
-            allowDiskUse=True).to_list(
-                length=None)
+            allowDiskUse=True).to_list(length=None)
 
-        models = [
-            LocationHistoryAggregateModel(
-                data=result,
-                include_timestamps=include_timestamps)
-            for result in results
-        ]
+        # Create location history models
+        location_history = self.__get_location_history_aggregate_models(
+            location_results=location_results,
+            include_timestamps=include_timestamps)
 
-        coordinate_pairs = [
-            (model.latitude, model.longitude)
-            for model in models
-        ]
+        # Get a list of the distinct coordinate pairs
+        coordinate_pairs = self.__get_coordinate_pairs(
+            location_history=location_history)
 
         logger.info(f'Coordinate pairs: {coordinate_pairs}')
 
+        # Reverse geocode all coordinate pairs from result
         reverse_geo = await self.__reverse_geo_service.reverse_geocode(
             coordinate_pairs=coordinate_pairs)
 
-        reverse_geo_lookup = {
-            rg.key: rg.get_truncated_data()
-            for rg in reverse_geo
-        }
+        # Create a lookup of reverse geo data
+        reverse_geo_lookup = self.__get_reverse_geo_lookup(
+            reverse_geo=reverse_geo)
 
-        for model in models:
+        for model in location_history:
             reverse_geo_model = reverse_geo_lookup.get(model.coordinate_key)
             model.reverse_geocoded = reverse_geo_model.to_dict()
 
-        return [model.to_dict() for model in models]
-        # return [model.to_dict() for model in models]
-
-        # location_history_models = [
-        #     LocationHistoryModel(data=entity)
-        #     for entity in result
-        # ]
-
-        # reverse_geo_models = await self.get_reverse_geocode_data_by_pairs(
-        #     models=location_history_models)
-
-        # reverse_geo_lookup = {
-        #     model.key: model
-        #     for model in reverse_geo_models
-        # }
-
-        # for model in location_history_models:
-        #     reverse_geo = reverse_geo_lookup.get(
-        #         model.coordinate_key)
-        #     model.reverse_geo = self.truncate_reverse_geo_list(
-        #         model=reverse_geo)
-
-        # return self.transform_location_history_models(
-        #     models=location_history_models)
-
-        # return [model.to_dict() for model in location_history_models]
+        return [model.to_dict() for model in location_history]

@@ -37,6 +37,10 @@ class AcrService:
         manifest,
         repository
     ):
+        '''
+        Create manifest info object from client response
+        '''
+
         if (manifest.get('tags') is not None
                 and len(manifest.get('tags')) > 0):
 
@@ -48,6 +52,9 @@ class AcrService:
         self,
         repository: str
     ) -> List[RepositoryInfo]:
+        '''
+        Get the manifests for an ACR repository
+        '''
 
         result = await self.__azure_gateway_client.acr_get_manifests(
             repository_name=repository)
@@ -115,7 +122,9 @@ class AcrService:
         Get all active ACR images in the K8S
         cluster
         '''
+
         logger.info('K8S Images: Fetching K8S images from gateway client')
+
         # Get a list of all pods from all namespaces
         result = await self.__azure_gateway_client.get_pod_images()
 
@@ -128,31 +137,48 @@ class AcrService:
 
         return images
 
+    def __to_email_summary_image_info(
+        self,
+        image: Image
+    ):
+        return {
+            'Repository': image.repository,
+            'Image': image.image_name,
+            'Tag': image.tag,
+            'DaysOld': image.days_old,
+            'Size': image.size
+        }
+
     async def __send_email(
         self,
         purged: list[ManifestInfo]
     ) -> None:
-        logger.info(f'Sending email result')
+        '''
+        Send the ACR purge summary email
+        '''
+
+        logger.info(f'Sending ACR purge summary')
 
         image_info = [
             x.get_image_info()
             for x in purged
         ]
 
-        data = [{
-            'Repository': image.repository,
-            'Image': image.image_name,
-            'Tag': image.tag,
-            'DaysOld': image.days_old,
-            'Size': image.size
-        } for image in image_info]
+        data = [self.__to_email_summary_image_info(
+            image=image)
+            for image in image_info]
 
         await self.__email_gateway_client.send_datatable_email(
             recipient=EmailGatewayConstants.Me,
             subject='ACR Purge',
             data=data)
 
-    def __get_k8s_image_counts_by_repository(self, k8s_images):
+    def __get_k8s_image_counts_by_repository(
+        self,
+        k8s_images
+    ):
+        # TODO: What's this method do?
+
         df = pd.DataFrame(k8s_images).groupby(
             'repository').count()
 
@@ -163,7 +189,14 @@ class AcrService:
         return df.reset_index().to_dict(
             orient='records')
 
-    async def __purge_images(self, purge: List[ManifestInfo]):
+    async def __purge_images(
+        self,
+        purge: List[ManifestInfo]
+    ) -> None:
+        '''
+        Purge ACR images
+        '''
+
         logger.info('Purging queued images')
 
         purge_tasks = TaskCollection()
@@ -171,7 +204,7 @@ class AcrService:
             logger.info(
                 f'Image: {image.full_name}: Deleting image from ACR')
 
-            # Delete request to gateway
+            # Delete request to Azure gateway
             purge_tasks.add_tasks(
                 self.__azure_gateway_client.acr_delete_manifest(
                     repository_name=image.image_name,
@@ -183,7 +216,14 @@ class AcrService:
         await self.__send_email(
             purged=purge)
 
-    def __is_excluded(self, repository):
+    def __is_excluded(
+        self,
+        repository
+    ):
+        '''
+        Evaluate exclusion rule
+        '''
+
         for exclusion in self.__exclusions:
             logger.info(f"Rule: [{exclusion}]: evaluating rule")
             try:
@@ -203,12 +243,6 @@ class AcrService:
     ):
         '''
         Purge ACR images older than the specified day threshold
-
-        Args:
-            days (int, optional): purge window days. Defaults to 2.
-
-        Returns:
-            dict: purge results
         '''
 
         # Get all image names from all active K8S pods
@@ -226,11 +260,14 @@ class AcrService:
         for repository in repositories:
             logger.info(f'Repository: {repository.repository_name}')
 
-            if self.__is_excluded(repository=repository):
+            # Skip image if it satisfies an exclusion rule
+            if self.__is_excluded(
+                    repository=repository):
                 logger.info(
                     f'Excluding repository: {repository.repository_name}')
                 continue
 
+            # Get images in repository eligible for purge
             repo_purge = repository.get_purge_images(
                 k8s_images=k8s_images,
                 k8s_image_counts=k8s_image_counts,
@@ -239,8 +276,6 @@ class AcrService:
 
             if any(repo_purge):
                 purge.extend(repo_purge)
-
-            logger.info(f'Purge: {len(repo_purge)}')
 
         logger.info(f'Images to purge: {len(purge)}')
         if len(purge) > 0:

@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
 
 import pandas as pd
+from framework.configuration.configuration import Configuration
+from framework.logger.providers import get_logger
+
 from clients.azure_gateway_client import AzureGatewayClient
 from clients.email_gateway_client import EmailGatewayClient
 from domain.usage import ReportDateRange
-from framework.configuration.configuration import Configuration
-from framework.logger.providers import get_logger
 from utilities.utils import element_at
 
 logger = get_logger(__name__)

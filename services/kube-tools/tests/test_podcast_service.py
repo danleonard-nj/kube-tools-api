@@ -68,7 +68,7 @@ class PodcastServiceTest(PodcastServiceTestBuildup):
     async def test_get_feeds(self):
         service = self.get_service()
 
-        results = service.get_feeds()
+        results = service.__get_feeds()
 
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].feed, 'http://test')

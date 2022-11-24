@@ -1,7 +1,5 @@
-
-
 import re
-from typing import OrderedDict
+from typing import Dict, List, OrderedDict
 
 import xmltodict
 from framework.serialization import Serializable
@@ -13,39 +11,70 @@ class Podcasts:
 
 
 class Episode(Serializable):
-    def __init__(self, episode_id, episode_title, audio):
+    def __init__(
+        self,
+        episode_id,
+        episode_title,
+        audio
+    ):
         self.episode_id = episode_id
         self.episode_title = episode_title
         self.audio = audio
 
     @classmethod
-    def from_feed(cls, data):
+    def from_feed(
+        cls,
+        data
+    ) -> 'Episode':
         return Episode(
             episode_id=data.get('acast:episodeId'),
             episode_title=data.get('itunes:title'),
             audio=data.get('enclosure').get('@url'))
 
-    def get_filename(self, show_title):
+    def get_filename(
+        self,
+        show_title
+    ) -> str:
         show = re.sub('[^A-Za-z0-9 ]+', '', show_title)
         name = re.sub('[^A-Za-z0-9 ]+', '', self.episode_title)
         return show.replace(' ', '_') + '_' + name.replace(' ', '_') + '.mp3'
 
 
 class Feed:
-    def __init__(self, data):
+    def __init__(
+        self,
+        data
+    ):
         self.name = data.get('name')
         self.feed = data.get('feed')
 
 
 class Show(Serializable):
-    def __init__(self, show_id, show_title, episodes, **kwargs):
+    @property
+    def episode_ids(
+        self
+    ) -> List[str]:
+
+        return [episode.episode_id
+                for episode in self.episodes]
+
+    def __init__(
+        self,
+        show_id,
+        show_title,
+        episodes,
+        **kwargs
+    ):
         self.show_id = show_id
         self.show_title = show_title
 
         self.episodes = episodes
 
     @classmethod
-    def from_entity(cls, entity):
+    def from_entity(
+        cls,
+        entity: Dict
+    ):
         return Show(
             show_id=entity.get('show_id'),
             show_title=entity.get('show_title'),
@@ -53,36 +82,50 @@ class Show(Serializable):
                 episodes=entity.get('episodes')))
 
     @classmethod
-    def get_entity_episodes(cls, episodes):
+    def get_entity_episodes(
+        cls,
+        episodes
+    ):
         if isinstance(episodes, OrderedDict):
             episodes = [episodes]
 
-        return [
-            Episode(
-                episode_id=episode.get('episode_id'),
-                episode_title=episode.get('title'),
-                audio=episode.get('audio'))
+        return [Episode(
+            episode_id=episode.get('episode_id'),
+            episode_title=episode.get('title'),
+            audio=episode.get('audio'))
             for episode in episodes]
 
-    def to_dict(self):
+    def get_selector(
+        self
+    ) -> Dict:
+
+        return {
+            'show_id': self.show_id
+        }
+
+    def to_dict(
+        self
+    ) -> Dict:
         return super().to_dict() | {
             'episodes': [
                 episode.to_dict() for
                 episode in self.episodes]
         }
 
-    @property
-    def episode_ids(self):
-        return [episode.episode_id
-                for episode in self.episodes]
-
-    def contains_episode(self, episode_id):
+    def contains_episode(
+        self,
+        episode_id: str
+    ):
         return episode_id in self.episode_ids
 
 
 class FeedHandler:
     @classmethod
-    def get_show(cls, feed):
+    def get_show(
+        cls,
+        feed: str
+    ) -> Show:
+
         dct = xmltodict.parse(xml_input=feed)
         channel = dct.get('rss').get('channel')
 
@@ -98,14 +141,23 @@ class FeedHandler:
 
 
 class DownloadedEpisode:
-    def __init__(self, episode: Episode, show: Show, size: int):
+    def __init__(
+        self,
+        episode: Episode,
+        show: Show,
+        size: int
+    ):
         self.episode = episode
         self.show = show
         self.size = round(size / 1048576)
 
-    def get_text(self):
+    def get_text(
+        self
+    ) -> str:
         return f'{self.show.show_title}: {self.episode.episode_title}: {self.size}mb'
 
-    def get_filename(self):
+    def get_filename(
+        self
+    ) -> str:
         return self.episode.get_filename(
             show_title=self.show.show_title)

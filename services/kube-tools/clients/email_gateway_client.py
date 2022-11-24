@@ -1,12 +1,13 @@
 from typing import Any, Dict, List
 
-from domain.auth import ClientScope
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from framework.logger.providers import get_logger
 
 from clients.abstractions.gateway_client import GatewayClient
 from clients.identity_client import IdentityClient
+from domain.auth import ClientScope
+from domain.email_gateway import EmailGatewayRequest
 
 logger = get_logger(__name__)
 
@@ -34,20 +35,18 @@ class EmailGatewayClient(GatewayClient):
     ):
         logger.info(f'Send email: {subject}: {recipient}')
 
-        payload = {
-            'recipient': recipient,
-            'subject': subject,
-            'body': message
-        }
+        content = EmailGatewayRequest(
+            recipient=recipient,
+            subject=subject,
+            body=message)
 
-        logger.info(f'Payload: {payload}')
         headers = await self.get_headers()
 
         response = await self.http_client.post(
             url=f'{self.base_url}/api/email/send',
             headers=headers,
             timeout=None,
-            json=payload)
+            json=content.to_dict())
 
         logger.info(f'Status code: {response.status_code}')
 
@@ -67,16 +66,15 @@ class EmailGatewayClient(GatewayClient):
         endpoint = f'{self.base_url}/api/email/datatable'
         logger.info(f'Endpoint: {endpoint}')
 
-        content = {
-            'recipient': recipient,
-            'subject': subject,
-            'table': data
-        }
+        content = EmailGatewayRequest(
+            recipient=recipient,
+            subject=subject,
+            table=data)
 
         headers = await self.get_headers()
         response = await self.http_client.post(
             url=endpoint,
-            json=content,
+            json=content.to_dict(),
             timeout=None,
             headers=headers)
 
@@ -94,16 +92,15 @@ class EmailGatewayClient(GatewayClient):
         endpoint = f'{self.base_url}/api/email/json'
         logger.info(f'Endpoint: {endpoint}')
 
-        content = {
-            'recipient': recipient,
-            'subject': subject,
-            'json': data
-        }
+        content = EmailGatewayRequest(
+            recipient=recipient,
+            subject=subject,
+            json=data)
 
         headers = await self.get_headers()
         response = await self.http_client.post(
             url=endpoint,
-            json=content,
+            json=content.to_dict(),
             timeout=None,
             headers=headers)
 

@@ -1,7 +1,18 @@
+from framework.serialization import Serializable
 
 
-class UsageReport:
-    def __init__(self, data):
+class UsageReport(Serializable):
+    @property
+    def product_date(
+        self
+    ) -> str:
+
+        return f'{self.product}-{self.date}'
+
+    def __init__(
+        self,
+        data
+    ):
         self.date = data.get('date')
         self.meter_category = data.get('meterCategory')
         self.meter_name = data.get('meterName')
@@ -24,16 +35,12 @@ class UsageReport:
         self.unit_of_measure = data.get('unitOfMeasure')
         self.unit_price = data.get('unitPrice')
 
-    @property
-    def product_date(self):
-        return f'{self.product}-{self.date}'
-
-    def to_dict(self):
-        return self.__dict__
-
 
 class UsageArgs:
-    def __init__(self, request):
+    def __init__(
+        self,
+        request
+    ):
         self.range_key = request.args.get('range_key')
 
 
