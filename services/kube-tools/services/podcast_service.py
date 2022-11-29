@@ -9,9 +9,11 @@ from framework.configuration.configuration import Configuration
 from framework.logger.providers import get_logger
 
 from clients.email_gateway_client import EmailGatewayClient
+from clients.event_client import EventClient
 from clients.google_drive_client import GoogleDriveClient
 from data.podcast_repository import PodcastRepository
 from domain.podcasts import DownloadedEpisode, Episode, Feed, FeedHandler, Show
+from services.event_service import EventService
 
 logger = get_logger(__name__)
 
@@ -22,6 +24,7 @@ class PodcastService:
         repository: PodcastRepository,
         drive: GoogleDriveClient,
         email_gateway: EmailGatewayClient,
+        event_service: EventService,
         configuration: Configuration
     ):
         self.__configuration = configuration
@@ -32,6 +35,7 @@ class PodcastService:
         self.__drive = drive
         self.__email_gateway = email_gateway
         self.__http_client = HttpClient()
+        self.__event_service = event_service
 
         self.upload_threads = []
 
@@ -143,12 +147,16 @@ class PodcastService:
 
         if not any(episodes):
             logger.info(f'No episodes downloaded')
+            return
 
-        else:
-            await self.__email_gateway.send_datatable_email(
-                recipient='dcl525@gmail.com',
-                subject='Podcast Sync',
-                data=self.__get_results_table(episodes))
+        email_request, endpoint = self.__email_gateway.get_datatable_email_request(
+            recipient='dcl525@gmail.com',
+            subject='Podcast Sync',
+            data=self.__get_results_table(episodes))
+
+        await self.__event_service.dispatch_email_event(
+            endpoint=endpoint,
+            message=email_request.to_dict())
 
     async def __get_feed_request(
         self,

@@ -81,6 +81,22 @@ class EmailGatewayClient(GatewayClient):
         logger.info(f'Response status: {response.status_code}')
         return response.json()
 
+    def get_datatable_email_request(
+        self,
+        recipient: str,
+        subject: str,
+        data: List[dict]
+    ):
+        endpoint = f'{self.base_url}/api/email/datatable'
+        logger.info(f'Endpoint: {endpoint}')
+
+        content = EmailGatewayRequest(
+            recipient=recipient,
+            subject=subject,
+            table=data)
+
+        return content, endpoint
+
     async def send_json_email(
         self,
         recipient: str,

@@ -7,6 +7,7 @@ from framework.logger.providers import get_logger
 from clients.azure_gateway_client import AzureGatewayClient
 from clients.email_gateway_client import EmailGatewayClient
 from domain.usage import ReportDateRange
+from services.event_service import EventService
 from utilities.utils import element_at
 
 logger = get_logger(__name__)
@@ -17,10 +18,12 @@ class UsageService:
         self,
         configuration: Configuration,
         email_client: EmailGatewayClient,
-        azure_client: AzureGatewayClient
+        azure_client: AzureGatewayClient,
+        event_service: EventService
     ):
         self.__email_client = email_client
         self.__azure_client = azure_client
+        self.__event_service = event_service
 
         self.__recipient = configuration.azure_usage.get('recipient')
 
@@ -63,10 +66,15 @@ class UsageService:
             orient='records')
 
         logger.info('Sending datatable email gateway request')
-        await self.__email_client.send_datatable_email(
+
+        event_request, endpoint = self.__email_client.get_datatable_email_request(
             recipient=self.__recipient,
             subject=f'Azure Usage: {range_key}',
             data=table)
+
+        await self.__event_service.dispatch_email_event(
+            endpoint=endpoint,
+            message=event_request.to_dict())
 
         return {'table': table}
 

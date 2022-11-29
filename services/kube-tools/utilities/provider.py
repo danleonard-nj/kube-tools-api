@@ -11,6 +11,7 @@ from quart import Quart
 
 from clients.azure_gateway_client import AzureGatewayClient
 from clients.email_gateway_client import EmailGatewayClient
+from clients.event_client import EventClient
 from clients.google_drive_client import GoogleDriveClient
 from clients.google_maps_client import GoogleMapsClient
 from clients.identity_client import IdentityClient
@@ -32,6 +33,7 @@ from data.reverb_service_repositories import (ProcessorListingRepository,
                                               ProductTransactionRepository)
 from domain.auth import AdRole
 from services.acr_service import AcrService
+from services.event_service import EventService
 from services.google_auth_service import GoogleAuthService
 from services.location_history_service import LocationHistoryService
 from services.location_service import LocationService
@@ -118,6 +120,7 @@ class ContainerProvider(ProviderBase):
         # container.add_singleton(HttpClient)
         container.add_singleton(GoogleMapsClient)
         container.add_singleton(ReverbClient)
+        container.add_singleton(EventClient)
 
         # Services
         container.add_transient(PodcastService)
@@ -136,6 +139,7 @@ class ContainerProvider(ProviderBase):
         container.add_singleton(ProductTransactionRepository)
         container.add_singleton(ReverbProductConditionService)
         container.add_singleton(ReverbListingProcessor)
+        container.add_singleton(EventService)
 
         return container
 

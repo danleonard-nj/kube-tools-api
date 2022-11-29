@@ -1,10 +1,10 @@
-from framework.configuration.configuration import Configuration
-from framework.logger.providers import get_logger
-from framework.clients.http_client import HttpClient
-from framework.validators.nulls import not_none
-from framework.serialization.utilities import serialize
 from framework.auth.configuration import AzureAdConfiguration
+from framework.clients.http_client import HttpClient
+from framework.configuration.configuration import Configuration
 from framework.constants.constants import ConfigurationKey
+from framework.logger.providers import get_logger
+from framework.serialization.utilities import serialize
+from framework.validators.nulls import not_none
 
 logger = get_logger(__name__)
 
