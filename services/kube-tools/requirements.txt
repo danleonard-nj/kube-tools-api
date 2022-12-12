@@ -11,3 +11,4 @@ myfitnesspal
 aiogoogle
 uvicorn
 azure-storage-blob
+deprecated
