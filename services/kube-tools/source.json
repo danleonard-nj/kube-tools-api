@@ -1,0 +1,22 @@
+[
+    {
+        "source" : "ca.crt",
+        "target" : "services/kube-tools/clients/certificates/ca.crt"
+    },
+    {
+        "source" : "configs/kube-tools/kube-tools/config.json",
+        "target" : "services/kube-tools/config.json"
+    },
+    {
+        "source" : "configs/kube-tools/kube-tools/credentials.json",
+        "target" : "services/kube-tools/credentials.json"
+    },
+    {
+        "source" : "configs/kube-tools/kube-tools/token.json",
+        "target" : "services/kube-tools/token.json"
+    },
+    {
+        "source" : "configs/kube-tools/kube-tools/myfitnesspal.json",
+        "target" : "services/kube-tools/myfitnesspal.json"
+    }
+]
