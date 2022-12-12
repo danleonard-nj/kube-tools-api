@@ -1,14 +1,16 @@
 from typing import List
 
 import pandas as pd
+from framework.clients.cache_client import CacheClientAsync
+from framework.concurrency import TaskCollection
+from framework.configuration import Configuration
+from framework.logger.providers import get_logger
+
 from clients.azure_gateway_client import AzureGatewayClient
 from clients.email_gateway_client import EmailGatewayClient
 from domain.acr import AcrServiceCacheKey, Image, ManifestInfo, RepositoryInfo
 from domain.email import EmailGatewayConstants
-from framework.clients.cache_client import CacheClientAsync
-from framework.configuration import Configuration
-from framework.logger.providers import get_logger
-from framework.concurrency import TaskCollection
+from services.event_service import EventService
 
 logger = get_logger(__name__)
 
@@ -19,11 +21,13 @@ class AcrService:
         azure_gateway_client: AzureGatewayClient,
         cache_client: CacheClientAsync,
         email_gateway_client: EmailGatewayClient,
+        event_service: EventService,
         configuration: Configuration
     ):
         self.__azure_gateway_client = azure_gateway_client
         self.__cache_client: CacheClientAsync = cache_client
         self.__email_gateway_client = email_gateway_client
+        self.__event_service = event_service
 
         self.__days_back = configuration.acr_purge.get(
             'days_back', 14)
@@ -105,7 +109,15 @@ class AcrService:
 
         return await fetch.run()
 
-    def __get_k8s_image_repo(self, image_name):
+    def __get_k8s_image_repo(
+        self,
+        image_name: str
+    ):
+        '''
+        Format the K8S image name in the pod
+        config
+        '''
+
         if 'azureks.azurecr.io' in image_name:
             segments = image_name.split('azureks.azurecr.io/')
             if any(segments):
@@ -168,10 +180,14 @@ class AcrService:
             image=image)
             for image in image_info]
 
-        await self.__email_gateway_client.send_datatable_email(
+        email_request, endpoint = await self.__email_gateway_client.get_datatable_email_request(
             recipient=EmailGatewayConstants.Me,
             subject='ACR Purge',
             data=data)
+
+        await self.__event_service.dispatch_email_event(
+            endpoint=endpoint,
+            message=email_request.to_dict())
 
     def __get_k8s_image_counts_by_repository(
         self,

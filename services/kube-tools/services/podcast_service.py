@@ -9,11 +9,11 @@ from framework.configuration.configuration import Configuration
 from framework.logger.providers import get_logger
 
 from clients.email_gateway_client import EmailGatewayClient
-from clients.event_client import EventClient
 from clients.google_drive_client import GoogleDriveClient
 from data.podcast_repository import PodcastRepository
 from domain.podcasts import DownloadedEpisode, Episode, Feed, FeedHandler, Show
 from services.event_service import EventService
+from framework.concurrency import TaskCollection
 
 logger = get_logger(__name__)
 
@@ -46,35 +46,54 @@ class PodcastService:
         Sync podcast feeds
         '''
 
-        for feed in self.__get_feeds():
+        semaphore = asyncio.Semaphore(3)
 
-            logger.info(f'Handling RSS feed: {feed.name}')
+        feeds = self.__get_feeds()
 
-            # Get episodes to download and show model
-            downloads, show = await self.__sync_feed(
-                rss_feed=feed)
+        async def handler_wrapper(feed):
+            await semaphore.acquire()
+            await self.handle_feed(feed=feed)
+            semaphore.release()
 
-            if not any(downloads):
-                logger.info(
-                    f'No new episodes for show')
-                continue
+        sync = TaskCollection(*[
+            handler_wrapper(feed=feed)
+            for feed in feeds
+        ])
 
-            logger.info(
-                f'Downloading {len(downloads)} episodes for show')
-
-            # Update the show with new episodes
-            await self.__repository.update(
-                values=show.to_dict(),
-                selector=show.get_selector())
-
-            # Send an email for the downloaded episodes
-            await self.__send_email(
-                episodes=downloads)
+        downloads = await sync.run()
 
         return {
             download.show.show_id: download.show.to_dict()
-            for download in downloads
+            for download in downloads if download is not None
         }
+
+    async def handle_feed(
+        self,
+        feed: Feed
+    ):
+        logger.info(f'Handling RSS feed: {feed.name}')
+
+        # Get episodes to download and show model
+        downloads, show = await self.__sync_feed(
+            rss_feed=feed)
+
+        if not any(downloads):
+            logger.info(f'No new episodes for show')
+            return
+
+        logger.info(
+            f'Downloading {len(downloads)} episodes for show')
+
+        # Update the show with new episodes
+        await self.__repository.update(
+            values=show.to_dict(),
+            selector=show.get_selector())
+
+        # Send an email for the downloaded episodes
+        await self.__send_email(
+            episodes=downloads)
+
+        return downloads
 
     def __get_feeds(
         self
@@ -100,7 +119,7 @@ class PodcastService:
         semaphore = Semaphore(3)
 
         semaphore.acquire()
-        logger.info(f'{episode.get_filename()}: Uploade started')
+        logger.info(f'{episode.get_filename()}: Upload started')
 
         # Upload file to Google Drive
         await self.__drive.upload_file(
