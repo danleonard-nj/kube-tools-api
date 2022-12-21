@@ -46,7 +46,8 @@ class PodcastService:
         Sync podcast feeds
         '''
 
-        semaphore = asyncio.Semaphore(3)
+        # TODO: Figure out a safe value for this
+        semaphore = asyncio.Semaphore(1)
 
         feeds = self.__get_feeds()
 
@@ -116,7 +117,8 @@ class PodcastService:
         Upload podcast audio to Google Drive
         '''
 
-        semaphore = Semaphore(3)
+        # TODO: Figure out a safe value for this
+        semaphore = Semaphore(1)
 
         semaphore.acquire()
         logger.info(f'{episode.get_filename()}: Upload started')
