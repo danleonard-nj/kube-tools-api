@@ -180,7 +180,7 @@ class AcrService:
             image=image)
             for image in image_info]
 
-        email_request, endpoint = await self.__email_gateway_client.get_datatable_email_request(
+        email_request, endpoint = self.__email_gateway_client.get_datatable_email_request(
             recipient=EmailGatewayConstants.Me,
             subject='ACR Purge',
             data=data)
