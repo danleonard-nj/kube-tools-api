@@ -1,6 +1,10 @@
 from framework.serialization import Serializable
 
 
+class EmailGatewayConstants:
+    Me = 'dcl525@gmail.com'
+
+
 class EmailGatewayRequest(Serializable):
     def __init__(
         self,

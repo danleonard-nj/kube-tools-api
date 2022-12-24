@@ -10,7 +10,6 @@ from routes.location import location_bp
 from routes.mongo_backup import mongo_backup_bp
 from routes.podcasts import podcasts_bp
 from routes.location_history import location_history_bp
-from routes.reverb import reverb_bp
 from routes.usage import usage_bp
 from utilities.provider import ContainerProvider
 from framework.dependency_injection.provider import InternalProvider
@@ -30,7 +29,6 @@ app.register_blueprint(usage_bp)
 app.register_blueprint(mongo_backup_bp)
 app.register_blueprint(location_bp)
 app.register_blueprint(location_history_bp)
-app.register_blueprint(reverb_bp)
 
 ContainerProvider.initialize_provider()
 InternalProvider.bind(ContainerProvider.get_service_provider())

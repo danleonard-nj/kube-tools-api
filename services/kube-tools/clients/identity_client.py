@@ -1,10 +1,14 @@
+import httpx
 from framework.auth.configuration import AzureAdConfiguration
-from framework.clients.http_client import HttpClient
 from framework.configuration.configuration import Configuration
 from framework.constants.constants import ConfigurationKey
+from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
 from framework.serialization.utilities import serialize
-from framework.validators.nulls import not_none
+from framework.validators.nulls import none_or_whitespace
+from framework.clients.cache_client import CacheClientAsync
+
+from domain.cache import CacheKey
 
 logger = get_logger(__name__)
 
@@ -12,22 +16,21 @@ logger = get_logger(__name__)
 class IdentityClient:
     def __init__(
         self,
-        configuration: Configuration
+        configuration: Configuration,
+        cache_client: CacheClientAsync
     ):
-        not_none(configuration, 'configuration')
+        ArgumentNullException.if_none(configuration, 'configuration')
+        ArgumentNullException.if_none(cache_client, 'cache_client')
 
-        self.ad_auth: AzureAdConfiguration = configuration.ad_auth
-        self.http_client = HttpClient()
+        self.__cache_client = cache_client
+        self.__ad_auth: AzureAdConfiguration = configuration.ad_auth
 
-        logger.info('Configuring identity client')
-        self.clients = {}
-
-        logger.info('Loading identity clients from configuration')
-        for client in self.ad_auth.clients:
+        self.__clients = dict()
+        for client in self.__ad_auth.clients:
             self.add_client(client)
 
     def add_client(self, config: dict) -> None:
-        self.clients.update({
+        self.__clients.update({
             config.get('name'): {
                 'client_id': config.get(
                     ConfigurationKey.CLIENT_CLIENT_ID),
@@ -40,36 +43,60 @@ class IdentityClient:
             }
         })
 
-    async def get_token(self, client_name: str, scope: str = None):
-        client = self.clients.get(client_name)
-        if client is None:
+    async def get_token(
+        self,
+        client_name: str,
+        scope: str = None
+    ):
+        cache_key = CacheKey.auth_token(
+            client=client_name,
+            scope=scope)
+
+        logger.info(f'Auth token key: {cache_key}')
+
+        cached_token = await self.__cache_client.get_cache(
+            key=cache_key)
+
+        if not none_or_whitespace(cached_token):
+            logger.info(f'{cache_key}: returning cached token')
+            return cached_token
+
+        client_credentials = self.__clients.get(client_name)
+
+        if client_credentials is None:
             raise Exception(f'No client exists with the name {client_name}')
 
-        if scope is not None:
-            client['scope'] = scope
+        if not none_or_whitespace(scope):
+            logger.info(f'Using scope: {scope}')
+            client_credentials |= {
+                'scope': scope
+            }
 
-        try:
-            logger.info(f'Client: {serialize(client)}')
+        logger.info(f'Client credential request: {client_credentials}')
 
-            response = await self.http_client.post(
-                url=f'{self.ad_auth.identity_url}',
-                data=client,
-                headers={'ContentType': 'application/json'})
+        async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.post(
+                url=self.__ad_auth.identity_url,
+                data=client_credentials)
 
-            if response.status_code == 200:
-                logger.info(f'Response: {response.text}')
-                token = response.json().get('access_token')
-                logger.info(f'Token: {token}')
+        logger.info(f'Response: {response.status_code}')
 
-                return token
-            else:
-                raise Exception(
-                    f'Failed to fetch token from identity server: {response.status_code}: {response.text}')
-        except Exception as ex:
-            raise Exception(str(ex))
+        if response.is_error:
+            raise Exception(
+                f'Failed to fetch auth token: {response.status_code}: {response.text}')
+
+        token = response.json().get(
+            'access_token')
+
+        await self.__cache_client.set_cache(
+            key=CacheKey.auth_token(client_name),
+            value=token,
+            ttl=60)
+
+        return token
 
     def get_client(self, client_name):
-        if not self.clients.get(client_name):
+        if not self.__clients.get(client_name):
             raise Exception(f'No client with the name {client_name} exists')
 
-        return self.clients.get(client_name)
+        return self.__clients.get(client_name)

@@ -22,7 +22,7 @@ class EventService:
     ):
         token = await self.__identity_client.get_token(
             client_name='kube-tools-api',
-            scope=ClientScope.EMAIL_GATEWAY_API)
+            scope=ClientScope.EmailGatewayApi)
 
         event = SendEmailEvent(
             body=message,

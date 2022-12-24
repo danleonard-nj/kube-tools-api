@@ -5,11 +5,6 @@ import xmltodict
 from framework.serialization import Serializable
 
 
-class Podcasts:
-    Database = 'Podcasts'
-    Collection = 'Shows'
-
-
 class Episode(Serializable):
     def __init__(
         self,

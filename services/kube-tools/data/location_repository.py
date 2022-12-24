@@ -1,6 +1,8 @@
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
 
+from domain.mongo import MongoCollection, MongoDatabase
+
 
 class WeatherStationRepository(MongoRepositoryAsync):
     def __init__(
@@ -9,8 +11,8 @@ class WeatherStationRepository(MongoRepositoryAsync):
     ):
         super().__init__(
             client=client,
-            database='WeatherStation',
-            collection='StationCoordinate')
+            database=MongoDatabase.WeatherStation,
+            collection=MongoCollection.WeatherStationCoordinate)
 
     async def query(self, filter, top=None):
         result = self.collection.find(filter)
@@ -24,8 +26,8 @@ class ZipLatLongRepository(MongoRepositoryAsync):
     ):
         super().__init__(
             client=client,
-            database='WeatherStation',
-            collection='ZipLatLong')
+            database=MongoDatabase.WeatherStation,
+            collection=MongoCollection.WeatherStationZipLatLong)
 
     async def query(self, filter, top=None):
         result = self.collection.find(filter)

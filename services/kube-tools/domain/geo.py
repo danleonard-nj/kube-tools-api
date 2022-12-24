@@ -1,8 +1,4 @@
 
-
-from audioop import maxpp
-
-
 class GeoQueryType:
     GeoNear = '$geoNear'
     Near = '$near'

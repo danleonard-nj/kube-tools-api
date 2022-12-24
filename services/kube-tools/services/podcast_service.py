@@ -11,30 +11,32 @@ from framework.logger.providers import get_logger
 from clients.email_gateway_client import EmailGatewayClient
 from clients.google_drive_client import GoogleDriveClient
 from data.podcast_repository import PodcastRepository
+from domain.features import Feature
 from domain.podcasts import DownloadedEpisode, Episode, Feed, FeedHandler, Show
 from services.event_service import EventService
 from framework.concurrency import TaskCollection
-
+from framework.clients.feature_client import FeatureClientAsync
 logger = get_logger(__name__)
 
 
 class PodcastService:
     def __init__(
         self,
-        repository: PodcastRepository,
-        drive: GoogleDriveClient,
-        email_gateway: EmailGatewayClient,
+        podcast_repository: PodcastRepository,
+        google_drive_client: GoogleDriveClient,
+        email_gateway_client: EmailGatewayClient,
         event_service: EventService,
+        feature_client: FeatureClientAsync,
         configuration: Configuration
     ):
         self.__configuration = configuration
         self.__random_delay = self.__configuration.podcasts.get(
             'random_delay')
 
-        self.__repository = repository
-        self.__drive = drive
-        self.__email_gateway = email_gateway
-        self.__http_client = HttpClient()
+        self.__podcast_repository = podcast_repository
+        self.__google_drive_client = google_drive_client
+        self.__email_gateway_client = email_gateway_client
+        self.__feature_client = feature_client
         self.__event_service = event_service
 
         self.upload_threads = []
@@ -49,7 +51,7 @@ class PodcastService:
         # TODO: Figure out a safe value for this
         semaphore = asyncio.Semaphore(1)
 
-        feeds = self.__get_feeds()
+        feeds = self.get_feeds()
 
         async def handler_wrapper(feed):
             await semaphore.acquire()
@@ -86,7 +88,7 @@ class PodcastService:
             f'Downloading {len(downloads)} episodes for show')
 
         # Update the show with new episodes
-        await self.__repository.update(
+        await self.__podcast_repository.update(
             values=show.to_dict(),
             selector=show.get_selector())
 
@@ -96,7 +98,7 @@ class PodcastService:
 
         return downloads
 
-    def __get_feeds(
+    def get_feeds(
         self
     ) -> List[Feed]:
         '''
@@ -124,7 +126,7 @@ class PodcastService:
         logger.info(f'{episode.get_filename()}: Upload started')
 
         # Upload file to Google Drive
-        await self.__drive.upload_file(
+        await self.__google_drive_client.upload_file(
             filename=episode.get_filename(),
             data=audio)
 
@@ -166,11 +168,18 @@ class PodcastService:
     ):
         logger.info(f'Sending email for saved episodes')
 
+        is_enabled = await self.__feature_client.is_enabled(
+            feature_key=Feature.PodcastSyncEmailNotify)
+
+        if not is_enabled:
+            logger.info('Email notify is disabled')
+            return
+
         if not any(episodes):
             logger.info(f'No episodes downloaded')
             return
 
-        email_request, endpoint = self.__email_gateway.get_datatable_email_request(
+        email_request, endpoint = self.__email_gateway_client.get_datatable_email_request(
             recipient='dcl525@gmail.com',
             subject='Podcast Sync',
             data=self.__get_results_table(episodes))
@@ -211,7 +220,7 @@ class PodcastService:
 
         logger.info(f'Get show entity: {show.show_id}')
 
-        entity = await self.__repository.get({
+        entity = await self.__podcast_repository.get({
             'show_id': show.show_id
         })
 

@@ -1,28 +1,36 @@
 from domain.auth import ClientScope
-from framework.clients.cache_client import CacheClientAsync
 from clients.identity_client import IdentityClient
 from framework.configuration import Configuration
 from framework.logger.providers import get_logger
 
-from clients.abstractions.gateway_client import GatewayClient
+import httpx
 
 logger = get_logger(__name__)
 
 
-class TwilioGatewayClient(GatewayClient):
+class TwilioGatewayClient:
     def __init__(
         self,
         identity_client: IdentityClient,
-        cache_client: CacheClientAsync,
         configuration: Configuration
     ):
-        super().__init__(
-            configuration=configuration,
-            identity_client=identity_client,
-            cache_client=cache_client,
-            cache_key=self.__class__.__name__,
+        self.__identity_client = identity_client
+        self.__base_url = configuration.gateway.get('twilio_gateway_base_url')
+
+    async def __get_auth_headers(
+        self
+    ):
+        logger.info(f'Fetching Twilio gateway auth token')
+
+        token = await self.__identity_client.get_token(
             client_name='kube-tools-api',
-            client_scope=ClientScope.TwilioGatewayApi)
+            scope=ClientScope.TwilioGatewayApi)
+
+        logger.info(f'Twilio gateway token: {token}')
+
+        return {
+            'Authorization': f'Bearer {token}'
+        }
 
     async def send_sms(
         self,
@@ -32,19 +40,22 @@ class TwilioGatewayClient(GatewayClient):
         logger.info(f'Sending SMS message to recipient: {recipient}')
         logger.info(f'Message body: {message}')
 
-        endpoint = f'{self.base_url}/api/twilio/message'
+        endpoint = f'{self.__base_url}/api/twilio/message'
+        logger.info(f'Endpoint: {endpoint}')
+
         body = {
             'recipient': recipient,
             'message': message
         }
 
         logger.info(f'Endpoint: {endpoint}')
-        headers = await self.get_headers()
+        headers = await self.__get_auth_headers()
 
-        response = await self.http_client.post(
-            url=endpoint,
-            headers=headers,
-            json=body)
+        async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.post(
+                url=endpoint,
+                headers=headers,
+                json=body)
 
         logger.info(f'Response status: {response.status_code}')
         return response.json()

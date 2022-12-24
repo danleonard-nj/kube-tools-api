@@ -1,15 +1,12 @@
 from typing import Dict
 
 import httpx
-from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from framework.logger.providers import get_logger
-from framework.serialization.utilities import serialize
 
-from clients.abstractions.gateway_client import GatewayClient
 from clients.identity_client import IdentityClient
 from domain.auth import ClientScope
-from domain.azure_gateway import AzureGatewayCacheKey
+from domain.exceptions import AzureGatewayLogRequestException
 from utilities.utils import build_url
 
 logger = get_logger(__name__)
@@ -19,20 +16,29 @@ def not_success(status_code):
     return status_code != 200
 
 
-class AzureGatewayClient(GatewayClient):
+class AzureGatewayClient:
     def __init__(
         self,
         identity_client: IdentityClient,
-        cache_client: CacheClientAsync,
         configuration: Configuration
     ):
-        super().__init__(
-            configuration=configuration,
-            identity_client=identity_client,
-            cache_client=cache_client,
-            cache_key=self.__class__.__name__,
+        self.__identity_client = identity_client
+        self.__base_url = configuration.gateway.get('azure_gateway_base_url')
+
+    async def __get_auth_headers(
+        self
+    ):
+        logger.info(f'Fetching azure gateway auth token')
+
+        token = await self.__identity_client.get_token(
             client_name='kube-tools-api',
-            client_scope=ClientScope.AzureGatewayApi)
+            scope=ClientScope.AzureGatewayApi)
+
+        logger.info(f'Azure gateway token: {token}')
+
+        return {
+            'Authorization': f'Bearer {token}'
+        }
 
     async def acr_get_manifests(
         self,
@@ -41,14 +47,16 @@ class AzureGatewayClient(GatewayClient):
         logger.info(f'ACR: get manifests: {repository_name}')
 
         url = build_url(
-            base=f'{self.base_url}/api/azure/acr/manifests',
+            base=f'{self.__base_url}/api/azure/acr/manifests',
             repository_name=repository_name)
 
-        headers = await self.get_headers()
-        response = await self.http_client.get(
-            url=url,
-            headers=headers,
-            timeout=None)
+        logger.info(f'Endpoint: {url}')
+
+        headers = await self.__get_auth_headers()
+        async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.get(
+                url=url,
+                headers=headers)
 
         return response.json()
 
@@ -65,11 +73,13 @@ class AzureGatewayClient(GatewayClient):
             repository_name=repository_name,
             manifest_id=manifest_id)
 
-        headers = await self.get_headers()
-        response = await self.http_client.delete(
-            url=url,
-            headers=headers,
-            timeout=None)
+        logger.info(f'Endpoint: {url}')
+
+        headers = await self.__get_auth_headers()
+        async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.get(
+                url=url,
+                headers=headers)
 
         logger.info(f'Response: {response.status_code}: {response.text}')
         return response.json()
@@ -77,11 +87,14 @@ class AzureGatewayClient(GatewayClient):
     async def acr_get_repositories(
         self
     ) -> Dict:
-        headers = await self.get_headers()
-        response = await self.http_client.get(
-            url=f'{self.base_url}/api/azure/acr/repositories',
-            headers=headers,
-            timeout=None)
+        endpoint = f'{self.__base_url}/api/azure/acr/repositories'
+        logger.info(f'Endpoint: {endpoint}')
+
+        headers = await self.__get_auth_headers()
+        async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.get(
+                url=endpoint,
+                headers=headers)
 
         logger.info(f'Response {response.status_code}: {response.text}')
 
@@ -92,62 +105,32 @@ class AzureGatewayClient(GatewayClient):
     ) -> Dict:
         logger.info('ACR: Get pod images')
 
-        headers = await self.get_headers()
-        response = await self.http_client.get(
-            url=f'{self.base_url}/api/azure/aks/pods/images',
-            headers=headers,
-            timeout=None)
+        endpoint = f'{self.__base_url}/api/azure/aks/pods/images'
+        logger.info(f'Endpoint: {endpoint}')
+
+        headers = await self.__get_auth_headers()
+        async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.get(
+                url=endpoint,
+                headers=headers)
 
         return response.json()
-
-    async def usage(
-        self,
-        **kwargs
-    ) -> Dict:
-        url = build_url(
-            base=f'{self.base_url}/api/azure/usage',
-            **kwargs)
-
-        cache_key = AzureGatewayCacheKey.usage_key(
-            url=url)
-
-        logger.info(f'Fetching usage response from cache: {cache_key}')
-        cached_response = await self.__cache_client.get_json(
-            key=cache_key)
-
-        if cached_response is not None:
-            logger.info('Fetched usage response from cache')
-            return cached_response
-
-        headers = await self.get_headers()
-        response = await self.http_client.get(
-            url=url,
-            headers=headers,
-            timeout=None)
-
-        content = response.json()
-
-        logger.info('Caching usage response')
-        await self.__cache_client.set_json(
-            key=cache_key,
-            value=serialize(content),
-            ttl=60)
-
-        return content
 
     async def get_cost_management_data(
         self,
         **kwargs
     ) -> Dict:
         url = build_url(
-            base=f'{self.base_url}/api/azure/cost/timeframe/daily/groupby/product',
+            base=f'{self.__base_url}/api/azure/cost/timeframe/daily/groupby/product',
             **kwargs)
 
-        headers = await self.get_headers()
-        response = await self.http_client.get(
-            url=url,
-            headers=headers,
-            timeout=None)
+        logger.info(f'Endpoint: {url}')
+
+        headers = await self.__get_auth_headers()
+        async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.get(
+                url=url,
+                headers=headers)
 
         content = response.json()
         return content
@@ -155,9 +138,11 @@ class AzureGatewayClient(GatewayClient):
     async def get_pods(
         self
     ) -> Dict:
-        url = f'{self.base_url}/api/azure/aks/pods/names'
+        url = f'{self.__base_url}/api/azure/aks/pods/names'
 
-        headers = await self.get_headers()
+        logger.info(f'Endpoint: {url}')
+
+        headers = await self.__get_auth_headers()
         async with httpx.AsyncClient(timeout=None) as client:
             response = await client.get(
                 url=url,
@@ -165,7 +150,7 @@ class AzureGatewayClient(GatewayClient):
 
             logger.info(f'Gateway response: {response.status_code}')
 
-            if not_success(response.status_code):
+            if not response.is_success:
                 raise Exception(
                     f'Failed to fetch pods from Azure gateway: {response.text}')
 
@@ -176,9 +161,11 @@ class AzureGatewayClient(GatewayClient):
         namespace: str,
         pod: str
     ) -> Dict:
-        url = f'{self.base_url}/api/azure/aks/{namespace}/{pod}/logs'
+        url = f'{self.__base_url}/api/azure/aks/{namespace}/{pod}/logs'
 
-        headers = await self.get_headers()
+        logger.info(f'Endpoint: {url}')
+
+        headers = await self.__get_auth_headers()
         async with httpx.AsyncClient(timeout=None) as client:
             response = await client.get(
                 url=url,
@@ -187,7 +174,7 @@ class AzureGatewayClient(GatewayClient):
             logger.info(f'Gateway response: {response.status_code}')
 
             if not_success(response.status_code):
-                raise Exception(
+                raise AzureGatewayLogRequestException(
                     f'Failed to fetch logs from Azure gateway: {response.text}')
 
             return response.json()

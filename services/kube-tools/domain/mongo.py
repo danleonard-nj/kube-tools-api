@@ -6,11 +6,11 @@ class MongoBackupConstants:
 
 
 class MongoDatabase:
-    REMINDER = 'Reminder'
+    Podcasts = 'Podcasts'
+    WeatherStation = 'WeatherStation'
 
 
 class MongoCollection:
-    REMINDER = 'Reminder'
-    DESTINATION = 'ReminderDestination'
-    GENERAL = 'ReminderGeneral'
-    NOTIFICATION = 'ReminderNotification'
+    PodcastShows = 'Shows'
+    WeatherStationCoordinate = 'StationCoordinate'
+    WeatherStationZipLatLong = 'ZipLatLong'

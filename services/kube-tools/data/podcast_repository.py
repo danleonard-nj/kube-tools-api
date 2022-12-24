@@ -1,7 +1,7 @@
-from domain.mongo import MongoCollection
-from domain.podcasts import Podcasts
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
+
+from domain.mongo import MongoCollection, MongoDatabase
 
 
 class PodcastRepository(MongoRepositoryAsync):
@@ -11,10 +11,5 @@ class PodcastRepository(MongoRepositoryAsync):
     ):
         super().__init__(
             client=client,
-            database=Podcasts.Database,
-            collection=Podcasts.Collection)
-
-        self.database = self.client.get_database(
-            Podcasts.Database)
-        self.collection = self.database.get_collection(
-            Podcasts.Collection)
+            database=MongoDatabase.Podcasts,
+            collection=MongoCollection.PodcastShows)

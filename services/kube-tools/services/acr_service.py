@@ -9,7 +9,7 @@ from framework.logger.providers import get_logger
 from clients.azure_gateway_client import AzureGatewayClient
 from clients.email_gateway_client import EmailGatewayClient
 from domain.acr import AcrServiceCacheKey, Image, ManifestInfo, RepositoryInfo
-from domain.email import EmailGatewayConstants
+from domain.email_gateway import EmailGatewayConstants
 from services.event_service import EventService
 
 logger = get_logger(__name__)
