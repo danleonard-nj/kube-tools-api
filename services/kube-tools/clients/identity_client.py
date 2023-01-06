@@ -89,7 +89,7 @@ class IdentityClient:
             'access_token')
 
         await self.__cache_client.set_cache(
-            key=CacheKey.auth_token(client_name),
+            key=cache_key,
             value=token,
             ttl=60)
 

@@ -3,7 +3,6 @@ from azure.servicebus.aio import ServiceBusClient
 from framework.configuration.configuration import Configuration
 from framework.logger.providers import get_logger
 
-
 logger = get_logger(__name__)
 
 
@@ -22,6 +21,9 @@ class EventClient:
             logging_enable=True,
             transport_type=TransportType.Amqp)
 
+        self.__sender = self.__client.get_queue_sender(
+            queue_name=self.__queue_name)
+
     async def send_messages(
         self,
         messages: list[ServiceBusMessage]
@@ -39,7 +41,7 @@ class EventClient:
                 f'Adding message to batch: {message.message_id}: {message.correlation_id}')
             batch.add_message(message)
 
-        await self.sender.send_messages(batch)
+        await self.__sender.send_messages(batch)
         logger.info(f'Messages sent successfully')
 
     async def send_message(
@@ -50,12 +52,9 @@ class EventClient:
         Send a service bus message
         '''
 
-        logger.info(f'Getting service bus queue sender')
+        logger.info(f'Dispatching event message')
 
-        sender = self.__client.get_queue_sender(
-            queue_name=self.__queue_name)
-
-        await sender.send_messages(
+        await self.__sender.send_messages(
             message=message)
 
         logger.info(f'Message sent successfully')
