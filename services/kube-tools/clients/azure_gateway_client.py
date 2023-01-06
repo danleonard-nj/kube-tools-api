@@ -69,7 +69,7 @@ class AzureGatewayClient:
         logger.info(f'ACR: delete manifests: ID: {manifest_id}')
 
         url = build_url(
-            base=f'{self.base_url}/api/azure/acr/manifests',
+            base=f'{self.__base_url}/api/azure/acr/manifests',
             repository_name=repository_name,
             manifest_id=manifest_id)
 
