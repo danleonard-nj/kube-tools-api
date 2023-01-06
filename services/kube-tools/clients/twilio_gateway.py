@@ -1,9 +1,9 @@
-from domain.auth import ClientScope
-from clients.identity_client import IdentityClient
+import httpx
 from framework.configuration import Configuration
 from framework.logger.providers import get_logger
 
-import httpx
+from clients.identity_client import IdentityClient
+from domain.auth import ClientScope
 
 logger = get_logger(__name__)
 
@@ -15,7 +15,7 @@ class TwilioGatewayClient:
         configuration: Configuration
     ):
         self.__identity_client = identity_client
-        self.__base_url = configuration.gateway.get('twilio_gateway_base_url')
+        self.__base_url = configuration.gateway.get('api_gateway_base_url')
 
     async def __get_auth_headers(
         self

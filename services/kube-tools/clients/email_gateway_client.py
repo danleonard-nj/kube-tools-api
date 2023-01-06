@@ -18,7 +18,7 @@ class EmailGatewayClient:
         configuration: Configuration
     ):
         self.__identity_client = identity_client
-        self.__base_url = configuration.gateway.get('email_gateway_base_url')
+        self.__base_url = configuration.gateway.get('api_gateway_base_url')
 
     async def __get_auth_headers(
         self

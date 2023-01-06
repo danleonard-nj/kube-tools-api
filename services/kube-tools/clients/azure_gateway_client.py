@@ -23,7 +23,7 @@ class AzureGatewayClient:
         configuration: Configuration
     ):
         self.__identity_client = identity_client
-        self.__base_url = configuration.gateway.get('azure_gateway_base_url')
+        self.__base_url = configuration.gateway.get('api_gateway_base_url')
 
     async def __get_auth_headers(
         self
@@ -120,6 +120,9 @@ class AzureGatewayClient:
         self,
         **kwargs
     ) -> Dict:
+        logger.info(f'Fetching cost management data from Azure gateway')
+        logger.info(f'Params: {kwargs}')
+
         url = build_url(
             base=f'{self.__base_url}/api/azure/cost/timeframe/daily/groupby/product',
             **kwargs)
