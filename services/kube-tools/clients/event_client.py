@@ -1,5 +1,4 @@
-from azure.servicebus import ServiceBusMessage, TransportType
-from azure.servicebus.aio import ServiceBusClient
+from azure.servicebus import ServiceBusMessage, TransportType, ServiceBusClient
 from framework.configuration.configuration import Configuration
 from framework.logger.providers import get_logger
 
@@ -24,7 +23,7 @@ class EventClient:
         self.__sender = self.__client.get_queue_sender(
             queue_name=self.__queue_name)
 
-    async def send_messages(
+    def send_messages(
         self,
         messages: list[ServiceBusMessage]
     ) -> None:
@@ -35,16 +34,16 @@ class EventClient:
         logger.info(f'Getting service bus queue sender')
 
         # TODO: Batch the mesages batches to prevent exceeding max batch size
-        batch = await self.sender.create_message_batch()
+        batch = self.__sender.create_message_batch()
         for message in messages:
             logger.info(
                 f'Adding message to batch: {message.message_id}: {message.correlation_id}')
             batch.add_message(message)
 
-        await self.__sender.send_messages(batch)
+        self.__sender.send_messages(batch)
         logger.info(f'Messages sent successfully')
 
-    async def send_message(
+    def send_message(
         self,
         message: ServiceBusMessage
     ) -> None:
@@ -54,7 +53,7 @@ class EventClient:
 
         logger.info(f'Dispatching event message')
 
-        await self.__sender.send_messages(
+        self.__sender.send_messages(
             message=message)
 
         logger.info(f'Message sent successfully')

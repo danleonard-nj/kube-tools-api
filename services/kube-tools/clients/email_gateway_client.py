@@ -3,10 +3,12 @@ from typing import Any, Dict, List
 import httpx
 from framework.configuration import Configuration
 from framework.logger.providers import get_logger
+from httpx import AsyncClient
 
 from clients.identity_client import IdentityClient
 from domain.auth import ClientScope
 from domain.email_gateway import EmailGatewayRequest
+from domain.rest import AuthorizationHeader
 
 logger = get_logger(__name__)
 
@@ -14,26 +16,13 @@ logger = get_logger(__name__)
 class EmailGatewayClient:
     def __init__(
         self,
+        configuration: Configuration,
         identity_client: IdentityClient,
-        configuration: Configuration
+        http_client: AsyncClient
     ):
+        self.__http_client = http_client
         self.__identity_client = identity_client
         self.__base_url = configuration.gateway.get('api_gateway_base_url')
-
-    async def __get_auth_headers(
-        self
-    ):
-        logger.info(f'Fetching email gateway auth token')
-
-        token = await self.__identity_client.get_token(
-            client_name='kube-tools-api',
-            scope=ClientScope.EmailGatewayApi)
-
-        logger.info(f'Email gateway token: {token}')
-
-        return {
-            'Authorization': f'Bearer {token}'
-        }
 
     async def send_email(
         self,
@@ -131,3 +120,17 @@ class EmailGatewayClient:
 
         logger.info(f'Response status: {response.status_code}')
         return response.json()
+
+    async def __get_auth_headers(
+        self
+    ) -> Dict[str, str]:
+        logger.info(f'Fetching email gateway auth token')
+
+        token = await self.__identity_client.get_token(
+            client_name='kube-tools-api',
+            scope=ClientScope.EmailGatewayApi)
+
+        auth_headers = AuthorizationHeader(
+            token=token)
+
+        return auth_headers.to_dict()

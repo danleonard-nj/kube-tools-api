@@ -1,12 +1,11 @@
-import httpx
 from framework.auth.configuration import AzureAdConfiguration
+from framework.clients.cache_client import CacheClientAsync
 from framework.configuration.configuration import Configuration
 from framework.constants.constants import ConfigurationKey
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
-from framework.serialization.utilities import serialize
 from framework.validators.nulls import none_or_whitespace
-from framework.clients.cache_client import CacheClientAsync
+from httpx import AsyncClient
 
 from domain.cache import CacheKey
 
@@ -17,11 +16,13 @@ class IdentityClient:
     def __init__(
         self,
         configuration: Configuration,
+        http_client: AsyncClient,
         cache_client: CacheClientAsync
     ):
         ArgumentNullException.if_none(configuration, 'configuration')
         ArgumentNullException.if_none(cache_client, 'cache_client')
 
+        self.__http_client = http_client
         self.__cache_client = cache_client
         self.__ad_auth: AzureAdConfiguration = configuration.ad_auth
 
@@ -74,10 +75,9 @@ class IdentityClient:
 
         logger.info(f'Client credential request: {client_credentials}')
 
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.post(
-                url=self.__ad_auth.identity_url,
-                data=client_credentials)
+        response = await self.__http_client.post(
+            url=self.__ad_auth.identity_url,
+            data=client_credentials)
 
         logger.info(f'Response: {response.status_code}')
 

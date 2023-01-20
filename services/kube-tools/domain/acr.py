@@ -1,4 +1,5 @@
-from typing import List
+from email.mime import image
+from typing import Dict, List
 from framework.logger import get_logger
 from datetime import datetime
 from framework.serialization import Serializable
@@ -18,8 +19,52 @@ class AcrServiceCacheKey:
     K8sImages = 'acr-service-k8s-images'
 
 
+class AcrImage(Serializable):
+    def __init__(
+        self,
+        id: str,
+        tag: str,
+        image_size: int,
+        created_date: datetime
+    ):
+        self.id = id
+        self.tag = tag
+        self.image_size = image_size
+        self.created_date = created_date
+
+    @staticmethod
+    def from_dict(
+        data: Dict
+    ):
+        return AcrImage(
+            id=data.get('id'),
+            tag=data.get('tag'),
+            image_size=data.get('image_size'),
+            created_date=data.get('created_date'))
+
+    @staticmethod
+    def from_manifest(
+        data: Dict
+    ):
+        tags = data.get('tags', [])
+
+        if not any(tags):
+            tag = 'no-tag'
+        else:
+            tag = tags[0]
+
+        return AcrImage(
+            id=data.get('digest'),
+            tag=tag,
+            image_size=data.get('imageSize'),
+            created_date=data.get('createdTime'))
+
+
 class Image:
-    def __init__(self, data):
+    def __init__(
+        self,
+        data: Dict
+    ):
         self.repository = data.get('repository')
         self.manifest_id = data.get('id')
         self.tag = data.get('tags')
@@ -59,7 +104,11 @@ class ManifestInfo(Serializable):
 
 
 class RepositoryInfo:
-    def __init__(self, repository_name, manifests: List[ManifestInfo]):
+    def __init__(
+        self,
+        repository_name: str,
+        manifests: List[ManifestInfo]
+    ):
         self.repository_name = repository_name
         self.manifests = manifests or []
 
@@ -74,10 +123,9 @@ class RepositoryInfo:
         # Get current repo image (manifest) count for repository
         image_count = first(k8s_image_counts, lambda x: x.get(
             'repository') == self.repository_name) or dict()
-        image_count = image_count.get('count', 0)
+        logger.info(f'Images in repo: {self.repository_name}: {image_count}')
 
-        logger.info(f'Repository: {self.repository_name}')
-        logger.info(f'Image count: {len(self.manifests)}')
+        image_count = image_count.get('count', 0)
 
         k8s_image_names = [x.get('image') for x in k8s_images]
 

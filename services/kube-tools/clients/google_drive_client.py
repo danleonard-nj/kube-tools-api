@@ -1,6 +1,6 @@
 from typing import Any
 
-from domain.google import GoogleDriveDirectory, GoogleDriveFileUpload
+from domain.google import GoogleDriveDirectory, GoogleDriveFilePermission, GoogleDriveFileUpload
 from framework.logger.providers import get_logger
 from googleapiclient.discovery import build
 from services.google_auth_service import GoogleAuthService
@@ -15,24 +15,11 @@ class GoogleDriveClient:
     ):
         self.__auth_service = auth_service
 
-    async def __get_creds(self):
-        client = await self.__auth_service.get_client_by_name(
-            client_name='kube-tools')
-
-        return client.get_google_creds()
-
-    async def __get_client(
-        self
-    ) -> Any:
-        logger.info('Creating Google Drive client')
-
-        credentials = await self.__get_creds()
-        client = build('drive', 'v3', credentials=credentials)
-        logger.info('Google Drive client created successfully')
-
-        return client
-
-    async def upload_file(self, filename: str, data: bytes):
+    async def upload_file(
+        self,
+        filename: str,
+        data: bytes
+    ):
         client = await self.__get_client()
 
         logger.info(f'Uploading file: {filename}')
@@ -49,12 +36,36 @@ class GoogleDriveClient:
             media_body=upload.media,
             fields='id').execute()
 
-        permission = {
-            'type': 'anyone',
-            'value': 'anyone',
-            'role': 'reader'
-        }
+        permission = GoogleDriveFilePermission()
 
-        return client.permissions().create(
+        result = client.permissions().create(
             fileId=file.get('id'),
-            body=permission).execute()
+            body=permission.to_dict()
+        ).execute()
+
+        logger.info(f'Drive file uploaded successfully: {filename}')
+        return result
+
+    async def __get_creds(
+        self
+    ):
+        client = await self.__auth_service.get_client_by_name(
+            client_name='kube-tools')
+
+        return client.get_google_creds()
+
+    async def __get_client(
+        self
+    ) -> Any:
+        logger.info('Creating Google Drive client')
+
+        credentials = await self.__get_creds()
+
+        client = build(
+            'drive',
+            'v3',
+            credentials=credentials
+        )
+
+        logger.info('Google Drive client created successfully')
+        return client

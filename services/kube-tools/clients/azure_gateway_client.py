@@ -8,6 +8,7 @@ from clients.identity_client import IdentityClient
 from domain.auth import ClientScope
 from domain.exceptions import AzureGatewayLogRequestException
 from utilities.utils import build_url
+from httpx import AsyncClient
 
 logger = get_logger(__name__)
 
@@ -19,10 +20,13 @@ def not_success(status_code):
 class AzureGatewayClient:
     def __init__(
         self,
+        configuration: Configuration,
         identity_client: IdentityClient,
-        configuration: Configuration
+        http_client: AsyncClient
     ):
+        self.__http_client = http_client
         self.__identity_client = identity_client
+
         self.__base_url = configuration.gateway.get('api_gateway_base_url')
 
     async def __get_auth_headers(
@@ -33,8 +37,6 @@ class AzureGatewayClient:
         token = await self.__identity_client.get_token(
             client_name='kube-tools-api',
             scope=ClientScope.AzureGatewayApi)
-
-        logger.info(f'Azure gateway token: {token}')
 
         return {
             'Authorization': f'Bearer {token}'
@@ -53,10 +55,9 @@ class AzureGatewayClient:
         logger.info(f'Endpoint: {url}')
 
         headers = await self.__get_auth_headers()
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.get(
-                url=url,
-                headers=headers)
+        response = await self.__http_client.get(
+            url=url,
+            headers=headers)
 
         return response.json()
 
@@ -76,12 +77,11 @@ class AzureGatewayClient:
         logger.info(f'Endpoint: {url}')
 
         headers = await self.__get_auth_headers()
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.get(
-                url=url,
-                headers=headers)
+        response = await self.__http_client.delete(
+            url=url,
+            headers=headers)
 
-        logger.info(f'Response: {response.status_code}: {response.text}')
+        logger.info(f'Response: {response.status_code}')
         return response.json()
 
     async def acr_get_repositories(
@@ -91,13 +91,11 @@ class AzureGatewayClient:
         logger.info(f'Endpoint: {endpoint}')
 
         headers = await self.__get_auth_headers()
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.get(
-                url=endpoint,
-                headers=headers)
+        response = await self.__http_client.get(
+            url=endpoint,
+            headers=headers)
 
-        logger.info(f'Response {response.status_code}: {response.text}')
-
+        logger.info(f'Response {response.status_code}')
         return response.json()
 
     async def get_pod_images(
@@ -109,10 +107,9 @@ class AzureGatewayClient:
         logger.info(f'Endpoint: {endpoint}')
 
         headers = await self.__get_auth_headers()
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.get(
-                url=endpoint,
-                headers=headers)
+        response = await self.__http_client.get(
+            url=endpoint,
+            headers=headers)
 
         return response.json()
 
@@ -130,10 +127,9 @@ class AzureGatewayClient:
         logger.info(f'Endpoint: {url}')
 
         headers = await self.__get_auth_headers()
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.get(
-                url=url,
-                headers=headers)
+        response = await self.__http_client.get(
+            url=url,
+            headers=headers)
 
         content = response.json()
         return content
@@ -146,18 +142,17 @@ class AzureGatewayClient:
         logger.info(f'Endpoint: {url}')
 
         headers = await self.__get_auth_headers()
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.get(
-                url=url,
-                headers=headers)
+        response = await self.__http_client.get(
+            url=url,
+            headers=headers)
 
-            logger.info(f'Gateway response: {response.status_code}')
+        logger.info(f'Gateway response: {response.status_code}')
 
-            if not response.is_success:
-                raise Exception(
-                    f'Failed to fetch pods from Azure gateway: {response.text}')
+        if not response.is_success:
+            raise Exception(
+                f'Failed to fetch pods from Azure gateway: {response.text}')
 
-            return response.json()
+        return response.json()
 
     async def get_logs(
         self,
@@ -169,15 +164,14 @@ class AzureGatewayClient:
         logger.info(f'Endpoint: {url}')
 
         headers = await self.__get_auth_headers()
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.get(
-                url=url,
-                headers=headers)
+        response = await self.__http_client.get(
+            url=url,
+            headers=headers)
 
-            logger.info(f'Gateway response: {response.status_code}')
+        logger.info(f'Gateway response: {response.status_code}')
 
-            if not_success(response.status_code):
-                raise AzureGatewayLogRequestException(
-                    f'Failed to fetch logs from Azure gateway: {response.text}')
+        if not_success(response.status_code):
+            raise AzureGatewayLogRequestException(
+                f'Failed to fetch logs from Azure gateway: {response.text}')
 
-            return response.json()
+        return response.json()

@@ -26,6 +26,7 @@ from data.location_repository import (WeatherStationRepository,
                                       ZipLatLongRepository)
 from data.podcast_repository import PodcastRepository
 from domain.auth import AdRole
+from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
 from services.event_service import EventService
 from services.google_auth_service import GoogleAuthService
@@ -35,6 +36,10 @@ from services.mongo_backup_service import MongoBackupService
 from services.podcast_service import PodcastService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
 from services.usage_service import UsageService
+from httpx import AsyncClient
+import openai
+
+from services.walle_service import WalleService
 
 
 def configure_azure_ad(container):
@@ -59,6 +64,10 @@ def configure_azure_ad(container):
     return azure_ad
 
 
+def configure_http_client(container):
+    return AsyncClient(timeout=None)
+
+
 def configure_mongo_client(container):
     configuration = container.resolve(Configuration)
 
@@ -67,55 +76,94 @@ def configure_mongo_client(container):
 
     return client
 
+def configure_openai(container):
+    configuration = container.resolve(Configuration)
+
+    api_key = configuration.openai.get('api_key')
+    openai.api_key = api_key
+    
+    return openai.Image
+
+
+def register_factories(descriptors):
+    descriptors.add_singleton(
+        dependency_type=AsyncClient,
+        factory=configure_http_client)
+
+    descriptors.add_singleton(
+        dependency_type=AzureAd,
+        factory=configure_azure_ad)
+
+    descriptors.add_singleton(
+        dependency_type=AsyncIOMotorClient,
+        factory=configure_mongo_client)
+    
+    descriptors.add_singleton(
+        dependency_type=openai.Image,
+        factory=configure_openai)
+    
+
+
+def register_clients(descriptors):
+    descriptors.add_singleton(IdentityClient)
+    descriptors.add_singleton(CacheClientAsync)
+    descriptors.add_singleton(TwilioGatewayClient)
+    descriptors.add_transient(GoogleDriveClient)
+    descriptors.add_singleton(AzureGatewayClient)
+    descriptors.add_singleton(FeatureClientAsync)
+    descriptors.add_singleton(EmailGatewayClient)
+    descriptors.add_singleton(StorageClient)
+    descriptors.add_singleton(GoogleMapsClient)
+    descriptors.add_singleton(EventClient)
+    
+
+
+def register_repositories(descriptors):
+    descriptors.add_singleton(PodcastRepository)
+    descriptors.add_singleton(GoogleAuthRepository)
+    descriptors.add_singleton(ZipLatLongRepository)
+    descriptors.add_singleton(WeatherStationRepository)
+    descriptors.add_singleton(GoogleLocationHistoryRepository)
+    descriptors.add_singleton(GoogleReverseGeocodingRepository)
+
+
+def register_services(descriptors):
+    descriptors.add_transient(PodcastService)
+    descriptors.add_transient(AcrService)
+    descriptors.add_transient(UsageService)
+    descriptors.add_transient(GoogleAuthService)
+    descriptors.add_transient(MongoBackupService)
+    descriptors.add_transient(AcrPurgeService)
+    descriptors.add_transient(AcrService)
+    descriptors.add_singleton(LocationService)
+    descriptors.add_singleton(LocationHistoryService)
+    descriptors.add_singleton(GoogleReverseGeocodingService)
+    descriptors.add_singleton(EventService)
+    descriptors.add_singleton(WalleService)
+
 
 class ContainerProvider(ProviderBase):
     @classmethod
     def configure_container(cls):
-        container = ServiceCollection()
-        container.add_singleton(Configuration)
+        descriptors = ServiceCollection()
+        descriptors.add_singleton(Configuration)
 
-        container.add_singleton(
-            dependency_type=AzureAd,
-            factory=configure_azure_ad)
-
-        container.add_singleton(
-            dependency_type=AsyncIOMotorClient,
-            factory=configure_mongo_client)
+        register_factories(
+            descriptors=descriptors)
 
         # Repositories
-        container.add_singleton(PodcastRepository)
-        container.add_singleton(GoogleAuthRepository)
-        container.add_singleton(ZipLatLongRepository)
-        container.add_singleton(WeatherStationRepository)
-        container.add_singleton(GoogleLocationHistoryRepository)
-        container.add_singleton(GoogleReverseGeocodingRepository)
+        register_repositories(
+            descriptors=descriptors)
 
         # Clients
-        container.add_singleton(IdentityClient)
-        container.add_singleton(CacheClientAsync)
-        container.add_singleton(TwilioGatewayClient)
-        container.add_transient(GoogleDriveClient)
-        container.add_singleton(AzureGatewayClient)
-        container.add_singleton(FeatureClientAsync)
-        container.add_singleton(EmailGatewayClient)
-        container.add_singleton(StorageClient)
-        # container.add_transient(GmailClient)
-        # container.add_singleton(HttpClient)
-        container.add_singleton(GoogleMapsClient)
-        container.add_singleton(EventClient)
+        register_clients(
+            descriptors=descriptors)
 
         # Services
-        container.add_transient(PodcastService)
-        container.add_transient(AcrService)
-        container.add_transient(UsageService)
-        container.add_transient(GoogleAuthService)
-        container.add_transient(MongoBackupService)
-        container.add_singleton(LocationService)
-        container.add_singleton(LocationHistoryService)
-        container.add_singleton(GoogleReverseGeocodingService)
-        container.add_singleton(EventService)
+        register_services(
+            descriptors=descriptors)
 
-        return container
+        return descriptors
 
 
 def add_container_hook(app: Quart):

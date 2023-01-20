@@ -5,6 +5,7 @@ from azure.storage.blob.aio import (BlobClient, BlobServiceClient,
                                     ContainerClient)
 from framework.configuration.configuration import Configuration
 from framework.logger.providers import get_logger
+from httpx import AsyncClient
 
 logger = get_logger(__name__)
 
@@ -12,7 +13,8 @@ logger = get_logger(__name__)
 class StorageClient:
     def __init__(
         self,
-        configuration: Configuration
+        configuration: Configuration,
+        http_client: AsyncClient
     ):
         self.connection_string = configuration.storage.get(
             'connection_string')

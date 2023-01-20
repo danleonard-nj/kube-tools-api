@@ -1,6 +1,6 @@
-import httpx
 from framework.configuration import Configuration
 from framework.logger.providers import get_logger
+from httpx import AsyncClient
 
 from clients.identity_client import IdentityClient
 from domain.auth import ClientScope
@@ -11,9 +11,11 @@ logger = get_logger(__name__)
 class TwilioGatewayClient:
     def __init__(
         self,
-        identity_client: IdentityClient,
-        configuration: Configuration
+        configuration: Configuration,
+        http_client: AsyncClient,
+        identity_client: IdentityClient
     ):
+        self.__http_client = http_client
         self.__identity_client = identity_client
         self.__base_url = configuration.gateway.get('api_gateway_base_url')
 
@@ -51,11 +53,10 @@ class TwilioGatewayClient:
         logger.info(f'Endpoint: {endpoint}')
         headers = await self.__get_auth_headers()
 
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.post(
-                url=endpoint,
-                headers=headers,
-                json=body)
+        response = await self.__http_client.post(
+            url=endpoint,
+            headers=headers,
+            json=body)
 
         logger.info(f'Response status: {response.status_code}')
         return response.json()

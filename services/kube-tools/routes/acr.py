@@ -1,9 +1,9 @@
-
-from domain.exceptions import AcrPurgeServiceParameterException
-from domain.features import Feature
 from framework.clients.feature_client import FeatureClientAsync
 from framework.logger.providers import get_logger
-from services.acr_service import AcrService
+from quart import request
+
+from domain.features import Feature
+from services.acr_purge_service import AcrPurgeService
 from utilities.meta import MetaBlueprint
 
 logger = get_logger(__name__)
@@ -12,15 +12,22 @@ acr_bp = MetaBlueprint('acr_bp', __name__)
 
 
 @acr_bp.configure('/api/acr', methods=['POST'], auth_scheme='execute')
-async def acr_run(container):
-    acr_service: AcrService = container.resolve(AcrService)
-    feature_client: FeatureClientAsync = container.resolve(FeatureClientAsync)
+async def post_acr(container):
+    acr_service: AcrPurgeService = container.resolve(AcrPurgeService)
+    feature_client: FeatureClientAsync = container.resolve(
+        FeatureClientAsync)
 
     if not await feature_client.is_enabled(
             feature_key=Feature.AcrPurge):
-
         logger.info(f'Feature is disabled')
         return feature_client.get_disabled_feature_response(
             feature_key=Feature.AcrPurge)
 
-    return await acr_service.purge_acr()
+    days_back = request.args.get('days_back', 3)
+    keep_count = request.args.get('keep_count', 3)
+
+    images = await acr_service.purge_images(
+        days_back=days_back,
+        top_count=keep_count)
+
+    return images

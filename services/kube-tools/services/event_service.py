@@ -1,5 +1,3 @@
-
-
 from clients.event_client import EventClient
 from clients.identity_client import IdentityClient
 from domain.auth import ClientScope
@@ -29,5 +27,5 @@ class EventService:
             endpoint=endpoint,
             token=token)
 
-        await self.__event_client.send_message(
+        self.__event_client.send_message(
             event.to_service_bus_message())

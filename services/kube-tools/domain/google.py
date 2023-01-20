@@ -92,7 +92,10 @@ class GoogleAuthClient(Serializable):
         self.client_id = str(uuid.uuid4())
         self.created_date = datetime.now().isoformat()
 
-    def get_google_creds(self, scopes=None) -> Credentials:
+    def get_google_creds(
+        self,
+        scopes=None
+    ) -> Credentials:
         creds = Credentials.from_authorized_user_info(
             self.credentials,
             scopes or self.scopes)
@@ -295,6 +298,18 @@ class GoogleFitDataPoint(Serializable):
             'data_source': self.data_source,
             'value': self.value
         }
+
+
+class GoogleDriveFilePermission(Serializable):
+    def __init__(
+        self,
+        _type: str = 'anyone',
+        value: str = 'anyone',
+        role: str = 'reader'
+    ):
+        self.type = _type
+        self.value = value
+        self.role = role
 
 
 class GoogleDriveFileUpload:
