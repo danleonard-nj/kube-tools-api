@@ -25,6 +25,7 @@ from data.google.google_reverse_geocode_repository import \
 from data.location_repository import (WeatherStationRepository,
                                       ZipLatLongRepository)
 from data.podcast_repository import PodcastRepository
+from data.wr_repository import WellnessCheckRepository, WellnessReplyRepository
 from domain.auth import AdRole
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
@@ -39,7 +40,8 @@ from services.usage_service import UsageService
 from httpx import AsyncClient
 import openai
 
-from services.walle_service import WalleService
+from services.walle_service import WallePhoneService
+from services.wr_service import WellnessResponseService
 
 
 def configure_azure_ad(container):
@@ -76,12 +78,13 @@ def configure_mongo_client(container):
 
     return client
 
+
 def configure_openai(container):
     configuration = container.resolve(Configuration)
 
     api_key = configuration.openai.get('api_key')
     openai.api_key = api_key
-    
+
     return openai.Image
 
 
@@ -97,11 +100,10 @@ def register_factories(descriptors):
     descriptors.add_singleton(
         dependency_type=AsyncIOMotorClient,
         factory=configure_mongo_client)
-    
+
     descriptors.add_singleton(
         dependency_type=openai.Image,
         factory=configure_openai)
-    
 
 
 def register_clients(descriptors):
@@ -115,7 +117,6 @@ def register_clients(descriptors):
     descriptors.add_singleton(StorageClient)
     descriptors.add_singleton(GoogleMapsClient)
     descriptors.add_singleton(EventClient)
-    
 
 
 def register_repositories(descriptors):
@@ -125,6 +126,8 @@ def register_repositories(descriptors):
     descriptors.add_singleton(WeatherStationRepository)
     descriptors.add_singleton(GoogleLocationHistoryRepository)
     descriptors.add_singleton(GoogleReverseGeocodingRepository)
+    descriptors.add_singleton(WellnessCheckRepository)
+    descriptors.add_singleton(WellnessReplyRepository)
 
 
 def register_services(descriptors):
@@ -139,7 +142,8 @@ def register_services(descriptors):
     descriptors.add_singleton(LocationHistoryService)
     descriptors.add_singleton(GoogleReverseGeocodingService)
     descriptors.add_singleton(EventService)
-    descriptors.add_singleton(WalleService)
+    descriptors.add_singleton(WallePhoneService)
+    descriptors.add_singleton(WellnessResponseService)
 
 
 class ContainerProvider(ProviderBase):

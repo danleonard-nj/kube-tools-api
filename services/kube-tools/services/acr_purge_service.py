@@ -44,7 +44,7 @@ class AcrPurgeService:
         top_count = int(top_count)
 
         processed_images = []
-        repos = await self.__acr_smervice.get_acr_repo_names()
+        repos = await self.__acr_service.get_acr_repo_names()
         active_images = await self.__azure_gateway_client.get_pod_images()
 
         active_df = pd.DataFrame([{

@@ -1,5 +1,5 @@
 from services.mongo_backup_service import MongoBackupService
-from utilities.meta import MetaBlueprint
+from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
 
 mongo_backup_bp = MetaBlueprint('mongo_backup_bp', __name__)

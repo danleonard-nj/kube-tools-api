@@ -3,7 +3,7 @@ from domain.usage import UsageArgs
 from framework.clients.feature_client import FeatureClientAsync
 from quart import request
 from services.usage_service import UsageService
-from utilities.meta import MetaBlueprint
+from framework.rest.blueprints.meta import MetaBlueprint
 
 usage_bp = MetaBlueprint('usage_bp', __name__)
 

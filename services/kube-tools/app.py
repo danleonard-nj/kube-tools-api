@@ -11,10 +11,11 @@ from routes.mongo_backup import mongo_backup_bp
 from routes.podcasts import podcasts_bp
 from routes.location_history import location_history_bp
 from routes.usage import usage_bp
+from routes.wr import wr_bp
 from routes.webhooks import webhook_bp
 from routes.walle import wallet_bp
 from utilities.provider import ContainerProvider
-from framework.dependency_injection.provider import InternalProvider
+from framework.di.static_provider import InternalProvider
 from utilities.utils import getattr_or_none
 
 logger = get_logger(__name__)
@@ -33,6 +34,7 @@ app.register_blueprint(location_bp)
 app.register_blueprint(location_history_bp)
 app.register_blueprint(wallet_bp)
 app.register_blueprint(webhook_bp)
+app.register_blueprint(wr_bp)
 
 ContainerProvider.initialize_provider()
 InternalProvider.bind(ContainerProvider.get_service_provider())

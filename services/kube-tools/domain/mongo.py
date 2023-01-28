@@ -8,9 +8,14 @@ class MongoBackupConstants:
 class MongoDatabase:
     Podcasts = 'Podcasts'
     WeatherStation = 'WeatherStation'
+    OpenAi = 'OpenAi'
+    WellnessCheck = 'WellnessCheck'
 
 
 class MongoCollection:
     PodcastShows = 'Shows'
     WeatherStationCoordinate = 'StationCoordinate'
     WeatherStationZipLatLong = 'ZipLatLong'
+    OpenAiRequest = 'OpenAiRequest'
+    WellnessCheck = 'WellnessCheck'
+    WellnessReply = 'WellnessReply'

@@ -3,7 +3,7 @@ from framework.logger.providers import get_logger
 
 from domain.features import Feature
 from services.podcast_service import PodcastService
-from utilities.meta import MetaBlueprint
+from framework.rest.blueprints.meta import MetaBlueprint
 
 podcasts_bp = MetaBlueprint('podcasts_bp', __name__)
 

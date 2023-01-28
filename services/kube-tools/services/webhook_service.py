@@ -1,9 +1,9 @@
-from services.walle_service import WalleService
+from services.walle_service import WallePhoneService
 
 class WebhookService:
     def __init__(
         self,
-        walle_service: WalleService
+        walle_service: WallePhoneService
     ):
         self.__walle_service = walle_service
 

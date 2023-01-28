@@ -4,7 +4,7 @@ from framework.handlers.response_handler_async import response_handler
 from quart import Blueprint, request
 from services.google_auth_service import GoogleAuthService
 from framework.dependency_injection.provider import inject_container_async
-from utilities.meta import MetaBlueprint
+from framework.rest.blueprints.meta import MetaBlueprint
 
 
 google_bp = MetaBlueprint('google_bp', __name__)

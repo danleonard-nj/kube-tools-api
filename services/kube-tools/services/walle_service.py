@@ -10,7 +10,7 @@ class ImageResolution:
      Medium =  ''
      High = '1024x1024'
 
-class WalleService:
+class WallePhoneService:
     def __init__(
         self,
         configuration: Configuration,

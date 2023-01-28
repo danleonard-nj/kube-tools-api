@@ -1,8 +1,8 @@
 
 
-from services.walle_service import WalleService
+from services.walle_service import WallePhoneService
 from quart import request
-from utilities.meta import MetaBlueprint
+from framework.rest.blueprints.meta import MetaBlueprint
 
 wallet_bp = MetaBlueprint('wallet_bp', __name__)
 
@@ -18,7 +18,7 @@ class PromptRequest:
 
 @wallet_bp.configure('/api/webhook/<key>', methods=['POST'], auth_scheme='execute')
 async def handle_webhook(container):
-    service: WalleService = container.resolve(WalleService)
+    service: WallePhoneService = container.resolve(WallePhoneService)
     
     body = await request.get_json()
     
