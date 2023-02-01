@@ -1,12 +1,12 @@
 import uuid
 from datetime import datetime
 
+import pandas as pd
+from framework.configuration import Configuration
 from framework.logger import get_logger
 
 from data.wr_repository import WellnessCheckRepository, WellnessReplyRepository
 from domain.wr import WellnessCheck, WellnessReply, WellnessReplyRequest
-from framework.configuration import Configuration
-import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -21,7 +21,7 @@ class WellnessResponseService:
         self.__check_repository = check_repository
         self.__reply_repository = reply_repository
 
-        self.__sender = configuration.twilio.wr_sender
+        self.__sender = configuration.twilio.get('wr_sender')
 
     async def get_checks(
         self
