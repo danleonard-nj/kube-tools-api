@@ -59,11 +59,11 @@ async def get_replies(container):
     wr_service: WellnessResponseService = container.resolve(
         WellnessResponseService)
 
-    return await wr_service.getc
+    return dict()
 
 
 @wr_bp.configure('/api/wr/replies/sender/<sender>', methods=['GET'], auth_scheme='execute')
-async def get_replies(container, sender):
+async def get_replies_by_sender(container, sender):
     wr_service: WellnessResponseService = container.resolve(
         WellnessResponseService)
 
