@@ -4,7 +4,8 @@ from threading import Semaphore
 from typing import Dict, List, Tuple
 
 import httpx
-from framework.clients.http_client import HttpClient
+from framework.clients.feature_client import FeatureClientAsync
+from framework.concurrency import TaskCollection
 from framework.configuration.configuration import Configuration
 from framework.logger.providers import get_logger
 
@@ -14,8 +15,7 @@ from data.podcast_repository import PodcastRepository
 from domain.features import Feature
 from domain.podcasts import DownloadedEpisode, Episode, Feed, FeedHandler, Show
 from services.event_service import EventService
-from framework.concurrency import TaskCollection
-from framework.clients.feature_client import FeatureClientAsync
+
 logger = get_logger(__name__)
 
 

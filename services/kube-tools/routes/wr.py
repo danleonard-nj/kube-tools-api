@@ -52,3 +52,20 @@ async def post_response_webhook(container):
 
     return await wr_service.handle_response(
         reply_request=sms_response)
+
+
+@wr_bp.configure('/api/wr/replies', methods=['GET'], auth_scheme='execute')
+async def get_replies(container):
+    wr_service: WellnessResponseService = container.resolve(
+        WellnessResponseService)
+
+    return await wr_service.getc
+
+
+@wr_bp.configure('/api/wr/replies/sender/<sender>', methods=['GET'], auth_scheme='execute')
+async def get_replies(container, sender):
+    wr_service: WellnessResponseService = container.resolve(
+        WellnessResponseService)
+
+    return await wr_service.get_last_sender_contact(
+        sender=sender)

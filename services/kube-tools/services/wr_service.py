@@ -5,6 +5,8 @@ from framework.logger import get_logger
 
 from data.wr_repository import WellnessCheckRepository, WellnessReplyRepository
 from domain.wr import WellnessCheck, WellnessReply, WellnessReplyRequest
+from framework.configuration import Configuration
+import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -12,11 +14,14 @@ logger = get_logger(__name__)
 class WellnessResponseService:
     def __init__(
         self,
+        configuration: Configuration,
         check_repository: WellnessCheckRepository,
         reply_repository: WellnessReplyRepository
     ):
         self.__check_repository = check_repository
         self.__reply_repository = reply_repository
+
+        self.__sender = configuration.twilio.wr_sender
 
     async def get_checks(
         self
@@ -34,8 +39,8 @@ class WellnessResponseService:
         self,
         name,
         threshold,
-        recipient,
-        recipient_type,
+        recipient: str,
+        recipient_type: str,
         message: str
     ):
         logger.info(f'Creating wellness check: {name}')
@@ -93,3 +98,30 @@ class WellnessResponseService:
 
         await self.__reply_repository.insert(
             document=entity)
+
+    async def get_last_sender_contact(
+        self,
+        sender: str
+    ):
+        entities = await self.__reply_repository.get({
+            'sender': sender})
+
+        if not any(entities):
+            raise Exception(
+                f"No known corresponence exits from sneder '{sender}'")
+
+        replies = [WellnessReply.from_entity(data=entity)
+                   for entity in entities]
+
+        return replies
+
+    async def get_replies(
+        self,
+        sender: str
+    ):
+        entities = await self.__reply_repository.get_all()
+
+        replies = [WellnessReply.from_entity(data=entity)
+                   for entity in entities]
+
+        return replies
