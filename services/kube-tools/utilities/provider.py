@@ -36,6 +36,7 @@ from services.location_service import LocationService
 from services.mongo_backup_service import MongoBackupService
 from services.podcast_service import PodcastService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
+from services.sms_service import SmsService
 from services.usage_service import UsageService
 from httpx import AsyncClient
 import openai
@@ -144,6 +145,7 @@ def register_services(descriptors):
     descriptors.add_singleton(EventService)
     descriptors.add_singleton(WallePhoneService)
     descriptors.add_singleton(WellnessResponseService)
+    descriptors.add_singleton(SmsService)
 
 
 class ContainerProvider(ProviderBase):

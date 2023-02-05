@@ -10,9 +10,7 @@ class EventClient:
         self,
         configuration: Configuration
     ):
-        connecion_string = configuration.service_bus.get(
-            'connection_string')
-
+        f
         self.__queue_name = configuration.service_bus.get(
             'queue_name')
         self.__client = ServiceBusClient.from_connection_string(

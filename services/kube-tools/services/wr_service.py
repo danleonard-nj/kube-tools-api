@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime
 
-import pandas as pd
 from framework.configuration import Configuration
 from framework.logger import get_logger
 
@@ -110,8 +109,12 @@ class WellnessResponseService:
             raise Exception(
                 f"No known corresponence exits from sneder '{sender}'")
 
+        # Get all replies from a particular sender
         replies = [WellnessReply.from_entity(data=entity)
                    for entity in entities]
+
+        # Max reply
+        latest = max([r.created_date for r in replies])
 
         return replies
 
