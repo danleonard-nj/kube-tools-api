@@ -1,4 +1,4 @@
-from azure.servicebus import ServiceBusMessage, TransportType, ServiceBusClient
+from azure.servicebus import ServiceBusClient, ServiceBusMessage, TransportType
 from framework.configuration.configuration import Configuration
 from framework.logger.providers import get_logger
 
@@ -10,16 +10,18 @@ class EventClient:
         self,
         configuration: Configuration
     ):
-        f
-        self.__queue_name = configuration.service_bus.get(
+        connection_string = configuration.service_bus.get(
+            'connection_string')
+        queue_name = configuration.service_bus.get(
             'queue_name')
+
         self.__client = ServiceBusClient.from_connection_string(
-            conn_str=connecion_string,
+            conn_str=connection_string,
             logging_enable=True,
             transport_type=TransportType.Amqp)
 
         self.__sender = self.__client.get_queue_sender(
-            queue_name=self.__queue_name)
+            queue_name=queue_name)
 
     def send_messages(
         self,
