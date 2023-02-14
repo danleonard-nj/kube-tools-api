@@ -1,12 +1,6 @@
-from framework.auth.wrappers.azure_ad_wrappers import azure_ad_authorization
-from framework.dependency_injection.provider import inject_container_async
-from framework.handlers.response_handler_async import response_handler
 from framework.rest.blueprints.meta import MetaBlueprint
-from quart import Blueprint, request
 
 from clients.gmail_client import GmailClient
-from domain.google import GoogleTokenResponse
-from services.google_auth_service import GoogleAuthService
 
 google_bp = MetaBlueprint('google_bp', __name__)
 
