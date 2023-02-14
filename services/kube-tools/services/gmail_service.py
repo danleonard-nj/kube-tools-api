@@ -2,12 +2,12 @@ from distutils.command.config import config
 from operator import index
 from typing import List
 
-from framework.logger import get_logger
-from framework.configuration import Configuration
-
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
-from domain.google import GmailEmailRule, GmailRuleAction, GoogleEmailHeader, GoogleEmailLabel
+from domain.google import (GmailEmail, GmailEmailRule, GmailRuleAction,
+                           GoogleEmailHeader, GoogleEmailLabel)
+from framework.configuration import Configuration
+from framework.logger import get_logger
 from services.gmail_rule_service import GmailRuleService
 
 logger = get_logger(__name__)
@@ -101,11 +101,8 @@ class GmailService:
 
             logger.info('Message unread, sending notification')
 
-            body = f'From: {message.headers[GoogleEmailHeader.From]}'
-            body += '\n'
-            body += f'Date: {message.timestamp}'
-            body += '\n'
-            body += message.snippet
+            body = self.__get_message_body(
+                message=message)
 
             logger.info(f'Message body: {body}')
 
@@ -128,3 +125,19 @@ class GmailService:
             notify_count += 1
 
         return notify_count
+
+    def __get_message_body(
+        self,
+        message: GmailEmail
+    ):
+        body = f'From: {message.headers[GoogleEmailHeader.From]}'
+        body += '\n'
+        body += f'Date: {message.timestamp}'
+        body += '\n'
+        body += '\n'
+        body += message.snippet
+        body += '\n'
+        body += '\n'
+        body += f'https://mail.google.com/mail/u/0/#inbox/{message.message_id}'
+
+        return body
