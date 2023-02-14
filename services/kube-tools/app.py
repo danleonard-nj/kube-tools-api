@@ -12,6 +12,7 @@ from routes.podcasts import podcasts_bp
 from routes.location_history import location_history_bp
 from routes.usage import usage_bp
 from routes.wr import wr_bp
+from routes.google import google_bp
 from routes.webhooks import webhook_bp
 from routes.walle import wallet_bp
 from utilities.provider import ContainerProvider
@@ -31,6 +32,7 @@ app.register_blueprint(health_bp)
 app.register_blueprint(usage_bp)
 app.register_blueprint(mongo_backup_bp)
 app.register_blueprint(location_bp)
+app.register_blueprint(google_bp)
 app.register_blueprint(location_history_bp)
 app.register_blueprint(wallet_bp)
 app.register_blueprint(webhook_bp)

@@ -36,7 +36,7 @@ webhook_bp = OpenAuthBlueprint('webhook_bp', __name__)
 async def handle_webhook(container):
     sms_service: SmsService = container.resolve(SmsService)
 
-    data = await request.get_json()
+    data = await request.get_data()
     logger.info(f'SMS webook recieved: {data}')
 
     sms_service.handle_message(
@@ -44,4 +44,50 @@ async def handle_webhook(container):
 
     return {
         'webhook_data': data
+    }
+
+
+@webhook_bp.configure('/api/sms/conversation', methods=['POST'])
+async def post_create_convo(container):
+    sms_service: SmsService = container.resolve(SmsService)
+
+    data = await request.get_json()
+
+    convos = await sms_service.create_conversation(
+        sender='test',
+        recipient='test',
+        application_id='test'
+    )
+
+    return {
+        'webhook_data': convos
+    }
+
+
+@webhook_bp.configure('/api/sms/conversation', methods=['GET'])
+async def get_convos(container):
+    sms_service: SmsService = container.resolve(SmsService)
+
+    data = await request.get_json()
+
+    convos = await sms_service.get_conversations()
+
+    return {
+        'webhook_data': convos
+    }
+
+
+@webhook_bp.configure('/api/sms/conversation/<convo_id>/reply', methods=['POST'])
+async def post_reply_convo(container, convo_id):
+    sms_service: SmsService = container.resolve(SmsService)
+
+    data = await request.get_json()
+
+    convos = await sms_service.reply_conversation(
+        conversation_id=convo_id,
+        message=data
+    )
+
+    return {
+        'webhook_data': convos
     }

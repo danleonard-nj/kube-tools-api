@@ -22,3 +22,11 @@ class CacheKey:
             hashed_scope = sha256(scope)
             return f'auth-{client}-{hashed_scope}'
         return f'auth-{client}'
+
+    @staticmethod
+    def gmail_token() -> str:
+        return 'gmail-oauth-token'
+
+    @staticmethod
+    def google_drive_token() -> str:
+        return 'google-drive-oauth-token'

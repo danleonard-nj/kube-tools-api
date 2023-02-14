@@ -1,72 +1,30 @@
-from domain.google import GoogleTokenResponse
 from framework.auth.wrappers.azure_ad_wrappers import azure_ad_authorization
-from framework.handlers.response_handler_async import response_handler
-from quart import Blueprint, request
-from services.google_auth_service import GoogleAuthService
 from framework.dependency_injection.provider import inject_container_async
+from framework.handlers.response_handler_async import response_handler
 from framework.rest.blueprints.meta import MetaBlueprint
+from quart import Blueprint, request
 
+from clients.gmail_client import GmailClient
+from domain.google import GoogleTokenResponse
+from services.google_auth_service import GoogleAuthService
 
 google_bp = MetaBlueprint('google_bp', __name__)
 
 
-@google_bp.configure('/api/google/client', methods=['GET'], auth_scheme='default')
-async def get_clients(container):
-    service: GoogleAuthService = container.resolve(
-        GoogleAuthService)
+@google_bp.configure('/api/google/gmail', methods=['POST'], auth_scheme='default')
+async def get_gmail_token(container):
+    service: GmailClient = container.resolve(
+        GmailClient)
 
-    clients = await service.get_clients()
-
-    return {
-        'clients': clients
-    }
+    return await service.run_mail_service()
 
 
-@google_bp.configure('/api/google/client', methods=['POST'], auth_scheme='default')
-async def create_client(container):
-    service: GoogleAuthService = container.resolve(
-        GoogleAuthService)
+@google_bp.configure('/api/google/gmail/<message_id>', methods=['GET'], auth_scheme='default')
+async def get_email(container, message_id):
+    service: GmailClient = container.resolve(
+        GmailClient)
 
-    data = await request.get_json()
+    result = await service.get_message(
+        message_id=message_id)
 
-    client = await service.create_client(
-        data=data)
-
-    return client
-
-
-@google_bp.configure('/api/google/client/<client_id>', methods=['GET'], auth_scheme='default')
-async def get_client(container, client_id):
-    service: GoogleAuthService = container.resolve(
-        GoogleAuthService)
-
-    client = await service.get_client(
-        client_id=client_id)
-
-    return client
-
-
-@google_bp.configure('/api/google/client/<client_id>/token', methods=['GET'], auth_scheme='default')
-async def get_client_token(container, client_id):
-    service: GoogleAuthService = container.resolve(
-        GoogleAuthService)
-
-    creds = await service.get_credentials(
-        client_id=client_id)
-
-    response = GoogleTokenResponse(
-        creds=creds)
-
-    return response
-
-
-@google_bp.configure('/api/google/client/refresh', methods=['POST'], auth_scheme='default')
-async def refresh_client_token(container):
-    service: GoogleAuthService = container.resolve(
-        GoogleAuthService)
-
-    clients = await service.refresh_clients()
-
-    return {
-        'clients': clients
-    }
+    return result

@@ -1,8 +1,10 @@
 from typing import Any
 
-from domain.google import GoogleDriveDirectory, GoogleDriveFilePermission, GoogleDriveFileUpload
 from framework.logger.providers import get_logger
 from googleapiclient.discovery import build
+
+from domain.google import (GoogleClientScope, GoogleDriveDirectory, GoogleDriveFilePermission,
+                           GoogleDriveFileUpload)
 from services.google_auth_service import GoogleAuthService
 
 logger = get_logger(__name__)
@@ -46,25 +48,18 @@ class GoogleDriveClient:
         logger.info(f'Drive file uploaded successfully: {filename}')
         return result
 
-    async def __get_creds(
-        self
-    ):
-        client = await self.__auth_service.get_client_by_name(
-            client_name='kube-tools')
-
-        return client.get_google_creds()
-
     async def __get_client(
         self
     ) -> Any:
         logger.info('Creating Google Drive client')
 
-        credentials = await self.__get_creds()
+        auth_client = await self.__auth_service.get_auth_client(
+            scopes=GoogleClientScope.Drive)
 
         client = build(
             'drive',
             'v3',
-            credentials=credentials
+            credentials=auth_client
         )
 
         logger.info('Google Drive client created successfully')

@@ -1,61 +1,164 @@
-import enum
+import base64
 import io
-import json
-import uuid
 from datetime import datetime, timedelta
-from typing import List
+from typing import Dict, List
 
-import pytz
-from dateutil.parser import parse
-from framework.crypto.hashing import sha256
 from framework.serialization import Serializable
-from googleapiclient.http import MediaIoBaseUpload
-from utilities.utils import DateUtils
-
 from google.oauth2.credentials import Credentials
+from googleapiclient.http import MediaIoBaseUpload
+
+
+class GoogleEmailHeaderKey:
+    Subject = 'Subject'
+    From = 'From'
+    To = 'To'
+
+
+class GoogleEmailLabel:
+    Inbox = 'INBOX'
+    Unread = 'UNREAD'
+
+
+class GmailRuleAction:
+    Archive = 'archive'
+    Event = 'send-http'
+
+
+class GmailEmailHeaders(Serializable):
+    def __init__(
+        self,
+        headers: List[Dict]
+    ):
+        self.__headers = self.__build_index(
+            headers=headers)
+
+    def __build_index(
+        self,
+        headers: List[Dict]
+    ):
+        header_index = dict()
+
+        for header in headers:
+            name = header.get('name')
+            header_index[name] = header.get('value')
+
+        return header_index
+
+    def __getitem__(
+        self,
+        key
+    ):
+        return self.__headers.get(key)
+
+    def to_dict(self) -> Dict:
+        return self.__headers
+
+
+class GmailQueryResult(Serializable):
+    def __init__(
+        self,
+        data
+    ):
+        self.messages = data.get('messages')
+        self.next_page_token = data.get('nextPageToken')
+        self.result_size_estimate = data.get('resultSizeEstimate')
+
+        self.message_ids = self.__get_message_ids(
+            messages=self.messages)
+
+    def __get_message_ids(
+        self,
+        messages
+    ):
+        return [message_id.get('id')
+                for message_id in messages]
+
+
+class GmailEmail(Serializable):
+    @property
+    def body(
+        self
+    ):
+        return base64.urlsafe_b64decode(
+            self.body_raw.get('data'))
+
+    @property
+    def timestamp(
+        self
+    ):
+        return datetime.fromtimestamp(
+            int(self.internal_date) / 1000)
+
+    def __init__(
+        self,
+        data
+    ):
+        self.message_id = data.get('id')
+        self.thread_id = data.get('threadId')
+        self.label_ids = data.get('labelIds')
+        self.snippet = data.get('snippet')
+        self.internal_date = data.get('internalDate')
+
+        self.body_raw = data.get('payload').get('body')
+        self.headers_raw = data.get('payload').get('headers')
+
+        self.headers = GmailEmailHeaders(
+            headers=self.headers_raw)
+
+    def to_dict(self) -> Dict:
+        return super().to_dict() | {
+            'body': self.body,
+            'timestamp': self.timestamp
+        }
+
+    def serializer_exclude(self):
+        return ['body_raw',
+                'internal_date',
+                'headers_raw']
+
+
+class GmailEmailRule:
+    def __init__(
+        self,
+        rule_id,
+        name,
+        description,
+        hours_back,
+        query,
+        action,
+        data,
+        created_date
+    ):
+        self.rule_id = rule_id
+        self.name = name
+        self.description = description
+        self.hours_back = hours_back
+        self.query = query
+        self.action = action
+        self.data = data
+        self.created_date = created_date
+
+    @staticmethod
+    def from_entity(data):
+        return GmailEmailRule(
+            rule_id=data.get('rule_id'),
+            name=data.get('name'),
+            description=data.get('description'),
+            hours_back=data.get('hours_back'),
+            query=data.get('query'),
+            action=data.get('action'),
+            data=data.get('data'),
+            created_date=data.get('created_date')
+        )
 
 
 class GoogleClientScope:
     Drive = ['https://www.googleapis.com/auth/drive']
-    Gmail = ['https://www.googleapis.com/auth/gmail.readonly']
+    Gmail = ['https://www.googleapis.com/auth/gmail.modify']
 
 
 class GoogleDriveDirectory:
     PodcastDirectoryId = '1jvoXhIvGLAn5DV73MK3IbcfQ6EF-L3qm'
-
-
-class GoogleFit:
-    BaseUrl = 'https://www.googleapis.com/fitness'
-
-
-class FitValueType:
-    KEY = None
-    DEFAULT = None
-
-
-class IntValueType(FitValueType):
-    KEY = 'intVal'
-    DEFAULT = 0
-
-
-class FloatValueType(FitValueType):
-    KEY = 'fpVal'
-    DEFAULT = 0
-
-
-class GoogleFitValueType:
-    Int = IntValueType()
-    Float = FloatValueType()
-
-
-class GoogleFitQueryType(enum.IntEnum):
-    ActiveMinutes = 1
-    CaloriesExpended = 2
-    Steps = 3
-
-    @classmethod
-    def from_name(cls, value):
-        return cls[value].value
 
 
 def first(items, func=None):
@@ -88,10 +191,6 @@ class GoogleAuthClient(Serializable):
             'client_name': self.client_name
         }
 
-    def new_client(self):
-        self.client_id = str(uuid.uuid4())
-        self.created_date = datetime.now().isoformat()
-
     def get_google_creds(
         self,
         scopes=None
@@ -121,182 +220,6 @@ class GoogleFitDataType(Serializable):
         return {
             'dataTypeName': self.name,
             'dataSourceId': self.id
-        }
-
-
-class GoogleFitDataSource:
-    Steps = GoogleFitDataType(
-        id='derived:com.google.step_count.delta:com.google.android.gms:estimated_steps',
-        name='com.google.step_count.delta')
-
-    ExpendedCalories = GoogleFitDataType(
-        id='derived:com.google.calories.expended:com.google.android.gms:merge_calories_expended',
-        name='com.google.calories.expended')
-
-    ActiveMinutes = GoogleFitDataType(
-        id='derived:com.google.active_minutes:com.google.android.gms:merge_active_minutes',
-        name='com.google.active_minutes')
-
-
-class FitAggregateDataset(Serializable):
-    def __init__(
-        self,
-        start_date: datetime,
-        end_date: datetime,
-        aggregates: List[GoogleFitDataType],
-        groupby_time: timedelta
-    ):
-        self.__start_date = start_date
-        self.__end_date = end_date
-        self.__aggregates = aggregates
-        self.__groupby_time = groupby_time
-
-    def __seconds_to_milliseconds(self, seconds):
-        return int(seconds * 1000)
-
-    @property
-    def start_date(self):
-        return self.__seconds_to_milliseconds(
-            seconds=self.__start_date)
-
-    @property
-    def end_date(self):
-        return self.__seconds_to_milliseconds(
-            seconds=self.__end_date)
-
-    @property
-    def aggregates(self):
-        return [
-            agg.to_dict() for agg
-            in self.__aggregates
-        ]
-
-    @property
-    def groupby_time(self):
-        return self.__seconds_to_milliseconds(
-            seconds=self.__groupby_time.total_seconds())
-
-    def to_dict(self):
-        return {
-            'aggregateBy': self.aggregates,
-            'startTimeMillis': self.start_date,
-            'endTimeMillis': self.end_date,
-            'bucketByTime': {
-                'durationMillis': self.groupby_time
-            }
-        }
-
-
-class GoogleFitRequest:
-    def __init__(
-        self,
-        start_timestamp: str,
-        end_timestamp: str
-    ):
-        self.__start_timestamp = start_timestamp
-        self.__end_timestamp = end_timestamp
-
-    @property
-    def start_date(
-        self
-    ) -> datetime:
-        return self.__start_timestamp
-
-    @property
-    def end_date(
-        self
-    ) -> datetime:
-        return self.__end_timestamp
-
-
-class GoogleFitDataPoint(Serializable):
-    def __init__(
-        self,
-        data: dict,
-        value_type: FitValueType
-    ):
-        self.__value_type = value_type
-
-        dataset = data.get('dataset', [])[0]
-        point = dataset.get('point', {})
-
-        self.__data_source = dataset.get('dataSourceId')
-        self.__end_time = data.get('endTimeMillis')
-        self.__start_time = data.get('startTimeMillis')
-
-        self.__values = (
-            [] if not any(point)
-            else point[0].get('value')
-        )
-
-    def __milliseconds_to_datetime(
-        self,
-        milliseconds
-    ):
-        timezone = pytz.timezone('America/Phoenix')
-        seconds = int(round(milliseconds / 1000))
-        return datetime.fromtimestamp(
-            seconds).astimezone(timezone)
-
-    @property
-    def start_date(self):
-        return self.__milliseconds_to_datetime(
-            milliseconds=int(self.__start_time))
-
-    @property
-    def end_date(self):
-        return self.__milliseconds_to_datetime(
-            milliseconds=int(self.__end_time))
-
-    @property
-    def value_type(self):
-        return self.__value_type
-
-    @property
-    def data_source(self):
-        return self.__data_source
-
-    @property
-    def data_type(self):
-        return self.__data_type
-
-    @property
-    def value(self):
-        if any(self.__values) and is_dict(first(self.__values)):
-            return first(self.__values).get(self.__value_type.KEY)
-        return self.__value_type.DEFAULT
-
-    @property
-    def key(self):
-        return sha256(
-            str({
-                'year': self.start_date.year,
-                'month': self.start_date.month,
-                'day': self.start_date.day,
-                'hour': self.start_date.hour
-            })
-        )
-
-    @property
-    def timestamp(self):
-        timezone = pytz.timezone('America/Phoenix')
-        date = datetime(
-            year=self.start_date.year,
-            month=self.start_date.month,
-            day=self.start_date.day,
-            hour=0,
-            minute=0,
-            second=0).astimezone(timezone)
-
-        return round(date.timestamp())
-
-    def to_dict(self):
-        return {
-            'key': self.key,
-            'date': self.start_date.isoformat(),
-            'timestamp': self.timestamp,
-            'data_source': self.data_source,
-            'value': self.value
         }
 
 

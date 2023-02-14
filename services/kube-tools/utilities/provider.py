@@ -1,3 +1,4 @@
+import openai
 from framework.abstractions.abstract_request import RequestContextProvider
 from framework.auth.azure import AzureAd
 from framework.auth.configuration import AzureAdConfiguration
@@ -6,18 +7,21 @@ from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration.configuration import Configuration
 from framework.di.service_collection import ServiceCollection
 from framework.di.static_provider import ProviderBase
+from httpx import AsyncClient
 from motor.motor_asyncio import AsyncIOMotorClient
 from quart import Quart
 
 from clients.azure_gateway_client import AzureGatewayClient
 from clients.email_gateway_client import EmailGatewayClient
 from clients.event_client import EventClient
+from clients.gmail_client import GmailClient, GmailRuleService
 from clients.google_drive_client import GoogleDriveClient
 from clients.google_maps_client import GoogleMapsClient
 from clients.identity_client import IdentityClient
 from clients.storage_client import StorageClient
 from clients.twilio_gateway import TwilioGatewayClient
 from data.google.google_auth_repository import GoogleAuthRepository
+from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from data.google.google_location_history_repository import \
     GoogleLocationHistoryRepository
 from data.google.google_reverse_geocode_repository import \
@@ -25,6 +29,7 @@ from data.google.google_reverse_geocode_repository import \
 from data.location_repository import (WeatherStationRepository,
                                       ZipLatLongRepository)
 from data.podcast_repository import PodcastRepository
+from data.sms_repository import SmsRepository
 from data.wr_repository import WellnessCheckRepository, WellnessReplyRepository
 from domain.auth import AdRole
 from services.acr_purge_service import AcrPurgeService
@@ -38,9 +43,6 @@ from services.podcast_service import PodcastService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
 from services.sms_service import SmsService
 from services.usage_service import UsageService
-from httpx import AsyncClient
-import openai
-
 from services.walle_service import WallePhoneService
 from services.wr_service import WellnessResponseService
 
@@ -118,6 +120,7 @@ def register_clients(descriptors):
     descriptors.add_singleton(StorageClient)
     descriptors.add_singleton(GoogleMapsClient)
     descriptors.add_singleton(EventClient)
+    descriptors.add_singleton(GmailClient)
 
 
 def register_repositories(descriptors):
@@ -129,13 +132,15 @@ def register_repositories(descriptors):
     descriptors.add_singleton(GoogleReverseGeocodingRepository)
     descriptors.add_singleton(WellnessCheckRepository)
     descriptors.add_singleton(WellnessReplyRepository)
+    descriptors.add_singleton(SmsRepository)
+    descriptors.add_singleton(GoogleEmailRuleRepository)
 
 
 def register_services(descriptors):
     descriptors.add_transient(PodcastService)
     descriptors.add_transient(AcrService)
     descriptors.add_transient(UsageService)
-    descriptors.add_transient(GoogleAuthService)
+    descriptors.add_singleton(GoogleAuthService)
     descriptors.add_transient(MongoBackupService)
     descriptors.add_transient(AcrPurgeService)
     descriptors.add_transient(AcrService)
@@ -146,6 +151,7 @@ def register_services(descriptors):
     descriptors.add_singleton(WallePhoneService)
     descriptors.add_singleton(WellnessResponseService)
     descriptors.add_singleton(SmsService)
+    descriptors.add_singleton(GmailRuleService)
 
 
 class ContainerProvider(ProviderBase):

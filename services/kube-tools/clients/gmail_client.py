@@ -1,176 +1,193 @@
-import asyncio
-import json
-from typing import List
+from typing import Dict, List
 
-from aiogoogle import Aiogoogle
-from aiogoogle.auth.creds import ClientCreds, UserCreds
-from framework.clients.cache_client import CacheClientAsync
-from framework.logger.providers import get_logger
-from framework.serialization import Serializable
+from framework.concurrency import TaskCollection
+from framework.configuration import Configuration
+from framework.logger import get_logger
+from framework.uri import build_url
+from framework.validators.nulls import none_or_whitespace
+from httpx import AsyncClient
+from google.auth.transport.requests import Request
+from domain.cache import CacheKey
+
+from domain.google import GmailEmail, GmailEmailRule, GmailQueryResult, GmailRuleAction, GoogleClientScope, GoogleEmailLabel
+from domain.rest import GmailModifyEmailRequest
+from services.gmail_rule_service import GmailRuleService
+from services.google_auth_service import GoogleAuthService
+from framework.caching.memory_cache import MemoryCache
 
 logger = get_logger(__name__)
 
 
-def merge_dicts(dicts):
-    result = dict()
-    for _dict in dicts:
-        result |= _dict
-    return result
-
-
-class AsyncHelper:
-    @staticmethod
-    def create_tasks(func, kwargs_list):
-        tasks = []
-        for kwargs in kwargs_list:
-            task = asyncio.create_task(
-                func(**kwargs))
-            tasks.append(task)
-        return tasks
-
-    @staticmethod
-    async def run_tasks(tasks):
-        results = await asyncio.gather(
-            *tasks)
-        return results
-
-
-class TokenFileCredential:
-    def __init__(self, data):
-        self.token = data.get('token')
-        self.refresh_token = data.get('refresh_token')
-        self.token_uri = data.get('token_uri')
-        self.client_id = data.get('client_id')
-        self.client_secret = data.get('client_secret')
-        self.scopes = data.get('scopes')
-        self.expiry = data.get('expiry')
-
-
-class MessageListItem:
-    def __init__(self, data):
-        self.id = data.get('id')
-        self.thread_id = data.get('threadId')
-
-
-class MessageList(Serializable):
-    def __init__(self, data):
-        self.messages = self._parse_message_list(
-            messages=data.get('messages'))
-
-    def _parse_message_list(self, messages):
-        return {
-            message.get('id'): message
-            for message in messages
-        }
-
-    def add_message_details(self, message_id, details):
-        self.messages[message_id] = details
-
-    @property
-    def message_ids(self) -> List[str]:
-        return list(self.messages.keys())
-
-    def __getitem__(self, message_id):
-        return self.messages[message_id]
-
-    def __len__(self):
-        return len(self.message_ids)
-
-
-class GoogleClientBuilder:
-    def __init__(self, token_filepath):
-        self.creds = self._get_token_file_credential(
-            token_filepath=token_filepath)
-
-    def _get_token_file_credential(self, token_filepath) -> TokenFileCredential:
-        with open(token_filepath, 'r') as file:
-            token_file = json.loads(file.read())
-
-        return TokenFileCredential(
-            data=token_file)
-
-    def _get_user_creds(self) -> UserCreds:
-        return UserCreds(
-            access_token=self.creds.token,
-            refresh_token=self.creds.refresh_token,
-            scopes=self.creds.scopes,
-            token_uri=self.creds.token_uri)
-
-    def _get_client_creds(self) -> ClientCreds:
-        return ClientCreds(
-            client_id=self.creds.client_id,
-            client_secret=self.creds.client_secret,
-            scopes=self.creds.scopes,
-            redirect_uri='https://localhost:5050/')
-
-    def build(self) -> Aiogoogle:
-        return Aiogoogle(
-            user_creds=self._get_user_creds(),
-            client_creds=self._get_client_creds())
-
-
 class GmailClient:
-    def __init__(self, container):
-        self.cache_client: CacheClientAsync = container.resolve(
-            CacheClientAsync)
+    def __init__(
+        self,
+        configuration: Configuration,
+        auth_service: GoogleAuthService,
+        rule_service: GmailRuleService,
+        http_client: AsyncClient
+    ):
+        self.__auth_service = auth_service
+        self.__http_client = http_client
+        self.__rule_service = rule_service
+        self.__memory_cache = MemoryCache()
 
-        self.client_provider = GoogleClientBuilder(
-            token_filepath='token.json')
+        self.__base_url = configuration.gmail.get(
+            'base_url')
 
-    def get_client(self):
-        return self.client_provider.build()
+    async def __get_token(
+        self
+    ):
+        cache_key = CacheKey.gmail_token()
 
-    async def send_request(self, request):
-        async with self.get_client() as client:
-            gmail = await client.discover("gmail", "v1")
-            request = request(gmail)
-            return await client.as_user(request)
+        token = self.__memory_cache.get(cache_key)
 
-    async def get_emails(self, query, limit):
-        logger.info(f'Query: {query}: Limit: {limit}')
+        if token is not None:
+            return token
 
-        response = await self.send_request(
-            request=lambda gmail: gmail.users.messages.list(
-                q=query,
-                userId='me',
-                maxResults=limit))
+        client = await self.__auth_service.get_auth_client(
+            scopes=GoogleClientScope.Gmail)
 
-        logger.info(f'Response: {response}')
+        logger.info(f'Client granted scopes: {client.granted_scopes}')
+        logger.info(f'Client scopes: {client.scopes}')
 
-        messages = MessageList(
-            data=response)
+        client.refresh(Request())
 
-        logger.info(f'Message count: {len(messages)}')
-        func_kwargs = [{'message_id': message_id}
-                       for message_id in messages.message_ids]
+        self.__memory_cache.set(
+            key=cache_key,
+            value=client.token,
+            ttl=60)
 
-        tasks = AsyncHelper.create_tasks(
-            func=self.get_email,
-            kwargs_list=func_kwargs)
+        return client.token
 
-        results = await AsyncHelper.run_tasks(
-            tasks=tasks)
-
-        merged = merge_dicts(
-            dicts=results)
-
-        for message_id in messages.message_ids:
-            logger.info(f'Mapping details to message')
-
-            details = merged[message_id]
-
-            messages.add_message_details(
-                message_id=message_id,
-                details=details)
-
-        return messages.to_dict()
-
-    async def get_email(self, message_id) -> dict[str, dict]:
-        email = await self.send_request(
-            request=lambda gmail: gmail.users.messages.get(
-                userId='me',
-                id=message_id))
+    async def __get_auth_headers(
+        self
+    ) -> Dict:
+        token = await self.__get_token()
 
         return {
-            message_id: email
+            'Authorization': f'Bearer {token}'
         }
+
+    async def get_message(
+        self,
+        message_id: str
+    ):
+        # Build endpoint with message
+        endpoint = f'{self.__base_url}/v1/users/me/messages/{message_id}'
+        logger.info(f'Endpoint: {endpoint}')
+
+        auth_headers = await self.__get_auth_headers()
+        message_response = await self.__http_client.get(
+            url=endpoint,
+            headers=auth_headers)
+
+        content = message_response.json()
+        return GmailEmail(
+            data=content)
+
+    async def get_messages(
+        self,
+        message_ids: List[str]
+    ) -> List[GmailEmail]:
+
+        logger.info(f'Fetching {len(message_ids)} messages')
+
+        get_messages = TaskCollection(*[
+            self.get_message(message_id=message_id)
+            for message_id in message_ids
+        ])
+
+        return await get_messages.run()
+
+    async def archive_message(
+        self,
+        message_id: str
+    ):
+        logger.info(f'Gmail archive message: {message_id}')
+
+        # Build endpoint with message
+        endpoint = f'{self.__base_url}/v1/users/me/messages/{message_id}/modify'
+        logger.info(f'Endpoint: {endpoint}')
+
+        remove_labels = [
+            GoogleEmailLabel.Inbox,
+            GoogleEmailLabel.Unread
+        ]
+
+        modify_request = GmailModifyEmailRequest(
+            remove_label_ids=remove_labels)
+
+        auth_headers = await self.__get_auth_headers()
+        query_result = await self.__http_client.post(
+            url=endpoint,
+            json=modify_request.to_dict(),
+            headers=auth_headers)
+
+        content = query_result.json()
+        return content
+
+    async def search_inbox(
+        self,
+        query: str,
+        page_token: str = None
+    ) -> GmailQueryResult:
+
+        logger.info(f'Gmail query: {query}')
+
+        endpoint = build_url(
+            base=f'{self.__base_url}/v1/users/me/messages',
+            q=query)
+
+        # Add continuation token if provided
+        if not none_or_whitespace(page_token):
+            endpoint = f'{endpoint}&pageToken={page_token}'
+
+        logger.info(f'Endpoint: {endpoint}')
+
+        auth_headers = await self.__get_auth_headers()
+        query_result = await self.__http_client.get(
+            url=endpoint,
+            headers=auth_headers)
+
+        content = query_result.json()
+        response = GmailQueryResult(
+            data=content)
+
+        return response
+
+    async def run_mail_service(
+        self
+    ):
+        run_results = dict()
+        rules = await self.__rule_service.get_rules()
+
+        for rule in rules:
+            logger.info(f'Processing rule: {rule.name}')
+
+            # Process an archival rule
+            if rule.action == GmailRuleAction.Archive:
+                count = await self.process_archive_rule(
+                    rule=rule)
+
+                run_results[rule.name] = count
+
+        return run_results
+
+    async def process_archive_rule(
+        self,
+        rule: GmailEmailRule
+    ) -> List[str]:
+
+        # Query the inbox w/ the defined rule query
+        query_result = await self.search_inbox(
+            query=rule.query)
+
+        logger.info(f'Result count: {len(query_result.messages)}')
+
+        for message_id in query_result.message_ids:
+            logger.info(f'Archiving email: {message_id}')
+
+            await self.archive_message(
+                message_id=message_id)
+
+        return len(query_result.message_ids)

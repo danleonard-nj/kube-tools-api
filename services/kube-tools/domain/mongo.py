@@ -10,6 +10,7 @@ class MongoDatabase:
     WeatherStation = 'WeatherStation'
     OpenAi = 'OpenAi'
     WellnessCheck = 'WellnessCheck'
+    Sms = 'SMS'
 
 
 class MongoCollection:
@@ -19,3 +20,4 @@ class MongoCollection:
     OpenAiRequest = 'OpenAiRequest'
     WellnessCheck = 'WellnessCheck'
     WellnessReply = 'WellnessReply'
+    SmsConversations = 'SmsConversations'

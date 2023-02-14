@@ -6,7 +6,8 @@ from googleapiclient.errors import HttpError
 import os
 
 # If modifying these scopes, delete the file token.json.
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+SCOPES = ['https://www.googleapis.com/auth/gmail.modify',
+          'https://www.googleapis.com/auth/drive']
 
 
 def main():
