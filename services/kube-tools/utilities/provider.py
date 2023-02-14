@@ -35,6 +35,7 @@ from domain.auth import AdRole
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
 from services.event_service import EventService
+from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
 from services.location_history_service import LocationHistoryService
 from services.location_service import LocationService
@@ -152,6 +153,7 @@ def register_services(descriptors):
     descriptors.add_singleton(WellnessResponseService)
     descriptors.add_singleton(SmsService)
     descriptors.add_singleton(GmailRuleService)
+    descriptors.add_singleton(GmailService)
 
 
 class ContainerProvider(ProviderBase):

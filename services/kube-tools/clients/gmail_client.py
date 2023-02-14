@@ -1,19 +1,21 @@
 from typing import Dict, List
 
+from framework.caching.memory_cache import MemoryCache
 from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
 from framework.logger import get_logger
 from framework.uri import build_url
 from framework.validators.nulls import none_or_whitespace
-from httpx import AsyncClient
 from google.auth.transport.requests import Request
-from domain.cache import CacheKey
+from httpx import AsyncClient
 
-from domain.google import GmailEmail, GmailEmailRule, GmailQueryResult, GmailRuleAction, GoogleClientScope, GoogleEmailLabel
+from domain.cache import CacheKey
+from domain.google import (GmailEmail, GmailEmailRule, GmailQueryResult,
+                           GmailRuleAction, GoogleClientScope,
+                           GoogleEmailLabel)
 from domain.rest import GmailModifyEmailRequest
 from services.gmail_rule_service import GmailRuleService
 from services.google_auth_service import GoogleAuthService
-from framework.caching.memory_cache import MemoryCache
 
 logger = get_logger(__name__)
 
@@ -55,7 +57,7 @@ class GmailClient:
         self.__memory_cache.set(
             key=cache_key,
             value=client.token,
-            ttl=60)
+            ttl=60 * 60)
 
         return client.token
 
