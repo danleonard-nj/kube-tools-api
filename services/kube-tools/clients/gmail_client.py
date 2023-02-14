@@ -101,23 +101,23 @@ class GmailClient:
 
         return await get_messages.run()
 
-    async def archive_message(
+    async def modify_tags(
         self,
-        message_id: str
+        message_id: str,
+        to_add: List[str] = [],
+        to_remove: List[str] = []
     ):
-        logger.info(f'Gmail archive message: {message_id}')
+        logger.info(f'Add/remove tags to message: {message_id}')
+        logger.info(f'Add: {to_add}')
+        logger.info(f'Remove: {to_remove}')
 
         # Build endpoint with message
         endpoint = f'{self.__base_url}/v1/users/me/messages/{message_id}/modify'
         logger.info(f'Endpoint: {endpoint}')
 
-        remove_labels = [
-            GoogleEmailLabel.Inbox,
-            GoogleEmailLabel.Unread
-        ]
-
         modify_request = GmailModifyEmailRequest(
-            remove_label_ids=remove_labels)
+            add_label_ids=to_add,
+            remove_label_ids=to_remove)
 
         auth_headers = await self.__get_auth_headers()
         query_result = await self.__http_client.post(
@@ -125,12 +125,30 @@ class GmailClient:
             json=modify_request.to_dict(),
             headers=auth_headers)
 
+        logger.info(f'Add/remove tag tag result: {query_result.status_code}')
+
         content = query_result.json()
         return content
+
+    async def archive_message(
+        self,
+        message_id: str
+    ):
+        logger.info(f'Gmail archive message: {message_id}')
+
+        remove_labels = [
+            GoogleEmailLabel.Inbox,
+            GoogleEmailLabel.Unread
+        ]
+
+        return await self.modify_tags(
+            message_id=message_id,
+            to_remove=remove_labels)
 
     async def search_inbox(
         self,
         query: str,
+        max_results: int = None,
         page_token: str = None
     ) -> GmailQueryResult:
 
@@ -144,6 +162,10 @@ class GmailClient:
         if not none_or_whitespace(page_token):
             endpoint = f'{endpoint}&pageToken={page_token}'
 
+        # Add max resultsif provided
+        if not none_or_whitespace(max_results):
+            endpoint = f'{endpoint}&maxResults={max_results}'
+
         logger.info(f'Endpoint: {endpoint}')
 
         auth_headers = await self.__get_auth_headers()
@@ -151,45 +173,14 @@ class GmailClient:
             url=endpoint,
             headers=auth_headers)
 
+        logger.info(f'Query inbox result: {query_result.status_code}')
+
         content = query_result.json()
+
+        if content is None:
+            logger.info(f'No results for query: {query}')
+            return
+
         response = GmailQueryResult(
             data=content)
-
         return response
-
-    async def run_mail_service(
-        self
-    ):
-        run_results = dict()
-        rules = await self.__rule_service.get_rules()
-
-        for rule in rules:
-            logger.info(f'Processing rule: {rule.name}')
-
-            # Process an archival rule
-            if rule.action == GmailRuleAction.Archive:
-                count = await self.process_archive_rule(
-                    rule=rule)
-
-                run_results[rule.name] = count
-
-        return run_results
-
-    async def process_archive_rule(
-        self,
-        rule: GmailEmailRule
-    ) -> List[str]:
-
-        # Query the inbox w/ the defined rule query
-        query_result = await self.search_inbox(
-            query=rule.query)
-
-        logger.info(f'Result count: {len(query_result.messages)}')
-
-        for message_id in query_result.message_ids:
-            logger.info(f'Archiving email: {message_id}')
-
-            await self.archive_message(
-                message_id=message_id)
-
-        return len(query_result.message_ids)

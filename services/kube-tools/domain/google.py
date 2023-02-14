@@ -8,7 +8,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaIoBaseUpload
 
 
-class GoogleEmailHeaderKey:
+class GoogleEmailHeader:
     Subject = 'Subject'
     From = 'From'
     To = 'To'
@@ -17,10 +17,12 @@ class GoogleEmailHeaderKey:
 class GoogleEmailLabel:
     Inbox = 'INBOX'
     Unread = 'UNREAD'
+    Starred = 'STARRED'
 
 
 class GmailRuleAction:
     Archive = 'archive'
+    SMS = 'sms'
     Event = 'send-http'
 
 
@@ -123,7 +125,7 @@ class GmailEmailRule:
         rule_id,
         name,
         description,
-        hours_back,
+        max_results,
         query,
         action,
         data,
@@ -132,7 +134,7 @@ class GmailEmailRule:
         self.rule_id = rule_id
         self.name = name
         self.description = description
-        self.hours_back = hours_back
+        self.max_results = max_results
         self.query = query
         self.action = action
         self.data = data
@@ -144,7 +146,7 @@ class GmailEmailRule:
             rule_id=data.get('rule_id'),
             name=data.get('name'),
             description=data.get('description'),
-            hours_back=data.get('hours_back'),
+            max_results=data.get('max_results'),
             query=data.get('query'),
             action=data.get('action'),
             data=data.get('data'),
