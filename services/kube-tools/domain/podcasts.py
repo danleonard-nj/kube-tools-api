@@ -2,10 +2,20 @@ import re
 from typing import Dict, List, OrderedDict
 
 import xmltodict
+from framework.logger import get_logger
 from framework.serialization import Serializable
+
+logger = get_logger(__name__)
+
+
+class InvalidSchemaException(Exception):
+    def __init__(self, data, *args: object) -> None:
+        super().__init__(f'Invalid RSS schema: {data}')
 
 
 class Episode(Serializable):
+    ACAST = 'acast:episodeId'
+
     def __init__(
         self,
         episode_id,
@@ -21,10 +31,21 @@ class Episode(Serializable):
         cls,
         data
     ) -> 'Episode':
-        return Episode(
-            episode_id=data.get('acast:episodeId'),
-            episode_title=data.get('itunes:title'),
-            audio=data.get('enclosure').get('@url'))
+        '''
+        Parse episode from RSS feed data
+        '''
+
+        if cls.ACAST in data:
+            # Parse acast tags
+            return Episode(
+                episode_id=data.get('acast:episodeId'),
+                episode_title=data.get('itunes:title'),
+                audio=data.get('enclosure').get('@url'))
+
+        else:
+            # Log if the schema changes and notify
+            logger.info(f'RSS schema is not known: {data}')
+            raise InvalidSchemaException(data)
 
     def get_filename(
         self,

@@ -3,8 +3,8 @@ from typing import Any
 from framework.logger.providers import get_logger
 from googleapiclient.discovery import build
 
-from domain.google import (GoogleClientScope, GoogleDriveDirectory, GoogleDriveFilePermission,
-                           GoogleDriveFileUpload)
+from domain.google import (GoogleClientScope, GoogleDriveDirectory,
+                           GoogleDriveFilePermission, GoogleDriveFileUpload)
 from services.google_auth_service import GoogleAuthService
 
 logger = get_logger(__name__)

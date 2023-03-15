@@ -10,7 +10,7 @@ podcasts_bp = MetaBlueprint('podcasts_bp', __name__)
 logger = get_logger(__name__)
 
 
-@podcasts_bp.configure('/api/podcasts', methods=['GET'], auth_scheme='execute')
+@podcasts_bp.configure('/api/podcasts', methods=['GET', 'POST'], auth_scheme='execute')
 async def get_podcasts(container):
     podcast_service: PodcastService = container.resolve(
         PodcastService)

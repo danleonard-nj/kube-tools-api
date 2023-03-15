@@ -48,26 +48,26 @@ class PodcastService:
         Sync podcast feeds
         '''
 
-        # TODO: Figure out a safe value for this
-        semaphore = asyncio.Semaphore(1)
-
         feeds = self.get_feeds()
+        results = list()
 
-        async def handler_wrapper(feed):
-            await semaphore.acquire()
-            await self.handle_feed(feed=feed)
-            semaphore.release()
+        for feed in feeds:
+            logger.info(f'Handling feed: {feed.name}')
+            try:
+                res = await self.handle_feed(
+                    feed=feed)
 
-        sync = TaskCollection(*[
-            handler_wrapper(feed=feed)
-            for feed in feeds
-        ])
-
-        downloads = await sync.run()
+                # Only return shows with new e  ps
+                if res:
+                    results.append(res)
+            except Exception as ex:
+                # Don't fail every feed for one broken
+                # feed
+                logger.exception(f'Failed to update show: {str(ex)}')
 
         return {
             download.show.show_id: download.show.to_dict()
-            for download in downloads if download is not None
+            for download in results if download is not None
         }
 
     async def handle_feed(
@@ -119,10 +119,6 @@ class PodcastService:
         Upload podcast audio to Google Drive
         '''
 
-        # TODO: Figure out a safe value for this
-        semaphore = Semaphore(1)
-
-        semaphore.acquire()
         logger.info(f'{episode.get_filename()}: Upload started')
 
         # Upload file to Google Drive

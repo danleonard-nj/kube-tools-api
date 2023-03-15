@@ -2,10 +2,12 @@ import base64
 import io
 from datetime import datetime, timedelta
 from typing import Dict, List
+import uuid
 
 from framework.serialization import Serializable
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaIoBaseUpload
+from pytz import country_names
 
 
 class GoogleEmailHeader:
@@ -119,7 +121,7 @@ class GmailEmail(Serializable):
                 'headers_raw']
 
 
-class GmailEmailRule:
+class GmailEmailRule(Serializable):
     def __init__(
         self,
         rule_id,
@@ -129,7 +131,8 @@ class GmailEmailRule:
         query,
         action,
         data,
-        created_date
+        created_date,
+        count_processed=None
     ):
         self.rule_id = rule_id
         self.name = name
@@ -138,9 +141,10 @@ class GmailEmailRule:
         self.query = query
         self.action = action
         self.data = data
+        self.count_processed = count_processed
         self.created_date = created_date
 
-    @staticmethod
+    @ staticmethod
     def from_entity(data):
         return GmailEmailRule(
             rule_id=data.get('rule_id'),
@@ -150,8 +154,35 @@ class GmailEmailRule:
             query=data.get('query'),
             action=data.get('action'),
             data=data.get('data'),
+            count_processed=data.get('count_processed'),
             created_date=data.get('created_date')
         )
+
+
+class GmailRuleHistory:
+    def __init__(
+        self,
+        history_id,
+        rule_id,
+        count,
+        emails
+    ):
+        self.history_id = history_id
+        self.rule_id = rule_id
+        self.count = count
+        self.emails = emails
+
+    @staticmethod
+    def create_history_record(
+        rule_id,
+        count,
+        emails: List = []
+    ):
+        return GmailRuleHistory(
+            history_id=str(uuid.uuid4()),
+            rule_id=rule_id,
+            count=len(emails),
+            emails=list())
 
 
 class GoogleClientScope:

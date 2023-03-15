@@ -10,15 +10,4 @@ class GoogleEmailRuleRepository(MongoRepositoryAsync):
         super().__init__(
             client=client,
             database='Google',
-            collection='EmailRule')
-
-
-class GoogleEmailHistoryRepository(MongoRepositoryAsync):
-    def __init__(
-        self,
-        client: AsyncIOMotorClient
-    ):
-        super().__init__(
-            client=client,
-            database='Google',
-            collection='History')
+            collection='Email')

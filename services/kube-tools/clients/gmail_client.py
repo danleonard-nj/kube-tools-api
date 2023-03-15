@@ -10,8 +10,7 @@ from google.auth.transport.requests import Request
 from httpx import AsyncClient
 
 from domain.cache import CacheKey
-from domain.google import (GmailEmail, GmailEmailRule, GmailQueryResult,
-                           GmailRuleAction, GoogleClientScope,
+from domain.google import (GmailEmail, GmailQueryResult, GoogleClientScope,
                            GoogleEmailLabel)
 from domain.rest import GmailModifyEmailRequest
 from services.gmail_rule_service import GmailRuleService

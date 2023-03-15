@@ -1,9 +1,12 @@
+import uuid
+from datetime import datetime
 from typing import List
 
 from framework.logger import get_logger
 
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from domain.google import GmailEmailRule
+from domain.rest import CreateEmailRuleRequest
 
 logger = get_logger(__name__)
 
@@ -26,3 +29,48 @@ class GmailRuleService:
         ]
 
         return rules
+
+    async def create_rule(
+        self,
+        create_request: CreateEmailRuleRequest
+    ):
+        existing = await self.__email_rule_repository.get({
+            'name': create_request.name
+        })
+
+        if existing is not None:
+            raise Exception(f"A rule with the name '{create_request.name}'")
+
+        rule = GmailEmailRule(
+            rule_id=str(uuid.uuid4()),
+            name=create_request.name,
+            description=create_request.description,
+            query=create_request.query,
+            action=create_request.action,
+            data=create_request.data,
+            created_date=datetime.now(),
+            create_request=0)
+
+        await self.__email_rule_repository.insert(
+            document=rule.to_dict())
+
+        return rule
+
+    async def update_rule_items_caught_count(
+        self,
+        rule_id: str,
+        count_processed: int
+    ):
+        logger.info(
+            f'Rule: {rule_id}: Uptating count processed: {count_processed}')
+
+        await self.__email_rule_repository.collection.update(
+            {'rule_id': rule_id},
+            {'$inc': count_processed})
+
+    async def get_all_rules(
+        self
+    ):
+        logger.info('Get email rule list')
+
+        await self.__email_rule_repository.get_all()

@@ -1,6 +1,7 @@
-from distutils.command.config import config
-from operator import index
 from typing import List
+
+from domain.google import GmailRuleHistory
+
 
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
@@ -31,23 +32,38 @@ class GmailService:
     async def run_mail_service(
         self
     ):
+        logger.info(f'Gathering rules for Gmail rule service')
+
         run_results = dict()
+
         rules = await self.__rule_service.get_rules()
+        logger.info(f'Rules gathered: {len(rules)}')
 
         for rule in rules:
-            logger.info(f'Processing rule: {rule.name}')
+            logger.info(f'Processing rule: {rule.rule_id}: {rule.name}')
+
+            # Default affected count
+            affected_count = 0
 
             # Process an archival rule
             if rule.action == GmailRuleAction.Archive:
-                count = await self.process_archive_rule(
+                logger.info(f'Rule type: {GmailRuleAction.Archive}')
+
+                affected_count = await self.process_archive_rule(
                     rule=rule)
-                run_results[rule.name] = count
 
             # Process an SMS rule
             if rule.action == GmailRuleAction.SMS:
-                count = await self.process_sms_rule(
+                logger.info(f'Rule type: {GmailRuleAction.SMS}')
+
+                affected_count = await self.process_sms_rule(
                     rule=rule)
-                run_results[rule.name] = count
+
+            run_results[rule.name] = affected_count
+            logger.info(
+                f'Rule: {rule.name}: Emails affected: {affected_count}')
+
+        result_entities = GmailRuleHistory
 
         return run_results
 
@@ -122,15 +138,28 @@ class GmailService:
                 to_add=to_add,
                 to_remove=to_remove)
 
+            await self.__rule_service.update_rule_items_caught_count(
+                rule_id=rule.rule_id,
+                count_processed=rule.count_processed)
+
             notify_count += 1
 
         return notify_count
 
+    async def send_results(
+        send,
+        rule,
+        email
+    ):
+        pass
+
     def __get_message_body(
         self,
+        rule: GmailEmailRule,
         message: GmailEmail
     ):
         body = f'From: {message.headers[GoogleEmailHeader.From]}'
+        body = f'Rule: {rule.rule_id} ({rule.name})'
         body += '\n'
         body += f'Date: {message.timestamp}'
         body += '\n'
