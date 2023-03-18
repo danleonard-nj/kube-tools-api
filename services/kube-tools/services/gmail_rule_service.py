@@ -64,9 +64,16 @@ class GmailRuleService:
         logger.info(
             f'Rule: {rule_id}: Uptating count processed: {count_processed}')
 
-        await self.__email_rule_repository.collection.update(
+        # Will throw on non-numeric value
+        mod = {
+            '$inc': {
+                'count_processed': count_processed or 0
+            }
+        }
+
+        await self.__email_rule_repository.collection.update_one(
             {'rule_id': rule_id},
-            {'$inc': count_processed})
+            mod)
 
     async def get_all_rules(
         self

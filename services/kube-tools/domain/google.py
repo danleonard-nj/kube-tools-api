@@ -132,7 +132,7 @@ class GmailEmailRule(Serializable):
         action,
         data,
         created_date,
-        count_processed=None
+        count_processed=0
     ):
         self.rule_id = rule_id
         self.name = name

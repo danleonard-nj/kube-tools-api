@@ -1,14 +1,12 @@
 from typing import List
 
-from domain.google import GmailRuleHistory
-
+from framework.configuration import Configuration
+from framework.logger import get_logger
 
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
 from domain.google import (GmailEmail, GmailEmailRule, GmailRuleAction,
                            GoogleEmailHeader, GoogleEmailLabel)
-from framework.configuration import Configuration
-from framework.logger import get_logger
 from services.gmail_rule_service import GmailRuleService
 
 logger = get_logger(__name__)
@@ -63,8 +61,6 @@ class GmailService:
             logger.info(
                 f'Rule: {rule.name}: Emails affected: {affected_count}')
 
-        result_entities = GmailRuleHistory
-
         return run_results
 
     async def process_archive_rule(
@@ -118,6 +114,7 @@ class GmailService:
             logger.info('Message unread, sending notification')
 
             body = self.__get_message_body(
+                rule=rule,
                 message=message)
 
             logger.info(f'Message body: {body}')
@@ -159,7 +156,7 @@ class GmailService:
         message: GmailEmail
     ):
         body = f'From: {message.headers[GoogleEmailHeader.From]}'
-        body = f'Rule: {rule.rule_id} ({rule.name})'
+        body = f'Rule: {rule.name} ({rule.rule_id})'
         body += '\n'
         body += f'Date: {message.timestamp}'
         body += '\n'
