@@ -1,5 +1,3 @@
-from framework.serialization import Serializable
-
 
 class UsageArgs:
     def __init__(

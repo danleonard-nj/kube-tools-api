@@ -1,10 +1,11 @@
 from typing import List
+
+from framework.concurrency import TaskCollection
+
 from clients.google_maps_client import GoogleMapsClient
 from data.google.google_reverse_geocode_repository import \
     GoogleReverseGeocodingRepository
-from domain.location_history import (CoordinateKey,
-                                     ReverseGeocodingModel)
-from framework.concurrency import TaskCollection
+from domain.location_history import CoordinateKey, ReverseGeocodingModel
 
 
 def first(items):

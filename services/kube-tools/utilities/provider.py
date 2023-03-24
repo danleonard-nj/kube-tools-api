@@ -29,8 +29,6 @@ from data.google.google_reverse_geocode_repository import \
 from data.location_repository import (WeatherStationRepository,
                                       ZipLatLongRepository)
 from data.podcast_repository import PodcastRepository
-from data.sms_repository import SmsRepository
-from data.wr_repository import WellnessCheckRepository, WellnessReplyRepository
 from domain.auth import AdRole
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
@@ -42,10 +40,7 @@ from services.location_service import LocationService
 from services.mongo_backup_service import MongoBackupService
 from services.podcast_service import PodcastService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
-from services.sms_service import SmsService
 from services.usage_service import UsageService
-from services.walle_service import WallePhoneService
-from services.wr_service import WellnessResponseService
 
 
 def configure_azure_ad(container):
@@ -131,9 +126,6 @@ def register_repositories(descriptors):
     descriptors.add_singleton(WeatherStationRepository)
     descriptors.add_singleton(GoogleLocationHistoryRepository)
     descriptors.add_singleton(GoogleReverseGeocodingRepository)
-    descriptors.add_singleton(WellnessCheckRepository)
-    descriptors.add_singleton(WellnessReplyRepository)
-    descriptors.add_singleton(SmsRepository)
     descriptors.add_singleton(GoogleEmailRuleRepository)
 
 
@@ -149,9 +141,6 @@ def register_services(descriptors):
     descriptors.add_singleton(LocationHistoryService)
     descriptors.add_singleton(GoogleReverseGeocodingService)
     descriptors.add_singleton(EventService)
-    descriptors.add_singleton(WallePhoneService)
-    descriptors.add_singleton(WellnessResponseService)
-    descriptors.add_singleton(SmsService)
     descriptors.add_singleton(GmailRuleService)
     descriptors.add_singleton(GmailService)
 

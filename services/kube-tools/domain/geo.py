@@ -31,7 +31,7 @@ class GeoSpatialPipeline:
 
     def __get_max_distance_query(self):
         return {
-            '$geoNear': {
+            GeoQueryType.GeoNear: {
                 'distanceField': "distance",
                 'maxDistance': self.__max_distance,
                 'spherical': True,

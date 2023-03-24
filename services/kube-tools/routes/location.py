@@ -1,6 +1,8 @@
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
-from services.location_service import CoordinateRequest, LocationService, ZipRequest
+
+from services.location_service import (CoordinateRequest, LocationService,
+                                       ZipRequest)
 
 location_bp = MetaBlueprint('location_bp', __name__)
 

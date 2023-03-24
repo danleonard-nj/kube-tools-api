@@ -143,13 +143,6 @@ class GmailService:
 
         return notify_count
 
-    async def send_results(
-        send,
-        rule,
-        email
-    ):
-        pass
-
     def __get_message_body(
         self,
         rule: GmailEmailRule,

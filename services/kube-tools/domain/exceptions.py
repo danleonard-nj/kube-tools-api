@@ -26,3 +26,8 @@ class AcrPurgeServiceParameterException(Exception):
 class AzureGatewayLogRequestException(Exception):
     def __init__(self, message, *args: object) -> None:
         super().__init__(message)
+
+
+class InvalidSchemaException(Exception):
+    def __init__(self, data, *args: object) -> None:
+        super().__init__(f'Invalid RSS schema: {data}')

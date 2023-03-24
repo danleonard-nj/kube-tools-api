@@ -3,12 +3,13 @@ from datetime import datetime
 from typing import Dict, List
 
 import aiofiles
+from framework.concurrency import TaskCollection
+from framework.configuration import Configuration
+from framework.logger import get_logger
+
 from clients.email_gateway_client import EmailGatewayClient
 from clients.storage_client import StorageClient
 from domain.mongo import MongoBackupConstants
-from framework.configuration import Configuration
-from framework.logger import get_logger
-from framework.concurrency import TaskCollection
 
 logger = get_logger(__name__)
 
@@ -75,12 +76,6 @@ class MongoBackupService:
     def __get_dump_name(
         self
     ) -> str:
-        '''
-        Get the formatted name of the export
-
-        Returns:
-            str: _description_
-        '''
 
         iso = datetime.now().strftime(
             MongoBackupConstants.DateTimeFormat)
@@ -91,6 +86,8 @@ class MongoBackupService:
         self,
         days: int
     ) -> List[Dict]:
+
+        # Existing backups
         blobs = await self.__storage_client.get_blobs(
             container_name=MongoBackupConstants.ContainerName)
 

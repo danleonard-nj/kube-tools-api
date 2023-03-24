@@ -1,6 +1,5 @@
 from framework.rest.blueprints.meta import MetaBlueprint
 
-from clients.gmail_client import GmailClient
 from services.gmail_service import GmailService
 
 google_bp = MetaBlueprint('google_bp', __name__)

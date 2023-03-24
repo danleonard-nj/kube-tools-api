@@ -1,11 +1,9 @@
 import asyncio
 import random
-from threading import Semaphore
 from typing import Dict, List, Tuple
 
 import httpx
 from framework.clients.feature_client import FeatureClientAsync
-from framework.concurrency import TaskCollection
 from framework.configuration.configuration import Configuration
 from framework.logger.providers import get_logger
 
@@ -57,7 +55,7 @@ class PodcastService:
                 res = await self.handle_feed(
                     feed=feed)
 
-                # Only return shows with new e  ps
+                # Only return shows with new eps
                 if res:
                     results.append(res)
             except Exception as ex:

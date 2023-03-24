@@ -13,8 +13,7 @@ logger = get_logger(__name__)
 class StorageClient:
     def __init__(
         self,
-        configuration: Configuration,
-        http_client: AsyncClient
+        configuration: Configuration
     ):
         self.connection_string = configuration.storage.get(
             'connection_string')
@@ -22,20 +21,6 @@ class StorageClient:
     def __get_blob_service_client(self):
         return BlobServiceClient.from_connection_string(
             conn_str=self.connection_string)
-
-    async def __get_blob_client(
-        self,
-        container_name: str,
-        blob_name: str
-    ):
-        logger.info(f'Creating client for blob: {blob_name}')
-
-        container_client = self.client.get_container_client(
-            container=container_name)
-        blob_client: BlobClient = container_client.get_blob_client(
-            blob=blob_name)
-
-        return blob_client
 
     async def upload_blob(
         self,

@@ -1,4 +1,3 @@
-from framework.configuration import Configuration
 from framework.logger.providers import get_logger
 
 from clients.azure_gateway_client import AzureGatewayClient
@@ -10,8 +9,7 @@ logger = get_logger(__name__)
 class AcrService:
     def __init__(
         self,
-        azure_gateway_client: AzureGatewayClient,
-        configuration: Configuration
+        azure_gateway_client: AzureGatewayClient
     ):
         self.__azure_gateway_client = azure_gateway_client
 

@@ -5,16 +5,13 @@ import xmltodict
 from framework.logger import get_logger
 from framework.serialization import Serializable
 
+from domain.exceptions import InvalidSchemaException
+
 logger = get_logger(__name__)
 
 
-class InvalidSchemaException(Exception):
-    def __init__(self, data, *args: object) -> None:
-        super().__init__(f'Invalid RSS schema: {data}')
-
-
 class Episode(Serializable):
-    ACAST = 'acast:episodeId'
+    Acast = 'acast:episodeId'
 
     def __init__(
         self,
@@ -35,7 +32,7 @@ class Episode(Serializable):
         Parse episode from RSS feed data
         '''
 
-        if cls.ACAST in data:
+        if cls.Acast in data:
             # Parse acast tags
             return Episode(
                 episode_id=data.get('acast:episodeId'),
