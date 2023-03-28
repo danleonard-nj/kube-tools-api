@@ -11,6 +11,7 @@ class MongoDatabase:
     OpenAi = 'OpenAi'
     WellnessCheck = 'WellnessCheck'
     Sms = 'SMS'
+    Gpt = 'GPT'
 
 
 class MongoCollection:
@@ -21,3 +22,5 @@ class MongoCollection:
     WellnessCheck = 'WellnessCheck'
     WellnessReply = 'WellnessReply'
     SmsConversations = 'SmsConversations'
+    GptUserRequest = 'UserRequest'
+    GptJob = 'GptJob'
