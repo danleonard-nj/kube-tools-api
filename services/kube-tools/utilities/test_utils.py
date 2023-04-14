@@ -1,13 +1,11 @@
+import json
+import uuid
+from unittest.mock import Mock
 
+from framework.dependency_injection.container import Dependency, DependencyType
+from framework.middleware.authorization import AuthMiddleware
 
 from utilities.provider import ContainerProvider
-from unittest.mock import Mock
-import uuid
-import json
-
-
-from framework.middleware.authorization import AuthMiddleware
-from framework.dependency_injection.container import Dependency, DependencyType
 
 
 def inject_test_dependency(_type, instance):

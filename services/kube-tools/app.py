@@ -1,24 +1,29 @@
 from framework.abstractions.abstract_request import RequestContextProvider
+from framework.di.static_provider import InternalProvider
 from framework.logger.providers import get_logger
 from framework.serialization.serializer import configure_serializer
 from framework.swagger.quart.swagger import Swagger
 from quart import Quart
 
 from routes.acr import acr_bp
+from routes.google import google_bp
 from routes.health import health_bp
 from routes.kubernetes import kubernetes_bp
 from routes.location import location_bp
+from routes.location_history import location_history_bp
 from routes.mongo_backup import mongo_backup_bp
 from routes.podcasts import podcasts_bp
-from routes.location_history import location_history_bp
 from routes.usage import usage_bp
-from routes.google import google_bp
 from utilities.provider import ContainerProvider
-from framework.di.static_provider import InternalProvider
-from utilities.utils import getattr_or_none
 
 logger = get_logger(__name__)
 app = Quart(__name__)
+
+
+def getattr_or_none(obj, name):
+    if hasattr(obj, name):
+        return getattr(obj, name)
+    return None
 
 
 configure_serializer(app)

@@ -8,9 +8,15 @@ from clients.azure_gateway_client import AzureGatewayClient
 from clients.email_gateway_client import EmailGatewayClient
 from domain.usage import ReportDateRange
 from services.event_service import EventService
-from utilities.utils import element_at
 
 logger = get_logger(__name__)
+
+
+def element_at(_list, index):
+    try:
+        return _list[index]
+    except:
+        return None
 
 
 class UsageService:

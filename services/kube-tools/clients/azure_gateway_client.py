@@ -1,14 +1,13 @@
 from typing import Dict
 
-import httpx
 from framework.configuration import Configuration
 from framework.logger.providers import get_logger
+from framework.uri import build_url
+from httpx import AsyncClient
 
 from clients.identity_client import IdentityClient
 from domain.auth import ClientScope
 from domain.exceptions import AzureGatewayLogRequestException
-from utilities.utils import build_url
-from httpx import AsyncClient
 
 logger = get_logger(__name__)
 

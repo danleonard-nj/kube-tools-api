@@ -1,13 +1,12 @@
 import base64
 import io
-from datetime import datetime, timedelta
-from typing import Dict, List
 import uuid
+from datetime import datetime
+from typing import Dict, List
 
 from framework.serialization import Serializable
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaIoBaseUpload
-from pytz import country_names
 
 
 class GoogleEmailHeader:
@@ -159,30 +158,30 @@ class GmailEmailRule(Serializable):
         )
 
 
-class GmailRuleHistory:
-    def __init__(
-        self,
-        history_id,
-        rule_id,
-        count,
-        emails
-    ):
-        self.history_id = history_id
-        self.rule_id = rule_id
-        self.count = count
-        self.emails = emails
+# class GmailRuleHistory:
+#     def __init__(
+#         self,
+#         history_id,
+#         rule_id,
+#         count,
+#         emails
+#     ):
+#         self.history_id = history_id
+#         self.rule_id = rule_id
+#         self.count = count
+#         self.emails = emails
 
-    @staticmethod
-    def create_history_record(
-        rule_id,
-        count,
-        emails: List = []
-    ):
-        return GmailRuleHistory(
-            history_id=str(uuid.uuid4()),
-            rule_id=rule_id,
-            count=len(emails),
-            emails=list())
+#     @staticmethod
+#     def create_history_record(
+#         rule_id,
+#         count,
+#         emails: List = []
+#     ):
+#         return GmailRuleHistory(
+#             history_id=str(uuid.uuid4()),
+#             rule_id=rule_id,
+#             count=len(emails),
+#             emails=list())
 
 
 class GoogleClientScope:
@@ -194,66 +193,66 @@ class GoogleDriveDirectory:
     PodcastDirectoryId = '1jvoXhIvGLAn5DV73MK3IbcfQ6EF-L3qm'
 
 
-def first(items, func=None):
-    if func is None:
-        if any(items):
-            return items[0]
+# def first(items, func=None):
+#     if func is None:
+#         if any(items):
+#             return items[0]
 
-    for item in items:
-        if func(item):
-            return item
-    return None
-
-
-def is_dict(value):
-    return isinstance(value, dict)
+#     for item in items:
+#         if func(item):
+#             return item
+#     return None
 
 
-class GoogleAuthClient(Serializable):
-    def __init__(self, data):
-        self.client_id = data.get('client_id')
-        self.client_name = data.get('client_name')
-        self.credentials = data.get('credentials')
-        self.scopes = data.get('scopes')
-        self.error = data.get('error')
-        self.created_date = data.get('created_date')
-        self.last_refresh = data.get('last_refresh')
-
-    def get_selector(self):
-        return {
-            'client_name': self.client_name
-        }
-
-    def get_google_creds(
-        self,
-        scopes=None
-    ) -> Credentials:
-        creds = Credentials.from_authorized_user_info(
-            self.credentials,
-            scopes or self.scopes)
-
-        return creds
+# def is_dict(value):
+#     return isinstance(value, dict)
 
 
-class GoogleTokenResponse(Serializable):
-    def __init__(self, creds: Credentials):
-        self.token = creds.token
-        self.id_token = creds.id_token
-        self.scopes = creds.scopes
-        self.valid = creds.valid
-        self.expiry = creds.expiry.isoformat()
+# class GoogleAuthClient(Serializable):
+#     def __init__(self, data):
+#         self.client_id = data.get('client_id')
+#         self.client_name = data.get('client_name')
+#         self.credentials = data.get('credentials')
+#         self.scopes = data.get('scopes')
+#         self.error = data.get('error')
+#         self.created_date = data.get('created_date')
+#         self.last_refresh = data.get('last_refresh')
+
+#     def get_selector(self):
+#         return {
+#             'client_name': self.client_name
+#         }
+
+#     def get_google_creds(
+#         self,
+#         scopes=None
+#     ) -> Credentials:
+#         creds = Credentials.from_authorized_user_info(
+#             self.credentials,
+#             scopes or self.scopes)
+
+#         return creds
 
 
-class GoogleFitDataType(Serializable):
-    def __init__(self, id, name):
-        self.id = id
-        self.name = name
+# class GoogleTokenResponse(Serializable):
+#     def __init__(self, creds: Credentials):
+#         self.token = creds.token
+#         self.id_token = creds.id_token
+#         self.scopes = creds.scopes
+#         self.valid = creds.valid
+#         self.expiry = creds.expiry.isoformat()
 
-    def to_dict(self):
-        return {
-            'dataTypeName': self.name,
-            'dataSourceId': self.id
-        }
+
+# class GoogleFitDataType(Serializable):
+#     def __init__(self, id, name):
+#         self.id = id
+#         self.name = name
+
+#     def to_dict(self):
+#         return {
+#             'dataTypeName': self.name,
+#             'dataSourceId': self.id
+#         }
 
 
 class GoogleDriveFilePermission(Serializable):

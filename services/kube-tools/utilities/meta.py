@@ -2,11 +2,12 @@ from functools import wraps
 from typing import Callable, List
 
 from framework.auth.wrappers.azure_ad_wrappers import azure_ad_authorization
-from framework.dependency_injection.provider import inject_container_async
+from framework.dependency_injection.provider import (InternalProvider,
+                                                     inject_container_async)
 from framework.handlers.response_handler_async import response_handler
-from framework.dependency_injection.provider import InternalProvider
-from utilities.provider import ContainerProvider
 from quart import Blueprint
+
+from utilities.provider import ContainerProvider
 
 
 class MetaBlueprint(Blueprint):
