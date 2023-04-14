@@ -6,6 +6,7 @@ from quart import Quart
 
 from routes.acr import acr_bp
 from routes.health import health_bp
+from routes.kubernetes import kubernetes_bp
 from routes.location import location_bp
 from routes.mongo_backup import mongo_backup_bp
 from routes.podcasts import podcasts_bp
@@ -25,12 +26,13 @@ configure_serializer(app)
 
 app.register_blueprint(podcasts_bp)
 app.register_blueprint(acr_bp)
-app.register_blueprint(health_bp)
+app.register_blueprint(kubernetes_bp)
 app.register_blueprint(usage_bp)
 app.register_blueprint(mongo_backup_bp)
 app.register_blueprint(location_bp)
 app.register_blueprint(google_bp)
 app.register_blueprint(location_history_bp)
+app.register_blueprint(health_bp)
 
 ContainerProvider.initialize_provider()
 InternalProvider.bind(ContainerProvider.get_service_provider())

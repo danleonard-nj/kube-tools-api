@@ -31,3 +31,27 @@ class AzureGatewayLogRequestException(Exception):
 class InvalidSchemaException(Exception):
     def __init__(self, data, *args: object) -> None:
         super().__init__(f'Invalid RSS schema: {data}')
+
+
+class InvalidAlertTypeException(Exception):
+    def __init__(self, alert_type, *args: object) -> None:
+        super().__init__(
+            f"'{alert_type}' is not a valid alert type")
+
+
+class SwitchConfigurationNotFoundException(Exception):
+    def __init__(self, configuration_id, *args: object) -> None:
+        super().__init__(
+            f"No switch configuration with the ID '{configuration_id}' exists")
+
+
+class SwitchNotFoundException(Exception):
+    def __init__(self, switch_id, *args: object) -> None:
+        super().__init__(
+            f"No switch with the ID '{switch_id}' exists")
+
+
+class SwitchExistsException(Exception):
+    def __init__(self, switch_name, *args: object) -> None:
+        super().__init__(
+            f"A switch with the name '{switch_name}' exists")

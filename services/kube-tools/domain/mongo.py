@@ -12,6 +12,7 @@ class MongoDatabase:
     WellnessCheck = 'WellnessCheck'
     Sms = 'SMS'
     Gpt = 'GPT'
+    Health = 'Health'
 
 
 class MongoCollection:
@@ -24,3 +25,5 @@ class MongoCollection:
     SmsConversations = 'SmsConversations'
     GptUserRequest = 'UserRequest'
     GptJob = 'GptJob'
+    DeadManSwitch = 'DeadManSwitch'
+    DeadManSwitchConfiguration = 'DeadManSwitchConfiguration'

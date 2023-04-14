@@ -20,6 +20,9 @@ from clients.google_maps_client import GoogleMapsClient
 from clients.identity_client import IdentityClient
 from clients.storage_client import StorageClient
 from clients.twilio_gateway import TwilioGatewayClient
+from data.dead_man_configuration_repository import \
+    DeadManConfigurationRepository
+from data.dead_man_switch_repository import DeadManSwitchRepository
 from data.google.google_auth_repository import GoogleAuthRepository
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from data.google.google_location_history_repository import \
@@ -29,9 +32,10 @@ from data.google.google_reverse_geocode_repository import \
 from data.location_repository import (WeatherStationRepository,
                                       ZipLatLongRepository)
 from data.podcast_repository import PodcastRepository
-from domain.auth import AdRole
+from domain.auth import AdRole, AuthPolicy
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
+from services.dead_man_switch_service import DeadManSwitchService
 from services.event_service import EventService
 from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
@@ -55,21 +59,27 @@ def configure_azure_ad(container):
         issuer=ad_auth.issuer)
 
     azure_ad.add_authorization_policy(
-        name='default',
+        name=AuthPolicy.Default,
         func=lambda t: True)
 
     azure_ad.add_authorization_policy(
-        name='execute',
+        name=AuthPolicy.Execute,
         func=lambda t: AdRole.Execute in t.get('roles'))
+
+    # TODO: Remove default auth policy
 
     return azure_ad
 
 
-def configure_http_client(container):
+def configure_http_client(
+    container: ServiceCollection
+):
     return AsyncClient(timeout=None)
 
 
-def configure_mongo_client(container):
+def configure_mongo_client(
+    container: ServiceCollection
+):
     configuration = container.resolve(Configuration)
 
     connection_string = configuration.mongo.get('connection_string')
@@ -78,7 +88,9 @@ def configure_mongo_client(container):
     return client
 
 
-def configure_openai(container):
+def configure_openai(
+    container: ServiceCollection
+):
     configuration = container.resolve(Configuration)
 
     api_key = configuration.openai.get('api_key')
@@ -87,7 +99,9 @@ def configure_openai(container):
     return openai.Image
 
 
-def register_factories(descriptors):
+def register_factories(
+    descriptors: ServiceCollection
+):
     descriptors.add_singleton(
         dependency_type=AsyncClient,
         factory=configure_http_client)
@@ -105,7 +119,9 @@ def register_factories(descriptors):
         factory=configure_openai)
 
 
-def register_clients(descriptors):
+def register_clients(
+    descriptors: ServiceCollection
+):
     descriptors.add_singleton(IdentityClient)
     descriptors.add_singleton(CacheClientAsync)
     descriptors.add_singleton(TwilioGatewayClient)
@@ -117,9 +133,12 @@ def register_clients(descriptors):
     descriptors.add_singleton(GoogleMapsClient)
     descriptors.add_singleton(EventClient)
     descriptors.add_singleton(GmailClient)
+    descriptors.add_singleton(DeadManSwitchService)
 
 
-def register_repositories(descriptors):
+def register_repositories(
+    descriptors: ServiceCollection
+):
     descriptors.add_singleton(PodcastRepository)
     descriptors.add_singleton(GoogleAuthRepository)
     descriptors.add_singleton(ZipLatLongRepository)
@@ -127,9 +146,13 @@ def register_repositories(descriptors):
     descriptors.add_singleton(GoogleLocationHistoryRepository)
     descriptors.add_singleton(GoogleReverseGeocodingRepository)
     descriptors.add_singleton(GoogleEmailRuleRepository)
+    descriptors.add_singleton(DeadManSwitchRepository)
+    descriptors.add_singleton(DeadManConfigurationRepository)
 
 
-def register_services(descriptors):
+def register_services(
+    descriptors: ServiceCollection
+):
     descriptors.add_transient(PodcastService)
     descriptors.add_transient(AcrService)
     descriptors.add_transient(UsageService)

@@ -8,3 +8,8 @@ class ClientScope:
 
 class AdRole:
     Execute = 'KubeTools.Execute'
+
+
+class AuthPolicy:
+    Default = 'default'
+    Execute = 'execute'

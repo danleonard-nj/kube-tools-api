@@ -43,3 +43,44 @@ class CreateEmailRuleRequest(Serializable):
         self.data = data.get('data')
         self.max_results = data.get('max_results')
         self.created_date = data.get('created_date')
+
+
+class CreateDeadManConfigurationRequest(Serializable):
+    def __init__(
+        self,
+        data: Dict
+    ):
+        self.configuration_name = data.get('configuration_name')
+        self.interval_hours = data.get('interval_hours')
+        self.grace_period_hours = data.get('grace_period_hours')
+        self.alert_type = data.get('alert_type')
+        self.alert_address = data.get('alert_address')
+
+
+class UpdateDeadManConfigurationRequest(Serializable):
+    def __init__(
+        self,
+        data: Dict
+    ):
+        self.configuration_id = data.get('configuration_id')
+        self.interval_hours = data.get('interval_hours')
+        self.grace_period_hours = data.get('grace_period_hours')
+        self.alert_type = data.get('alert_type')
+        self.alert_address = data.get('alert_address')
+
+
+class CreateSwitchRequest(Serializable):
+    def __init__(
+        self,
+        data: Dict
+    ):
+        self.switch_name = data.get('switch_name')
+        self.configuration_id = data.get('configuration_id')
+
+
+class DisarmSwitchRequest(Serializable):
+    def __init__(
+        self,
+        data: Dict
+    ):
+        self.switch_id = data.get('switch_id')
