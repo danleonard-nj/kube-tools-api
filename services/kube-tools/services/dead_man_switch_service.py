@@ -1,19 +1,21 @@
 from datetime import datetime
-from tracemalloc import get_object_traceback
-from typing import List
+from typing import Dict, List
+
 from framework.clients.feature_client import FeatureClientAsync
-from framework.logger import get_logger
+from framework.concurrency import TaskCollection
 from framework.exceptions.nulls import ArgumentNullException
-from gevent import config
+from framework.logger import get_logger
 
 from data.dead_man_configuration_repository import \
     DeadManConfigurationRepository
-
 from data.dead_man_switch_repository import DeadManSwitchRepository
-from domain.exceptions import SwitchConfigurationNotFoundException, SwitchExistsException, SwitchNotFoundException
+from domain.exceptions import (SwitchConfigurationNotFoundException,
+                               SwitchExistsException, SwitchNotFoundException)
 from domain.features import Feature
 from domain.health import DeadManSwitch, DeadManSwitchConfiguration
-from domain.rest import CreateDeadManConfigurationRequest, CreateSwitchRequest, DisarmSwitchRequest, UpdateDeadManConfigurationRequest
+from domain.rest import (CreateDeadManConfigurationRequest,
+                         CreateSwitchRequest, DisarmSwitchRequest,
+                         UpdateDeadManConfigurationRequest)
 
 logger = get_logger(__name__)
 
@@ -74,30 +76,6 @@ class DeadManSwitchService:
 
         return updated
 
-    async def __validate_switch(
-        self,
-        switch_name: str,
-        configuration_id: str
-    ) -> None:
-        # Verify the name is not already taken
-        name_exists = await self.__switch_repository.switch_exists_by_name(
-            switch_name=switch_name)
-
-        if name_exists:
-            logger.info(f'Switch name conflict: {switch_name}')
-            raise SwitchExistsException(
-                switch_name=switch_name)
-
-        # Verify the provided configuration exists
-        config_exists = await self.__config_repository.configuration_exists(
-            configuration_id=configuration_id)
-
-        if not config_exists:
-            logger.info(
-                f'Invalid configuration provided for switch: {configuration_id}')
-            raise SwitchConfigurationNotFoundException(
-                configuration_id=configuration_id)
-
     async def create_switch(
         self,
         request: CreateSwitchRequest
@@ -131,17 +109,6 @@ class DeadManSwitchService:
         logger.info(f'Create swith insert: {result.inserted_id}')
 
         return switch
-
-    async def __is_feature_enabled(
-        self
-    ) -> bool:
-
-        if not await self.__feature_client.is_enabled(
-                feature_key=Feature.DeadManSwitch):
-
-            logger.info(f'Feature is disabled: {Feature.DeadManSwitch}')
-            return False
-        return True
 
     async def create_configuration(
         self,
@@ -194,11 +161,14 @@ class DeadManSwitchService:
 
     async def get_configuration(
         self,
-        configuration_id: str
+        configuration_id: str,
+        include_switches=False
     ) -> DeadManSwitchConfiguration:
 
         ArgumentNullException.if_none_or_whitespace(
             configuration_id, 'configuration_id')
+
+        logger.info(f'Get configuration: {configuration_id}')
 
         entity = await self.__config_repository.get({
             'configuration_id': configuration_id
@@ -212,10 +182,22 @@ class DeadManSwitchService:
         configuration = DeadManSwitchConfiguration.from_entity(
             data=entity)
 
+        if include_switches:
+            logger.info(f'Fetching mapped switches for configuration')
+            switch_entities = await self.__switch_repository.get_switches_by_configuration_id(
+                configuration_id=configuration_id)
+
+            switches = [DeadManSwitch.from_entity(data=entity)
+                        for entity in switch_entities]
+
+            logger.info(f'Parsed switches: {len(switches)}')
+            configuration.switches = switches
+
         return configuration
 
     async def get_configurations(
-        self
+        self,
+        include_switches=False
     ) -> List[DeadManSwitchConfiguration]:
 
         entities = await self.__config_repository.get_all()
@@ -224,4 +206,178 @@ class DeadManSwitchService:
         configurations = [DeadManSwitchConfiguration.from_entity(data=entity)
                           for entity in entities]
 
+        if include_switches:
+            logger.info(f'Fetching switches for configurations')
+
+            configuration_ids = [config.configuration_id
+                                 for config in configurations]
+
+            # Get a lookup of switches by configuration ID
+            configuration_switches = await self.__get_switches_by_configuration(
+                configuration_ids=configuration_ids)
+
+            # Map the switches back to their configs
+            for configuration in configurations:
+                logger.info(
+                    f'Mapping switches to config: {configuration.configuration_id}')
+                configuration.switches = configuration_switches.get(
+                    configuration.configuration_id)
+
         return configurations
+
+    async def poll_switches(
+        self
+    ):
+        poll_time = datetime.utcnow()
+        logger.info(f'Poll time: {poll_time.isoformat()}')
+
+        entities = await self.__switch_repository.get_active_switches()
+
+        # If there are no existing active switches
+        if (entities is None or not any(entities)):
+            return list()
+
+        logger.info(f'Active switch entities fetched: {len(entities)}')
+
+        switches = [
+            DeadManSwitch.from_entity(data=entity)
+            for entity in entities
+        ]
+
+        configs = await self.__get_configurations_by_switches(
+            switches=switches)
+
+        triggered = list()
+
+        for switch in switches:
+            logger.info(f'Evaluating switch: {switch.switch_name}')
+
+            configuration = configs.get(switch.configuration_id)
+            switch.configuration = configuration
+
+            if switch.last_message is None:
+                logger.info(f'Switch is not initialized: {switch.switch_name}')
+                continue
+
+            max_interval = configuration.interval_hours * 60 * 60
+            logger.info(f'Max interval: {max_interval}')
+
+            interval_delta = (poll_time - switch.last_message)
+            interval_seconds = interval_delta.seconds
+            logger.info(f'Current interval: {interval_seconds}')
+
+            if interval_seconds > max_interval:
+                logger.info('Switch triggered with response required')
+                triggered.append(switch)
+
+            # TODO: Handle overdue 'dead' switches and consequences
+
+        return triggered
+
+    async def __get_configurations_by_switches(
+        self,
+        switches: Dict[str, DeadManSwitch]
+    ) -> Dict[str, DeadManSwitchConfiguration]:
+
+        ArgumentNullException.if_none(switches, 'switches')
+
+        results = dict()
+        get_configs = TaskCollection()
+
+        # Get all distinct configurations for active switches
+        configuration_ids = list(set([switch.configuration_id
+                                 for switch in switches]))
+        logger.info(f'Distinct configs: {configuration_ids}')
+
+        async def __get_configuration(
+            configuration_id: str
+        ):
+            logger.info(f'Fetching mapped configuration: {configuration_id}')
+            entity = await self.__config_repository.get({
+                'configuration_id': configuration_id
+            })
+
+            config = DeadManSwitchConfiguration.from_entity(
+                data=entity)
+
+            results[configuration_id] = config
+
+        for configuration_id in configuration_ids:
+            get_configs.add_task(
+                __get_configuration(
+                    configuration_id=configuration_id))
+
+        await get_configs.run()
+
+        return results
+
+    async def __get_switches_by_configuration(
+        self,
+        configuration_ids: List[str]
+    ) -> Dict[str, DeadManSwitch]:
+
+        ArgumentNullException.if_none(
+            configuration_ids,
+            'configuration_ids')
+
+        get_switches = TaskCollection()
+        results = dict()
+
+        async def __get_configuration_switches(
+            configuration_id: str
+        ):
+            logger.info(
+                f'Fetching switches for configuration: {configuration_id}')
+
+            entities = await self.__switch_repository.get_switches_by_configuration_id(
+                configuration_id=configuration_id)
+
+            switches = [DeadManSwitch.from_entity(data=entity)
+                        for entity in entities]
+
+            results[configuration_id] = switches
+
+        for configuration_id in configuration_ids:
+            get_switches.add_task(
+                __get_configuration_switches(
+                    configuration_id=configuration_id))
+
+        await get_switches.run()
+
+        logger.info(f'Switches by configuration: {results}')
+        return results
+
+    async def __validate_switch(
+        self,
+        switch_name: str,
+        configuration_id: str
+    ) -> None:
+        # Verify the name is not already taken
+        name_exists = await self.__switch_repository.switch_exists_by_name(
+            switch_name=switch_name)
+
+        if name_exists:
+            logger.info(f'Switch name conflict: {switch_name}')
+            raise SwitchExistsException(
+                switch_name=switch_name)
+
+        # Verify the provided configuration exists
+        config_exists = await self.__config_repository.configuration_exists(
+            configuration_id=configuration_id)
+
+        if not config_exists:
+            logger.info(
+                f'Invalid configuration provided for switch: {configuration_id}')
+            raise SwitchConfigurationNotFoundException(
+                configuration_id=configuration_id)
+
+    async def __is_feature_enabled(
+        self
+    ) -> bool:
+
+        if not await self.__feature_client.is_enabled(
+                feature_key=Feature.DeadManSwitch):
+
+            logger.info(f'Feature is disabled: {Feature.DeadManSwitch}')
+            return False
+        return True

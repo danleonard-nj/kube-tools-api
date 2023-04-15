@@ -5,8 +5,8 @@ from framework.logger import get_logger
 
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
-from domain.google import (GmailEmail, GmailEmailRule, GmailRuleAction,
-                           GoogleEmailHeader, GoogleEmailLabel)
+from constants.google import GoogleEmailHeader, GoogleEmailLabel
+from domain.google import GmailEmail, GmailEmailRule, GmailRuleAction
 from services.gmail_rule_service import GmailRuleService
 
 logger = get_logger(__name__)

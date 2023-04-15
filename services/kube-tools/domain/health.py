@@ -31,21 +31,25 @@ class AlertType:
 class DeadManSwitch(Serializable):
     def __init__(
         self,
-        switch_id,
-        switch_name,
-        configuration_id,
-        created_date,
-        last_message=None,
-        last_disarm=None,
-        modified_date=None
+        switch_id: str,
+        switch_name: str,
+        configuration_id: str,
+        created_date: datetime,
+        is_active: bool = True,
+        last_message: datetime = None,
+        last_disarm: datetime = None,
+        modified_date: datetime = None,
+        configuration: datetime = None
     ):
         self.switch_id = switch_id
         self.switch_name = switch_name
         self.configuration_id = configuration_id
         self.last_message = last_message
         self.last_disarm = last_disarm
+        self.is_active = is_active
         self.created_date = created_date
         self.modified_date = modified_date
+        self.configuration = None
 
     def get_selector(
         self
@@ -64,6 +68,7 @@ class DeadManSwitch(Serializable):
             configuration_id=data.get('configuration_id'),
             last_message=data.get('last_message'),
             last_disarm=data.get('last_disarm'),
+            is_active=data.get('is_active'),
             created_date=data.get('created_date'),
             modified_date=data.get('modified_date'))
 
@@ -96,7 +101,8 @@ class DeadManSwitchConfiguration(Serializable):
         alert_type: str,
         alert_address: str,
         created_date: datetime,
-        modified_date: datetime = None
+        modified_date: datetime = None,
+        switches=None
     ):
         self.configuration_id = configuration_id
         self.configuration_name = configuration_name
@@ -106,6 +112,7 @@ class DeadManSwitchConfiguration(Serializable):
         self.alert_address = alert_address
         self.created_date = created_date
         self.modified_date = modified_date
+        self.switches = switches
 
     @staticmethod
     def create_configuration(

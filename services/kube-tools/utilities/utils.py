@@ -7,6 +7,10 @@ from framework.logger.providers import get_logger
 logger = get_logger(__name__)
 
 
+def parse_bool(value):
+    return value == 'true'
+
+
 def contains(source_list, substring_list):
     for source_string in source_list:
         for substring in substring_list:

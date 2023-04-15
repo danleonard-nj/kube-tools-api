@@ -6,6 +6,7 @@ from domain.auth import AuthPolicy
 from domain.rest import (CreateDeadManConfigurationRequest, CreateSwitchRequest, DisarmSwitchRequest,
                          UpdateDeadManConfigurationRequest)
 from services.dead_man_switch_service import DeadManSwitchService
+from utilities.utils import parse_bool
 
 health_bp = MetaBlueprint('health_bp', __name__)
 
@@ -26,7 +27,7 @@ async def post_configuration(container):
         request=configuration_request)
 
 
-@health_bp.configure('/api/health/dns/configuration', methods=['PUT'], auth_scheme=AuthPolicy.Default)
+@health_bp.configure('/api/health/dms/configuration', methods=['PUT'], auth_scheme=AuthPolicy.Default)
 async def put_configuration(container):
     service: DeadManSwitchService = container.resolve(
         DeadManSwitchService)
@@ -45,7 +46,12 @@ async def get_configurations(container):
     service: DeadManSwitchService = container.resolve(
         DeadManSwitchService)
 
-    return await service.get_configurations()
+    include_switches = request.args.get(
+        'include_switches')
+
+    return await service.get_configurations(
+        include_switches=parse_bool(
+            value=include_switches))
 
 
 @health_bp.configure('/api/health/dms/configuration/<configuration_id>', methods=['GET'], auth_scheme=AuthPolicy.Default)
@@ -53,8 +59,13 @@ async def get_configuration(container, configuration_id: str):
     service: DeadManSwitchService = container.resolve(
         DeadManSwitchService)
 
+    include_switches = request.args.get(
+        'include_switches')
+
     return await service.get_configuration(
-        configuration_id=configuration_id)
+        configuration_id=configuration_id,
+        include_switches=parse_bool(
+            value=include_switches))
 
 
 @health_bp.configure('/api/health/dms/switch', methods=['POST'], auth_scheme=AuthPolicy.Default)
@@ -84,3 +95,11 @@ async def post_disarm_switch(container):
 
     return await service.disarm_switch(
         request=disarm_switch)
+
+
+@health_bp.configure('/api/health/dms/switch/poll', methods=['POST'], auth_scheme=AuthPolicy.Default)
+async def post_switch_poll(container):
+    service: DeadManSwitchService = container.resolve(
+        DeadManSwitchService)
+
+    return await service.poll_switches()

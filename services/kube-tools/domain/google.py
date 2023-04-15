@@ -1,24 +1,22 @@
 import base64
 import io
-import uuid
 from datetime import datetime
 from typing import Dict, List
 
 from framework.serialization import Serializable
-from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaIoBaseUpload
 
 
-class GoogleEmailHeader:
-    Subject = 'Subject'
-    From = 'From'
-    To = 'To'
+# class GoogleEmailHeader:
+#     Subject = 'Subject'
+#     From = 'From'
+#     To = 'To'
 
 
-class GoogleEmailLabel:
-    Inbox = 'INBOX'
-    Unread = 'UNREAD'
-    Starred = 'STARRED'
+# class GoogleEmailLabel:
+#     Inbox = 'INBOX'
+#     Unread = 'UNREAD'
+#     Starred = 'STARRED'
 
 
 class GmailRuleAction:
