@@ -3,7 +3,8 @@ from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
 
 from domain.auth import AuthPolicy
-from domain.rest import (CreateDeadManConfigurationRequest, CreateSwitchRequest, DisarmSwitchRequest,
+from domain.rest import (CreateDeadManConfigurationRequest,
+                         CreateSwitchRequest, DisarmSwitchRequest,
                          UpdateDeadManConfigurationRequest)
 from services.dead_man_switch_service import DeadManSwitchService
 from utilities.utils import parse_bool
@@ -13,7 +14,7 @@ health_bp = MetaBlueprint('health_bp', __name__)
 logger = get_logger(__name__)
 
 
-@health_bp.configure('/api/health/dns/configuration', methods=['POST'], auth_scheme=AuthPolicy.Default)
+@health_bp.configure('/api/health/dms/configuration', methods=['POST'], auth_scheme=AuthPolicy.Default)
 async def post_configuration(container):
     service: DeadManSwitchService = container.resolve(
         DeadManSwitchService)
