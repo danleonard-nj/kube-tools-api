@@ -13,10 +13,10 @@ from googleapiclient.http import MediaIoBaseUpload
 #     To = 'To'
 
 
-# class GoogleEmailLabel:
-#     Inbox = 'INBOX'
-#     Unread = 'UNREAD'
-#     Starred = 'STARRED'
+class GoogleEmailLabel:
+    Inbox = 'INBOX'
+    Unread = 'UNREAD'
+    Starred = 'STARRED'
 
 
 class GmailRuleAction:

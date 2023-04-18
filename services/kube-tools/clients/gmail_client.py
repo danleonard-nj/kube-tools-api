@@ -10,7 +10,8 @@ from google.auth.transport.requests import Request
 from httpx import AsyncClient
 
 from domain.cache import CacheKey
-from domain.google import GmailEmail, GmailQueryResult, GoogleClientScope
+from domain.google import (GmailEmail, GmailQueryResult, GoogleClientScope,
+                           GoogleEmailLabel)
 from domain.rest import GmailModifyEmailRequest
 from services.gmail_rule_service import GmailRuleService
 from services.google_auth_service import GoogleAuthService
@@ -36,14 +37,18 @@ class GmailClient:
 
     async def __get_token(
         self
-    ):
+    ) -> str:
+
         cache_key = CacheKey.gmail_token()
+        logger.info(f'Gmail token cache key: {cache_key}')
 
         token = self.__memory_cache.get(cache_key)
 
         if token is not None:
+            logger.info(f'Using cached token: {token}')
             return token
 
+        logger.info(f'Fetching token from auth client')
         client = await self.__auth_service.get_auth_client(
             scopes=GoogleClientScope.Gmail)
 
@@ -57,11 +62,14 @@ class GmailClient:
             value=client.token,
             ttl=60 * 60)
 
+        logger.info(f'Client token: {client.token}')
+
         return client.token
 
     async def __get_auth_headers(
         self
     ) -> Dict:
+
         token = await self.__get_token()
 
         return {
@@ -71,7 +79,8 @@ class GmailClient:
     async def get_message(
         self,
         message_id: str
-    ):
+    ) -> Dict:
+
         # Build endpoint with message
         endpoint = f'{self.__base_url}/v1/users/me/messages/{message_id}'
         logger.info(f'Endpoint: {endpoint}')
@@ -104,10 +113,10 @@ class GmailClient:
         message_id: str,
         to_add: List[str] = [],
         to_remove: List[str] = []
-    ):
+    ) -> Dict:
+
         logger.info(f'Add/remove tags to message: {message_id}')
-        logger.info(f'Add: {to_add}')
-        logger.info(f'Remove: {to_remove}')
+        logger.info(f'+ {to_add} | - {to_remove}')
 
         # Build endpoint with message
         endpoint = f'{self.__base_url}/v1/users/me/messages/{message_id}/modify'
@@ -123,7 +132,7 @@ class GmailClient:
             json=modify_request.to_dict(),
             headers=auth_headers)
 
-        logger.info(f'Add/remove tag tag result: {query_result.status_code}')
+        logger.info(f'Modify tag status: {query_result.status_code}')
 
         content = query_result.json()
         return content
