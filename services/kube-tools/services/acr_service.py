@@ -1,3 +1,4 @@
+from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
 
 from clients.azure_gateway_client import AzureGatewayClient
@@ -18,9 +19,10 @@ class AcrService:
         repo_name: str,
         manifest_id: str
     ) -> None:
-        '''
-        Purge ACR images
-        '''
+
+        ArgumentNullException.if_none_or_whitespace(repo_name, 'repo_name')
+        ArgumentNullException.if_none_or_whitespace(manifest_id, 'manifest_id')
+
         logger.info(f'Purging image: {repo_name}: {manifest_id}')
 
         response = await self.__azure_gateway_client.acr_delete_manifest(
@@ -33,6 +35,8 @@ class AcrService:
         self,
         repo_name: str
     ):
+        ArgumentNullException.if_none_or_whitespace(repo_name, 'repo_name')
+
         logger.info(f'Get images for repo: {repo_name}')
 
         images = await self.__azure_gateway_client.acr_get_manifests(

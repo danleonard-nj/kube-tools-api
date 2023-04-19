@@ -7,6 +7,7 @@ from framework.logger import get_logger
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from domain.google import GmailEmailRule
 from domain.rest import CreateEmailRuleRequest
+from framework.exceptions.nulls import ArgumentNullException
 
 logger = get_logger(__name__)
 
@@ -21,6 +22,7 @@ class GmailRuleService:
     async def get_rules(
         self
     ) -> List[GmailEmailRule]:
+
         entities = await self.__email_rule_repository.get_all()
 
         rules = [
@@ -34,6 +36,8 @@ class GmailRuleService:
         self,
         create_request: CreateEmailRuleRequest
     ):
+        ArgumentNullException.if_none(create_request, 'create_request')
+
         existing = await self.__email_rule_repository.get({
             'name': create_request.name
         })
@@ -61,6 +65,8 @@ class GmailRuleService:
         rule_id: str,
         count_processed: int
     ):
+        ArgumentNullException.if_none_or_whitespace(rule_id, 'rule_id')
+
         logger.info(
             f'Rule: {rule_id}: Uptating count processed: {count_processed}')
 

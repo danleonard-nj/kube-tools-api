@@ -1,3 +1,6 @@
+from typing import Dict, List
+
+from framework.serialization import Serializable
 
 
 class ClientScope:
@@ -13,3 +16,27 @@ class AdRole:
 class AuthPolicy:
     Default = 'default'
     Execute = 'execute'
+
+
+class AuthClientConfig(Serializable):
+    DefaultGrantType = 'client_credentials'
+
+    def __init__(
+        self,
+        data: Dict
+    ):
+        self.client_id = data.get('client_id')
+        self.client_secret = data.get('client_secret')
+
+        self.grant_type = data.get(
+            'grant_type', self.DefaultGrantType)
+
+        self.scopes = self.__parse_scopes(
+            scopes=data.get('scopes', list()))
+
+    def __parse_scopes(
+        self,
+        scopes: List[str]
+    ) -> str:
+
+        return ' '.join(scopes)

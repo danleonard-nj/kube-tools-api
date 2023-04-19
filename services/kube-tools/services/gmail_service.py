@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 
 from framework.configuration import Configuration
 from framework.logger import get_logger
@@ -29,7 +29,8 @@ class GmailService:
 
     async def run_mail_service(
         self
-    ):
+    ) -> Dict[str, int]:
+
         logger.info(f'Gathering rules for Gmail rule service')
 
         run_results = dict()

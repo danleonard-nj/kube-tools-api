@@ -1,11 +1,10 @@
 from typing import Dict, List, Union
 
 from azure.storage.blob import BlobProperties
-from azure.storage.blob.aio import (BlobClient, BlobServiceClient,
-                                    ContainerClient)
+from azure.storage.blob.aio import BlobServiceClient, ContainerClient
 from framework.configuration.configuration import Configuration
+from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
-from httpx import AsyncClient
 
 logger = get_logger(__name__)
 
@@ -15,19 +14,30 @@ class StorageClient:
         self,
         configuration: Configuration
     ):
-        self.connection_string = configuration.storage.get(
+        self.__connection_string = configuration.storage.get(
             'connection_string')
 
-    def __get_blob_service_client(self):
+    def __get_blob_service_client(
+        self
+    ) -> BlobServiceClient:
+
         return BlobServiceClient.from_connection_string(
-            conn_str=self.connection_string)
+            conn_str=self.__connection_string)
 
     async def upload_blob(
         self,
         container_name: str,
         blob_name: str,
         blob_data: bytes
-    ) -> dict:
+    ) -> Dict:
+
+        ArgumentNullException.if_none_or_whitespace(
+            container_name, 'container_name')
+        ArgumentNullException.if_none_or_whitespace(
+            blob_name, 'blob_name')
+        ArgumentNullException.if_none(
+            blob_data, 'blob_data')
+
         logger.info(f'Uploading blob: {container_name}: {blob_name}')
 
         async with self.__get_blob_service_client() as client:
@@ -47,6 +57,10 @@ class StorageClient:
         self,
         container_name: str
     ) -> List[Dict]:
+
+        ArgumentNullException.if_none_or_whitespace(
+            container_name, 'container_name')
+
         async with self.__get_blob_service_client() as client:
             logger.info(
                 f'Getting blob container client for container: {container_name}')
@@ -60,7 +74,17 @@ class StorageClient:
 
             return results
 
-    async def download_blob(self, container_name: str, blob_name: str) -> Union[bytes, None]:
+    async def download_blob(
+        self,
+        container_name: str,
+        blob_name: str
+    ) -> Union[bytes, None]:
+
+        ArgumentNullException.if_none_or_whitespace(
+            container_name, 'container_name')
+        ArgumentNullException.if_none_or_whitespace(
+            blob_name, 'blob_name')
+
         logger.info(f'Downloading blob: {container_name}: {blob_name}')
 
         async with self.__get_blob_service_client() as client:
@@ -81,7 +105,17 @@ class StorageClient:
             logger.info(f'Blob downloaded successfully')
             return data
 
-    async def delete_blob(self, container_name: str, blob_name: str) -> Union[bytes, None]:
+    async def delete_blob(
+        self,
+        container_name: str,
+        blob_name: str
+    ) -> Union[bytes, None]:
+
+        ArgumentNullException.if_none_or_whitespace(
+            container_name, 'container_name')
+        ArgumentNullException.if_none_or_whitespace(
+            blob_name, 'blob_name')
+
         logger.info(f'Deleting blob: {container_name}: {blob_name}')
 
         async with self.__get_blob_service_client() as client:
