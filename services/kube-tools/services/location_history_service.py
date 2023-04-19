@@ -1,3 +1,5 @@
+from typing import Any, Dict, List, Tuple
+
 from framework.logger import get_logger
 
 from data.google.google_location_history_repository import \
@@ -18,74 +20,13 @@ class LocationHistoryService:
         self.__repository = repository
         self.__reverse_geo_service = reverse_geo_service
 
-    # def transform_location_history_models(
-    #     self,
-    #     models: List[LocationHistoryModel]
-    # ):
-
-    #     distinct_locations = dict()
-    #     for model in models:
-    #         if not model.coordinate_key in distinct_locations:
-    #             distinct_locations[model.coordinate_key] = {
-    #                 'location': model.to_dict(),
-    #                 'visits': [model.timestamp]
-    #             }
-    #         else:
-    #             distinct_locations[model.coordinate_key]['visits'].append(
-    #                 model.timestamp)
-
-    #     return list(distinct_locations.values())
-
-    def __get_location_history_aggregate_models(
-        self,
-        location_results,
-        include_timestamps: bool
-    ):
-        '''
-        Create location history result models
-        '''
-
-        return [
-            LocationHistoryAggregateModel(
-                data=result,
-                include_timestamps=include_timestamps)
-            for result in location_results
-        ]
-
-    def __get_coordinate_pairs(
-        self,
-        location_history
-    ):
-        '''
-        Get coordinate pairs from location history
-        '''
-
-        return [
-            (model.latitude, model.longitude)
-            for model in location_history
-        ]
-
-    def __get_reverse_geo_lookup(
-        self,
-        reverse_geo
-    ):
-        '''
-        Build a lookup for reverse geo results to
-        map to location history
-        '''
-
-        return {
-            rg.key: rg.get_truncated_data()
-            for rg in reverse_geo
-        }
-
     async def get_locations(
         self,
-        latitude,
-        longitude,
-        max_distance,
-        limit=50,
-        include_timestamps=False
+        latitude: float,
+        longitude: float,
+        max_distance: int,
+        limit: int = 50,
+        include_timestamps: bool = False
     ):
         logger.info(f'Range {max_distance}')
         logger.info(f'Coordinates: [{latitude}, {longitude}]')
@@ -107,6 +48,11 @@ class LocationHistoryService:
             location_results=location_results,
             include_timestamps=include_timestamps)
 
+        # No location history results
+        if not any(location_history):
+            logger.info(f'No results in history: {latitude}: {longitude}')
+            return list()
+
         # Get a list of the distinct coordinate pairs
         coordinate_pairs = self.__get_coordinate_pairs(
             location_history=location_history)
@@ -126,3 +72,46 @@ class LocationHistoryService:
             model.reverse_geocoded = reverse_geo_model.to_dict()
 
         return [model.to_dict() for model in location_history]
+
+    def __get_location_history_aggregate_models(
+        self,
+        location_results,
+        include_timestamps: bool
+    ) -> List[LocationHistoryAggregateModel]:
+        '''
+        Create location history result models
+        '''
+
+        return [
+            LocationHistoryAggregateModel(
+                data=result,
+                include_timestamps=include_timestamps)
+            for result in location_results
+        ]
+
+    def __get_coordinate_pairs(
+        self,
+        location_history
+    ) -> List[Tuple[float, float]]:
+        '''
+        Get coordinate pairs from location history
+        '''
+
+        return [
+            (model.latitude, model.longitude)
+            for model in location_history
+        ]
+
+    def __get_reverse_geo_lookup(
+        self,
+        reverse_geo
+    ) -> Dict[str, Any]:
+        '''
+        Build a lookup for reverse geo results to
+        map to location history
+        '''
+
+        return {
+            rg.key: rg.get_truncated_data()
+            for rg in reverse_geo
+        }

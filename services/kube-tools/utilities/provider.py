@@ -40,7 +40,6 @@ from services.event_service import EventService
 from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
 from services.location_history_service import LocationHistoryService
-from services.location_service import LocationService
 from services.mongo_backup_service import MongoBackupService
 from services.podcast_service import PodcastService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
@@ -160,7 +159,6 @@ def register_services(
     descriptors.add_transient(MongoBackupService)
     descriptors.add_transient(AcrPurgeService)
     descriptors.add_transient(AcrService)
-    descriptors.add_singleton(LocationService)
     descriptors.add_singleton(LocationHistoryService)
     descriptors.add_singleton(GoogleReverseGeocodingService)
     descriptors.add_singleton(EventService)

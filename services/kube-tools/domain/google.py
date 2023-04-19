@@ -7,24 +7,6 @@ from framework.serialization import Serializable
 from googleapiclient.http import MediaIoBaseUpload
 
 
-# class GoogleEmailHeader:
-#     Subject = 'Subject'
-#     From = 'From'
-#     To = 'To'
-
-
-class GoogleEmailLabel:
-    Inbox = 'INBOX'
-    Unread = 'UNREAD'
-    Starred = 'STARRED'
-
-
-class GmailRuleAction:
-    Archive = 'archive'
-    SMS = 'sms'
-    Event = 'send-http'
-
-
 class GmailEmailHeaders(Serializable):
     def __init__(
         self,

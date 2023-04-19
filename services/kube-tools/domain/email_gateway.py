@@ -1,18 +1,16 @@
+from typing import Dict, List
+
 from framework.serialization import Serializable
-
-
-class EmailGatewayConstants:
-    Me = 'dcl525@gmail.com'
 
 
 class EmailGatewayRequest(Serializable):
     def __init__(
         self,
-        recipient,
-        subject,
-        body=None,
-        table=None,
-        json=None
+        recipient: str,
+        subject: str,
+        body: Dict = None,
+        table: List[Dict] = None,
+        json: Dict = None
     ):
         self.recipient = recipient
         self.subject = subject

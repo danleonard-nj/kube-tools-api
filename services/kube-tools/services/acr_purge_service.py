@@ -9,7 +9,6 @@ from framework.logger.providers import get_logger
 
 from clients.azure_gateway_client import AzureGatewayClient
 from clients.email_gateway_client import EmailGatewayClient
-from domain.email_gateway import EmailGatewayConstants
 from services.acr_service import AcrImage, AcrService
 from services.event_service import EventService
 
@@ -85,7 +84,7 @@ class AcrPurgeService:
 
         if any(processed_images):
             email_request, endpoint = self.__email_client.get_datatable_email_request(
-                recipient=EmailGatewayConstants.Me,
+                recipient='dcl525@gmail.com',
                 subject='ACR Purge',
                 data=processed_images)
 

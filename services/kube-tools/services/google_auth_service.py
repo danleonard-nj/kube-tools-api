@@ -21,8 +21,10 @@ class GoogleAuthService:
         scopes: List[str]
     ) -> Credentials:
 
-        logger.info(f'Get Google auth client')
+        logger.info(f'Get Google auth client: {scopes}')
 
+        # The only record in the collection should be the
+        # auth config
         creds = await self.__repository.collection.find_one()
 
         client = Credentials.from_authorized_user_info(
