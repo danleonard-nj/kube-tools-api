@@ -127,7 +127,14 @@ class StorageClient:
             logger.info(f'Getting blob client for blob: {blob_name}')
             blob_client = container_client.get_blob_client(blob_name)
 
-            logger.info(f'Downloading blobl data from storage')
+            blob_exists = await blob_client.exists()
+            logger.info(f'Blob: {blob_name}: Blob exists: {blob_exists}')
+
+            if not blob_exists:
+                logger.info(f'Blob does not exist: {blob_name}')
+                return
+
+            logger.info(f'Deleting blob: {blob_name}')
             await blob_client.delete_blob(delete_snapshots='include')
 
             logger.info(f'Blob deleted successfully')

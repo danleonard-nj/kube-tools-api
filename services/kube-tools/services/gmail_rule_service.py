@@ -2,12 +2,12 @@ import uuid
 from datetime import datetime
 from typing import List
 
+from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from domain.google import GmailEmailRule
 from domain.rest import CreateEmailRuleRequest
-from framework.exceptions.nulls import ArgumentNullException
 
 logger = get_logger(__name__)
 
@@ -23,6 +23,8 @@ class GmailRuleService:
         self
     ) -> List[GmailEmailRule]:
 
+        logger.info(f'Fetching all email rules')
+
         entities = await self.__email_rule_repository.get_all()
 
         rules = [
@@ -30,21 +32,33 @@ class GmailRuleService:
             for entity in entities
         ]
 
+        logger.info(f'{len(rules)} rules retrieved')
+
         return rules
 
     async def create_rule(
         self,
         create_request: CreateEmailRuleRequest
-    ):
+    ) -> GmailEmailRule:
+
         ArgumentNullException.if_none(create_request, 'create_request')
 
+        logger.info(f'Create email rule: {create_request.to_dict()}')
+
+        # Query existing rules w/ requested name
         existing = await self.__email_rule_repository.get({
             'name': create_request.name
         })
 
+        logger.info(f'Existing entity: {existing}')
+
+        # Handle rule name conflicts
         if existing is not None:
+            logger.error(f'Rule {create_request.name} exists: {existing}')
+
             raise Exception(f"A rule with the name '{create_request.name}'")
 
+        # Create the new rule
         rule = GmailEmailRule(
             rule_id=str(uuid.uuid4()),
             name=create_request.name,
@@ -55,8 +69,11 @@ class GmailRuleService:
             created_date=datetime.now(),
             create_request=0)
 
-        await self.__email_rule_repository.insert(
+        # Insert the rule entity
+        result = await self.__email_rule_repository.insert(
             document=rule.to_dict())
+
+        logger.info(f'Rule / entity: {rule.rule_id} / {result.inserted_id}')
 
         return rule
 
@@ -80,10 +97,3 @@ class GmailRuleService:
         await self.__email_rule_repository.collection.update_one(
             {'rule_id': rule_id},
             mod)
-
-    async def get_all_rules(
-        self
-    ):
-        logger.info('Get email rule list')
-
-        await self.__email_rule_repository.get_all()

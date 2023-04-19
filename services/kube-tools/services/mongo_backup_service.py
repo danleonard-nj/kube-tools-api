@@ -1,15 +1,16 @@
 import asyncio
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import aiofiles
-from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
+from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 
 from clients.email_gateway_client import EmailGatewayClient
 from clients.storage_client import StorageClient
-from domain.mongo import MongoBackupConstants
+from domain.mongo import (MongoBackupConstants, MongoExportBlob,
+                          MongoExportPurgeResult, MongoExportResult)
 
 logger = get_logger(__name__)
 
@@ -22,20 +23,66 @@ class MongoBackupService:
         email_client: EmailGatewayClient
     ):
         self.__storage_client = storage_client
-        self.__configuraiton = configuration
         self.__email_client = email_client
+
+        self.__connection_string = configuration.mongo.get(
+            'connection_string')
 
     async def export_backup(
         self,
         purge_days: int
-    ) -> Dict:
+    ) -> MongoExportResult:
+
         logger.info('Mongo backup export started')
 
-        connection_string = self.__configuraiton.mongo.get(
-            'connection_string')
+        # Run mongodump as subprocess
+        stdout, stderr = await self.__run_backup_subprocess()
+
+        blob_name = self.__get_export_name()
+        logger.info(f'Uploading to blob storage: {blob_name}')
+
+        # Upload the export to blob storage
+        blob_result = await self.__upload_export_blob(
+            blob_name=blob_name)
+
+        # Purge any expired exports
+        purged = await self.__purge_expired_exports(
+            days=int(purge_days))
+
+        # Send email notification that process
+        # is complete
+        await self.__send_email_notification(
+            blob_name=blob_name)
+
+        return MongoExportResult(
+            stdout=stdout,
+            stderr=stderr,
+            uploaded=blob_result,
+            purged=purged)
+
+    async def purge_exports(
+        self,
+        purge_days: int
+    ) -> List[Dict]:
+
+        ArgumentNullException.if_none(purge_days, 'purge_days')
+
+        logger.info(f'Purge exports: {purge_days} day window')
+
+        purged = await self.__purge_expired_exports(
+            days=int(purge_days))
+
+        return purged
+
+    async def __run_backup_subprocess(
+        self
+    ) -> Tuple[str, str]:
+
+        mongodump = f"./mongodump '{self.__connection_string}' --archive=dump.gz --gzip"
+        logger.info(f'Running mongodump shell command: {mongodump}')
 
         process = await asyncio.create_subprocess_shell(
-            f"./mongodump '{connection_string}' --archive=dump.gz --gzip",
+            mongodump,
             cwd='/app/utilities/mongotools/bin',
             stderr=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE)
@@ -47,117 +94,101 @@ class MongoBackupService:
         if stderr:
             stderr = stderr.decode()
 
-        logger.info(f'Output: {stdout}')
-        logger.info(f'Errors: {stderr}')
+        logger.info(f'Mongodump stdout: {stdout}')
+        logger.info(f'Mongodump stderr: {stderr}')
 
-        logger.info(f'Uploading to blob storage')
+        return (stdout, stderr)
 
-        blob_name = self.__get_dump_name()
-        blob_result = await self.__upload_dump(
-            blob_name=blob_name)
-
-        logger.info(f'Running purge routine')
-        purged = await self.__purge_dumps(
-            days=int(purge_days))
-
-        logger.info('Sending notification email')
-        await self.__email_client.send_email(
-            subject='MongoDB Backup Service',
-            recipient='dcl525@gmail.com',
-            message=f'MongoDB backup completed successfully: {blob_name}')
-
-        return {
-            'stdout': stdout,
-            'stderr': stderr,
-            'uploaded': blob_result,
-            'purged': purged
-        }
-
-    def __get_dump_name(
+    def __get_export_name(
         self
     ) -> str:
 
-        iso = datetime.now().strftime(
+        now = datetime.now().strftime(
             MongoBackupConstants.DateTimeFormat)
 
-        return f'mongo__{iso}'
+        return f'mongo__{now}'
 
-    async def __purge_dumps(
+    async def __purge_expired_exports(
         self,
         days: int
     ) -> List[Dict]:
 
         # Existing backups
-        blobs = await self.__storage_client.get_blobs(
+        storage_blobs = await self.__storage_client.get_blobs(
             container_name=MongoBackupConstants.ContainerName)
 
-        tasks = TaskCollection()
+        blobs = [MongoExportBlob(data=blob)
+                 for blob in storage_blobs]
+
         purged = []
+        purge_queue = []
 
         # Find blobs that exceed the purge window
         for blob in blobs:
-            blob_name = blob.get('name')
-            blob_created_date = blob.get('creation_time')
+            logger.info(f'Blob: {blob.blob_name}: Age: {blob.days_old}')
 
-            # Get the age of the backup
-            current_timestamp = int(datetime.now().timestamp())
-            created_timestamp = int(blob_created_date.timestamp())
-
-            days_old = self.__get_days_old(
-                now=current_timestamp,
-                created=created_timestamp)
-
-            logger.info(f'Blob: {blob_name}: Age: {days_old}')
-
-            if days_old > days:
-                logger.info(f'Purging blob: {blob_name}')
-                tasks.add_task(
-                    self.__storage_client.delete_blob(
-                        container_name=MongoBackupConstants.ContainerName,
-                        blob_name=blob_name))
+            if blob.days_old > days:
+                logger.info(f'Age exceeds maximum threshold: {blob.blob_name}')
 
                 # Add purged blob to results list
-                purged.append({
-                    'blob': blob_name,
-                    'created': blob_created_date,
-                    'age': days_old
-                })
+                purge_queue.append(blob)
+                result = MongoExportPurgeResult(
+                    blob_name=blob.blob_name,
+                    created_date=blob.created_date,
+                    days_old=blob.days_old)
 
-            if any(tasks._tasks):
-                logger.info(f'Running purge tasks')
-                await tasks.run()
+                purged.append(result.to_dict())
+
+        if any(purge_queue):
+            # Get a list of distinct blob names
+            # to purge
+            blob_names = list(set([
+                blob.blob_name
+                for blob in purge_queue
+            ]))
+
+            logger.info(f'{len(blob_names)} blobs enqueued to purge')
+
+            for purge_blob in blob_names:
+                logger.info(f'Deleting blob: {purge_blob}')
+
+                # Delete the blob
+                await self.__storage_client.delete_blob(
+                    container_name=MongoBackupConstants.ContainerName,
+                    blob_name=purge_blob)
 
         return purged
 
-    def __get_days_old(
-        self,
-        now: int,
-        created: int
-    ) -> float:
-        logger.info(f'Now: {now} Created: {created}')
-
-        delta = now - created
-        if delta != 0:
-            minutes = delta / 60
-            hours = minutes / 60
-            days = hours / 24
-
-            logger.info(f'Minutes: {minutes}: Hours: {hours}: Days: {days}')
-
-            return days
-        return 0
-
-    async def __upload_dump(
+    async def __upload_export_blob(
         self,
         blob_name: str
-    ) -> dict:
-        async with aiofiles.open('/app/utilities/mongotools/bin/dump.gz', 'rb') as dump:
+    ) -> Dict:
+
+        ArgumentNullException.if_none_or_whitespace(blob_name, 'blob_name')
+
+        logger.info(f'Loading export: {MongoBackupConstants.ExportFilepath}')
+
+        async with aiofiles.open(MongoBackupConstants.ExportFilepath, 'rb') as dump:
+            blob_data = await dump.read()
             logger.info(f'Dump file loaded successfully')
 
-            blob_data = await dump.read()
             result = await self.__storage_client.upload_blob(
-                container_name='mongo-dumps',
+                container_name=MongoBackupConstants.ContainerName,
                 blob_name=blob_name,
                 blob_data=blob_data)
 
             return result
+
+    async def __send_email_notification(
+        self,
+        blob_name: str
+    ) -> None:
+
+        ArgumentNullException.if_none_or_whitespace(blob_name, 'blob_name')
+
+        logger.info('Sending notification email')
+
+        await self.__email_client.send_email(
+            subject='MongoDB Backup Service',
+            recipient='dcl525@gmail.com',
+            message=f'MongoDB backup completed successfully: {blob_name}')

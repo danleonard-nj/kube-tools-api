@@ -13,7 +13,20 @@ async def export_backup(container):
 
     days = request.args.get('purge_days', 7)
 
-    data = await service.export_backup(
-        purge_days=days)
+    result = await service.export_backup(
+        purge_days=int(days))
 
-    return data
+    return result
+
+
+@mongo_backup_bp.configure('/api/mongo/backup/purge', methods=['POST'], auth_scheme='default')
+async def post_mongo_backup_purge(container):
+    service: MongoBackupService = container.resolve(
+        MongoBackupService)
+
+    days = request.args.get('purge_days', 7)
+
+    result = await service.purge_exports(
+        purge_days=int(days))
+
+    return result
