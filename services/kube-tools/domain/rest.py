@@ -34,7 +34,7 @@ class GmailModifyEmailRequest(Serializable):
 class CreateEmailRuleRequest(Serializable):
     def __init__(
         self,
-        data
+        data: Dict
     ):
         self.name = data.get('name')
         self.description = data.get('description')
@@ -43,6 +43,20 @@ class CreateEmailRuleRequest(Serializable):
         self.data = data.get('data')
         self.max_results = data.get('max_results')
         self.created_date = data.get('created_date')
+
+
+class UpdateEmailRuleRequest(Serializable):
+    def __init__(
+        self,
+        data: Dict
+    ):
+        self.rule_id = data.get('rule_id')
+        self.name = data.get('name')
+        self.description = data.get('description')
+        self.query = data.get('query')
+        self.action = data.get('action')
+        self.data = data.get('data')
+        self.max_results = data.get('max_results')
 
 
 class CreateDeadManConfigurationRequest(Serializable):
@@ -84,3 +98,11 @@ class DisarmSwitchRequest(Serializable):
         data: Dict
     ):
         self.switch_id = data.get('switch_id')
+
+
+class DeleteGmailEmailRuleResponse(Serializable):
+    def __init__(
+        self,
+        result: bool
+    ):
+        self.result = result

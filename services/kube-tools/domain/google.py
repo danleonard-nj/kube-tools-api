@@ -3,8 +3,21 @@ import io
 from datetime import datetime
 from typing import Dict, List
 
+from framework.exceptions.nulls import ArgumentNullException
 from framework.serialization import Serializable
 from googleapiclient.http import MediaIoBaseUpload
+from framework.validators.nulls import none_or_whitespace
+from framework.crypto.hashing import md5
+
+from domain.rest import UpdateEmailRuleRequest
+
+
+def update(current_value, new_value):
+    if none_or_whitespace(new_value):
+        return current_value
+    if md5(str(current_value)) != md5(str(new_value)):
+        return new_value
+    return current_value
 
 
 class GmailEmailHeaders(Serializable):
@@ -101,6 +114,8 @@ class GmailEmail(Serializable):
 
 
 class GmailEmailRule(Serializable):
+    DefaultMaxResults = 10
+
     def __init__(
         self,
         rule_id,
@@ -111,19 +126,46 @@ class GmailEmailRule(Serializable):
         action,
         data,
         created_date,
-        count_processed=0
+        count_processed=0,
+        modified_date=None
     ):
         self.rule_id = rule_id
         self.name = name
         self.description = description
-        self.max_results = max_results
+        self.max_results = (max_results
+                            or self.DefaultMaxResults)
         self.query = query
         self.action = action
         self.data = data
         self.count_processed = count_processed
+        self.modified_date = modified_date
         self.created_date = created_date
 
-    @ staticmethod
+    def get_selector(
+        self
+    ) -> Dict:
+
+        return {
+            'rule_id': self.rule_id
+        }
+
+    def update_rule(
+        self,
+        update_request: UpdateEmailRuleRequest
+    ) -> None:
+
+        ArgumentNullException.if_none(update_request, 'update_request')
+
+        self.name = update(self.name, update_request.name)
+        self.description = update(self.description, update_request.description)
+        self.max_results = update(self.max_results, update_request.max_results)
+        self.query = update(self.query, update_request.query)
+        self.action = update(self.action, update_request.action)
+        self.data = update(self.data, update_request.data)
+
+        self.modified_date = datetime.utcnow()
+
+    @staticmethod
     def from_entity(data):
         return GmailEmailRule(
             rule_id=data.get('rule_id'),

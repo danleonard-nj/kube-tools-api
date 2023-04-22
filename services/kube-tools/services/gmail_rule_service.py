@@ -7,7 +7,8 @@ from framework.logger import get_logger
 
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from domain.google import GmailEmailRule
-from domain.rest import CreateEmailRuleRequest
+from domain.rest import (CreateEmailRuleRequest, DeleteGmailEmailRuleResponse,
+                         UpdateEmailRuleRequest)
 
 logger = get_logger(__name__)
 
@@ -66,14 +67,87 @@ class GmailRuleService:
             query=create_request.query,
             action=create_request.action,
             data=create_request.data,
-            created_date=datetime.now(),
-            create_request=0)
+            max_results=create_request.max_results,
+            created_date=datetime.now())
 
         # Insert the rule entity
         result = await self.__email_rule_repository.insert(
             document=rule.to_dict())
 
         logger.info(f'Rule / entity: {rule.rule_id} / {result.inserted_id}')
+
+        return rule
+
+    async def delete_rule(
+        self,
+        rule_id: str
+    ) -> DeleteGmailEmailRuleResponse:
+
+        ArgumentNullException.if_none_or_whitespace(rule_id, 'rule_id')
+
+        logger.info(f'Delete rule: {rule_id}')
+
+        exists = await self.__email_rule_repository.email_rule_exists_by_id(
+            rule_id=rule_id)
+
+        logger.info(f'Rule exists: {rule_id}: {exists}')
+
+        # If the rule doesn't exist
+        if not exists:
+            raise Exception(f"No rule with the ID '{rule_id}' exists")
+
+        result = await self.__email_rule_repository.delete({
+            'rule_id': rule_id
+        })
+
+        logger.info(f'Delete result: {result.deleted_count}')
+
+        return DeleteGmailEmailRuleResponse(
+            result=result.acknowledged)
+
+    async def get_rule(
+        self,
+        rule_id: str
+    ) -> GmailEmailRule:
+
+        ArgumentNullException.if_none_or_whitespace(rule_id, 'rule_id')
+
+        logger.info(f'Get rule: {rule_id}')
+
+        entity = await self.__email_rule_repository.get({
+            'rule_id': rule_id
+        })
+
+        if entity is None:
+            raise Exception(f"No rule with the ID '{rule_id}' exists")
+
+        rule = GmailEmailRule.from_entity(
+            data=entity)
+
+        return rule
+
+    async def update_rule(
+        self,
+        update_request: UpdateEmailRuleRequest
+    ) -> GmailEmailRule:
+
+        ArgumentNullException.if_none(update_request, 'update_request')
+
+        logger.info(f'Update rule: {update_request.rule_id}')
+
+        rule = await self.get_rule(
+            rule_id=update_request.rule_id)
+
+        logger.info(f'Updating rule: {rule.to_dict()}')
+
+        rule.update_rule(
+            update_request=update_request)
+
+        result = await self.__email_rule_repository.replace(
+            selector=rule.get_selector(),
+            document=rule.to_dict())
+
+        logger.info(f'Updated rule: {result.acknowledged}')
 
         return rule
 
