@@ -6,6 +6,8 @@ from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
+from domain.exceptions import (EmailRuleExistsException,
+                               EmailRuleNotFoundException)
 from domain.google import GmailEmailRule
 from domain.rest import (CreateEmailRuleRequest, DeleteGmailEmailRuleResponse,
                          UpdateEmailRuleRequest)
@@ -26,8 +28,10 @@ class GmailRuleService:
 
         logger.info(f'Fetching all email rules')
 
+        # Fetch all rules from db
         entities = await self.__email_rule_repository.get_all()
 
+        # Construct domain models from entities
         rules = [
             GmailEmailRule.from_entity(data=entity)
             for entity in entities
@@ -57,7 +61,7 @@ class GmailRuleService:
         if existing is not None:
             logger.error(f'Rule {create_request.name} exists: {existing}')
 
-            raise Exception(f"A rule with the name '{create_request.name}'")
+            raise EmailRuleExistsException(create_request.name)
 
         # Create the new rule
         rule = GmailEmailRule(
@@ -87,6 +91,7 @@ class GmailRuleService:
 
         logger.info(f'Delete rule: {rule_id}')
 
+        # Verify the rule exists by ID provided
         exists = await self.__email_rule_repository.email_rule_exists_by_id(
             rule_id=rule_id)
 
@@ -94,8 +99,10 @@ class GmailRuleService:
 
         # If the rule doesn't exist
         if not exists:
-            raise Exception(f"No rule with the ID '{rule_id}' exists")
+            raise EmailRuleNotFoundException(
+                rule_id=rule_id)
 
+        # Delete the rule
         result = await self.__email_rule_repository.delete({
             'rule_id': rule_id
         })
@@ -114,13 +121,17 @@ class GmailRuleService:
 
         logger.info(f'Get rule: {rule_id}')
 
+        # Fetch the rule from the db
         entity = await self.__email_rule_repository.get({
             'rule_id': rule_id
         })
 
+        # Handle rule not found
         if entity is None:
-            raise Exception(f"No rule with the ID '{rule_id}' exists")
+            raise EmailRuleNotFoundException(
+                rule_id=rule_id)
 
+        # Construct domain model from entity
         rule = GmailEmailRule.from_entity(
             data=entity)
 
@@ -135,14 +146,19 @@ class GmailRuleService:
 
         logger.info(f'Update rule: {update_request.rule_id}')
 
+        # Fetch the existing rule (throws on
+        # rule not found)
         rule = await self.get_rule(
             rule_id=update_request.rule_id)
 
         logger.info(f'Updating rule: {rule.to_dict()}')
 
+        # Update fields on the rule from the
+        # update request
         rule.update_rule(
             update_request=update_request)
 
+        # Update the rule in the db
         result = await self.__email_rule_repository.replace(
             selector=rule.get_selector(),
             document=rule.to_dict())

@@ -94,12 +94,14 @@ class GmailService:
         self,
         rule: GmailEmailRule
     ):
+        logger.info(f'Processing SMS rule: {rule.name}')
+
         # Query the inbox w/ the defined rule query
         query_result = await self.__gmail_client.search_inbox(
             query=rule.query,
             max_results=rule.max_results)
 
-        logger.info(f'Result count: {len(query_result.messages)}')
+        logger.info(f'Query result count: {len(query_result.messages)}')
         notify_count = 0
 
         for message_id in query_result.message_ids:
@@ -112,7 +114,7 @@ class GmailService:
             if GoogleEmailLabel.Unread not in message.label_ids:
                 continue
 
-            logger.info('Message unread, sending notification')
+            logger.info(f'Message eligible for notification: {message_id}')
 
             body = self.__get_message_body(
                 rule=rule,
@@ -135,6 +137,8 @@ class GmailService:
                 message_id=message_id,
                 to_add=to_add,
                 to_remove=to_remove)
+
+            logger.info(f'Tags add/remove: {to_add}: {to_remove}')
 
             await self.__rule_service.update_rule_items_caught_count(
                 rule_id=rule.rule_id,

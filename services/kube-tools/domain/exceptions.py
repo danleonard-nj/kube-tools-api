@@ -79,3 +79,16 @@ class AuthTokenFailureException(Exception):
         super().__init__(
             f"Failed to fetch auth token for client '{client_name}' with status '{status_code}': {message}"
         )
+
+
+class EmailRuleExistsException(Exception):
+    def __init__(self, name: str, *args: object) -> None:
+        super().__init__(
+            f"A rule with the name '{name}' exists")
+
+
+class EmailRuleNotFoundException(Exception):
+    def __init__(self, rule_id, *args: object) -> None:
+        super().__init__(
+            f"No rule with the '{rule_id}' exists"
+        )

@@ -39,10 +39,9 @@ class CreateEmailRuleRequest(Serializable):
         self.name = data.get('name')
         self.description = data.get('description')
         self.query = data.get('query')
-        self.action = data.get('sms')
+        self.action = data.get('action')
         self.data = data.get('data')
         self.max_results = data.get('max_results')
-        self.created_date = data.get('created_date')
 
 
 class UpdateEmailRuleRequest(Serializable):
