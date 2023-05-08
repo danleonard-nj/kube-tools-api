@@ -10,6 +10,7 @@ from framework.di.static_provider import ProviderBase
 from httpx import AsyncClient
 from motor.motor_asyncio import AsyncIOMotorClient
 from quart import Quart
+from sqlalchemy import desc
 
 from clients.azure_gateway_client import AzureGatewayClient
 from clients.email_gateway_client import EmailGatewayClient
@@ -18,6 +19,7 @@ from clients.gmail_client import GmailClient, GmailRuleService
 from clients.google_drive_client import GoogleDriveClient
 from clients.google_maps_client import GoogleMapsClient
 from clients.identity_client import IdentityClient
+from clients.nest_client import NestClient
 from clients.storage_client import StorageClient
 from clients.twilio_gateway import TwilioGatewayClient
 from data.dead_man_configuration_repository import \
@@ -27,10 +29,12 @@ from data.google.google_auth_repository import GoogleAuthRepository
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from data.google.google_location_history_repository import \
     GoogleLocationHistoryRepository
+from data.google.google_nest_auth_repository import GoogleNestAuthRepository
 from data.google.google_reverse_geocode_repository import \
     GoogleReverseGeocodingRepository
 from data.location_repository import (WeatherStationRepository,
                                       ZipLatLongRepository)
+from data.nest_repository import NestSensorRepository
 from data.podcast_repository import PodcastRepository
 from domain.auth import AdRole, AuthPolicy
 from services.acr_purge_service import AcrPurgeService
@@ -41,6 +45,7 @@ from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
 from services.location_history_service import LocationHistoryService
 from services.mongo_backup_service import MongoBackupService
+from services.nest_service import NestService
 from services.podcast_service import PodcastService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
 from services.usage_service import UsageService
@@ -133,6 +138,7 @@ def register_clients(
     descriptors.add_singleton(EventClient)
     descriptors.add_singleton(GmailClient)
     descriptors.add_singleton(DeadManSwitchService)
+    descriptors.add_singleton(NestClient)
 
 
 def register_repositories(
@@ -147,6 +153,7 @@ def register_repositories(
     descriptors.add_singleton(GoogleEmailRuleRepository)
     descriptors.add_singleton(DeadManSwitchRepository)
     descriptors.add_singleton(DeadManConfigurationRepository)
+    descriptors.add_singleton(NestSensorRepository)
 
 
 def register_services(
@@ -164,6 +171,7 @@ def register_services(
     descriptors.add_singleton(EventService)
     descriptors.add_singleton(GmailRuleService)
     descriptors.add_singleton(GmailService)
+    descriptors.add_singleton(NestService)
 
 
 class ContainerProvider(ProviderBase):

@@ -105,3 +105,22 @@ class DeleteGmailEmailRuleResponse(Serializable):
         result: bool
     ):
         self.result = result
+
+
+class SaveNestAuthCredentialRequest(Serializable):
+    def __init__(
+        self,
+        data: Dict
+    ):
+        self.client_id = data.get('client_id')
+        self.client_secret = data.get('client_secret')
+        self.refresh_token = data.get('refresh_token')
+
+
+class NestSensorDataRequest(Serializable):
+    def __init__(
+        self,
+        data: Dict
+    ):
+        self.sensor_id = data.get('sensor_id')
+        self.temperature_celsius = data.get('temperature_celsius')

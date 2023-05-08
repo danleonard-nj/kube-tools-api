@@ -11,6 +11,7 @@ from routes.health import health_bp
 from routes.kubernetes import kubernetes_bp
 from routes.location_history import location_history_bp
 from routes.mongo_backup import mongo_backup_bp
+from routes.nest import nest_bp
 from routes.podcasts import podcasts_bp
 from routes.usage import usage_bp
 from utilities.provider import ContainerProvider
@@ -36,6 +37,7 @@ app.register_blueprint(mongo_backup_bp)
 app.register_blueprint(google_bp)
 app.register_blueprint(location_history_bp)
 app.register_blueprint(health_bp)
+app.register_blueprint(nest_bp)
 
 ContainerProvider.initialize_provider()
 InternalProvider.bind(ContainerProvider.get_service_provider())

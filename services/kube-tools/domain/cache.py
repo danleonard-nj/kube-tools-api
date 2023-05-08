@@ -30,3 +30,7 @@ class CacheKey:
     @staticmethod
     def google_drive_token() -> str:
         return 'google-drive-oauth-token'
+
+    @staticmethod
+    def google_nest_auth_token() -> str:
+        return 'google-nest-auth-token'
