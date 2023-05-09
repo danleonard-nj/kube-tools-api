@@ -10,7 +10,6 @@ from framework.di.static_provider import ProviderBase
 from httpx import AsyncClient
 from motor.motor_asyncio import AsyncIOMotorClient
 from quart import Quart
-from sqlalchemy import desc
 
 from clients.azure_gateway_client import AzureGatewayClient
 from clients.email_gateway_client import EmailGatewayClient
@@ -29,7 +28,6 @@ from data.google.google_auth_repository import GoogleAuthRepository
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from data.google.google_location_history_repository import \
     GoogleLocationHistoryRepository
-from data.google.google_nest_auth_repository import GoogleNestAuthRepository
 from data.google.google_reverse_geocode_repository import \
     GoogleReverseGeocodingRepository
 from data.location_repository import (WeatherStationRepository,
