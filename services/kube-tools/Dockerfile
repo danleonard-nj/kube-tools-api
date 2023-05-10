@@ -1,4 +1,4 @@
-FROM python:3.9
+FROM python:3.11
 
 ARG ARTIFACT_FEED=py-packages
 ARG ARTIFACT_FEED_TOKEN
