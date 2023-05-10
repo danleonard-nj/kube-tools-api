@@ -45,7 +45,8 @@ class NestService:
         sensor_data = NestSensorData(
             record_id=str(uuid.uuid4()),
             sensor_id=sensor_request.sensor_id,
-            temperature_celsius=sensor_request.temperature_celsius,
+            humidity_percent=sensor_request.humidity_percent,
+            degrees_celsius=sensor_request.degrees_celsius,
             timestamp=int(time()))
 
         logger.info(f'Capturing sensor data: {sensor_data}')

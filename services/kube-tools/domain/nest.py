@@ -275,21 +275,24 @@ class NestSensorData(Serializable):
         self,
         record_id: str,
         sensor_id: str,
-        temperature_celsius: float,
+        degrees_celsius: float,
+        humidity_percent: float,
         timestamp: int
     ):
         self.record_id = record_id
         self.sensor_id = sensor_id
-        self.temperature_celsius = temperature_celsius
+        self.degrees_celsius = degrees_celsius
+        self.humidity_percent = humidity_percent
         self.timestamp = timestamp
 
         self.temperature_fahrenheit = to_fahrenheit(
-            celsius=temperature_celsius)
+            celsius=degrees_celsius)
 
     @staticmethod
     def from_entity(data):
         return NestSensorData(
             record_id=data.get('record_id'),
             sensor_id=data.get('sensor_id'),
-            temperature_celsius=data.get('temperature_celsius'),
+            degrees_celsius=data.get('degrees_celsius'),
+            humidity_percent=data.get('humidity_percent'),
             timestamp=data.get('timestamp'))
