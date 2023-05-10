@@ -31,6 +31,13 @@ async def get_thermostat(container: ServiceProvider):
     return await service.get_thermostat()
 
 
+@nest_bp.configure('/api/nest/sensor/purge', methods=['POST'], auth_scheme=AuthPolicy.Default)
+async def post_sensor_purge(container: ServiceProvider):
+    service: NestService = container.resolve(NestService)
+
+    return await service.purge_sensor_data()
+
+
 @nest_bp.with_key_auth('/api/nest/sensor', methods=['POST'], key_name='nest-sensor-api-key')
 async def post_sensor_data(container: ServiceProvider):
     service: NestService = container.resolve(NestService)

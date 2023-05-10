@@ -51,10 +51,12 @@ class NestClient:
         logger.info(f'Fetching token from auth client')
         token = await self.__fetch_token()
 
-        asyncio.create_task(self.__cache_client.set_cache(
-            key=key,
-            value=token,
-            ttl=60))
+        # Cache the Nest auth token
+        asyncio.create_task(
+            self.__cache_client.set_cache(
+                key=key,
+                value=token,
+                ttl=60))
 
         logger.info(f'Token fetched: {token}')
         return token
