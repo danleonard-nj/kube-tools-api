@@ -32,7 +32,7 @@ from data.google.google_reverse_geocode_repository import \
     GoogleReverseGeocodingRepository
 from data.location_repository import (WeatherStationRepository,
                                       ZipLatLongRepository)
-from data.nest_repository import NestSensorRepository
+from data.nest_repository import NestDeviceRepository, NestSensorRepository
 from data.podcast_repository import PodcastRepository
 from domain.auth import AdRole, AuthPolicy
 from services.acr_purge_service import AcrPurgeService
@@ -152,6 +152,7 @@ def register_repositories(
     descriptors.add_singleton(DeadManSwitchRepository)
     descriptors.add_singleton(DeadManConfigurationRepository)
     descriptors.add_singleton(NestSensorRepository)
+    descriptors.add_singleton(NestDeviceRepository)
 
 
 def register_services(

@@ -1,10 +1,16 @@
+from datetime import datetime, timedelta
+import hashlib
+import json
 from typing import Dict, List
+import uuid
 from framework.serialization import Serializable
 
 
 def to_fahrenheit(
     celsius: float
 ) -> float:
+    if celsius is None or celsius == 0:
+        return 0
     return round((celsius * 9/5) + 32, 1)
 
 
@@ -281,12 +287,34 @@ class NestSensorData(Serializable):
     ):
         self.record_id = record_id
         self.sensor_id = sensor_id
-        self.degrees_celsius = degrees_celsius
-        self.humidity_percent = humidity_percent
+        self.degrees_celsius = round(degrees_celsius, 3)
+        self.humidity_percent = round(humidity_percent, 3)
         self.timestamp = timestamp
 
-        self.temperature_fahrenheit = to_fahrenheit(
+        self.degrees_fahrenheit = to_fahrenheit(
             celsius=degrees_celsius)
+
+        self.key = self.__generate_key()
+
+    def __generate_key(
+        self
+    ):
+        data = json.dumps([
+            self.degrees_celsius,
+            self.humidity_percent
+        ])
+
+        hashed = hashlib.md5(data.encode())
+        key = uuid.UUID(hashed.hexdigest())
+        return str(key)
+
+    def get_timestamp_datetime(
+        self
+    ) -> datetime:
+
+        parsed = datetime.fromtimestamp(
+            self.timestamp)
+        return parsed - timedelta(hours=7)
 
     @staticmethod
     def from_entity(data):
@@ -296,3 +324,22 @@ class NestSensorData(Serializable):
             degrees_celsius=data.get('degrees_celsius'),
             humidity_percent=data.get('humidity_percent'),
             timestamp=data.get('timestamp'))
+
+
+class NestSensorDevice(Serializable):
+    def __init__(
+        self,
+        device_id: str,
+        device_name: str,
+        created_date: int
+    ):
+        self.device_id = device_id
+        self.device_name = device_name
+        self.created_date = created_date
+
+    @staticmethod
+    def from_entity(data):
+        return NestSensorDevice(
+            device_id=data.get('device_id'),
+            device_name=data.get('device_name'),
+            created_date=data.get('created_date'))

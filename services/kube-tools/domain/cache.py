@@ -1,5 +1,16 @@
-from framework.crypto.hashing import sha256
+import hashlib
+import json
+import uuid
+from typing import Any
+
+from framework.crypto.hashing import md5
 from framework.validators.nulls import none_or_whitespace
+
+
+def generate_uuid(data: Any):
+    parsed = json.dumps(data, default=str)
+    hashed = hashlib.md5(parsed.encode())
+    return str(uuid.UUID(hashed.hexdigest()))
 
 
 class CacheKey:
@@ -19,9 +30,13 @@ class CacheKey:
         scope: str = None
     ) -> str:
         if not none_or_whitespace(scope):
-            hashed_scope = sha256(scope)
-            return f'auth-{client}-{hashed_scope}'
-        return f'auth-{client}'
+            hash_key = generate_uuid({
+                'client': client,
+                'scope': scope
+            })
+            return f'auth-client-{hash_key}'
+        else:
+            return f'auth-{client}'
 
     @staticmethod
     def gmail_token() -> str:
@@ -34,3 +49,15 @@ class CacheKey:
     @staticmethod
     def google_nest_auth_token() -> str:
         return 'google-nest-auth-token'
+
+    @staticmethod
+    def nest_device_grouped_sensor_data(
+        device_id,
+        key
+    ) -> str:
+        hash_key = generate_uuid([
+            device_id,
+            key
+        ])
+
+        return f'google-nest-gsd-{hash_key}'

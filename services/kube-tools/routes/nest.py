@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from framework.di.service_provider import ServiceProvider
 from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
@@ -8,9 +9,15 @@ from domain.auth import AuthPolicy
 from domain.rest import NestSensorDataRequest
 from services.nest_service import NestService
 
+
 logger = get_logger(__name__)
 
 nest_bp = MetaBlueprint('nest_bp', __name__)
+
+
+def default_start_timestamp():
+    date = datetime.utcnow() - timedelta(days=7)
+    return int(date.timestamp())
 
 
 @nest_bp.configure('/api/nest/auth', methods=['GET'], auth_scheme=AuthPolicy.Default)
@@ -49,3 +56,27 @@ async def post_sensor_data(container: ServiceProvider):
 
     return await service.log_sensor_data(
         sensor_request=sensor_request)
+
+
+@nest_bp.configure('/api/nest/sensor', methods=['GET'], auth_scheme=AuthPolicy.Default)
+async def get_sensor_data(container: ServiceProvider):
+    service: NestService = container.resolve(NestService)
+
+    start_timestamp = request.args.get(
+        'start_timestamp',
+        default_start_timestamp())
+
+    return await service.get_sensor_data(
+        start_timestamp=start_timestamp)
+
+
+@nest_bp.configure('/api/nest/sensor/grouped', methods=['GET'], auth_scheme=AuthPolicy.Default)
+async def get_grouped_sensor_data(container: ServiceProvider):
+    service: NestService = container.resolve(NestService)
+
+    start_timestamp = request.args.get(
+        'start_timestamp',
+        default_start_timestamp())
+
+    return await service.get_grouped_sensor_data(
+        start_timestamp=start_timestamp)

@@ -123,5 +123,9 @@ class NestSensorDataRequest(Serializable):
         data: Dict
     ):
         self.sensor_id = data.get('sensor_id')
-        self.degrees_celsius = data.get('degrees_celsius')
-        self.humidity_percent = data.get('humidity_percent')
+
+        degrees_celsius = data.get('degrees_celsius', 0)
+        humidity_percent = data.get('humidity_percent', 0)
+
+        self.degrees_celsius = round(degrees_celsius, 2)
+        self.humidity_percent = round(humidity_percent, 2)
