@@ -22,7 +22,8 @@ class EmailGatewayClient:
     ):
         self.__http_client = http_client
         self.__identity_client = identity_client
-        self.__base_url = configuration.gateway.get('api_gateway_base_url')
+        self.__base_url = configuration.gateway.get(
+            'email_gateway_base_url')
 
     async def send_email(
         self,
@@ -109,6 +110,8 @@ class EmailGatewayClient:
             recipient=recipient,
             subject=subject,
             body=body)
+
+        logger.info(f'Email request: {content.to_dict()}')
 
         return content, endpoint
 

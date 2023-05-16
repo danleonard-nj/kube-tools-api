@@ -8,7 +8,7 @@ class EmailGatewayRequest(Serializable):
         self,
         recipient: str,
         subject: str,
-        body: Dict = None,
+        body: str = None,
         table: List[Dict] = None,
         json: Dict = None
     ):

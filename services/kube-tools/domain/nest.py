@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta
+import enum
 import hashlib
 import json
 from typing import Dict, List
 import uuid
 from framework.serialization import Serializable
+from matplotlib.style import available
 
 
 def to_fahrenheit(
@@ -12,6 +14,17 @@ def to_fahrenheit(
     if celsius is None or celsius == 0:
         return 0
     return round((celsius * 9/5) + 32, 1)
+
+
+class NestConfiguration:
+    def __init_(
+        self,
+        data: Dict
+    ):
+        self.expiration_minutes = data.get('expiration_minutes')
+        self.notification_recipients = data.get('notification_recipients')
+        self.contacts = data.get('contacts')
+        self.created_date = data.get('created_date')
 
 
 class NestThermostatMode:
@@ -166,13 +179,19 @@ class NestThermostat(Serializable):
         cls,
         data: Dict,
         trait: str,
-        key: str
+        key: str,
+        default=None
     ):
         traits = data.get('traits')
 
-        return traits.get(
+        result = traits.get(
             trait, dict()).get(
                 key)
+
+        if default is not None and result is None:
+            return default
+
+        return result
 
     @classmethod
     def from_json_object(
@@ -188,7 +207,8 @@ class NestThermostat(Serializable):
         humidity_percent = cls.get_trait(
             data=data,
             trait=ThermostatTrait.Humidity,
-            key='ambientHumidityPercent')
+            key='ambientHumidityPercent',
+            default=0)
 
         thermostat_status = cls.get_trait(
             data=data,
@@ -224,13 +244,15 @@ class NestThermostat(Serializable):
             cls.get_trait(
                 data=data,
                 trait=ThermostatTrait.ThermostatEco,
-                key='heatCelsius'), 1)
+                key='heatCelsius',
+                default=0), 1)
 
         thermostat_eco_cool_celsius = round(
             cls.get_trait(
                 data=data,
                 trait=ThermostatTrait.ThermostatEco,
-                key='coolCelsius'), 1)
+                key='coolCelsius',
+                default=0), 1)
 
         hvac_status = cls.get_trait(
             data=data,
@@ -245,17 +267,20 @@ class NestThermostat(Serializable):
         heat_celsius = round(cls.get_trait(
             data=data,
             trait=ThermostatTrait.TemperatureSetPoint,
-            key='heatCelsius'), 1)
+            key='heatCelsius',
+            default=0), 1)
 
         cool_celsius = round(cls.get_trait(
             data=data,
             trait=ThermostatTrait.TemperatureSetPoint,
-            key='coolCelsius'), 1)
+            key='coolCelsius',
+            default=0), 1)
 
         ambient_temperature_celsius = round(cls.get_trait(
             data=data,
             trait=ThermostatTrait.Temperature,
-            key='ambientTemperatureCelsius'), 2)
+            key='ambientTemperatureCelsius',
+            default=0), 2)
 
         return NestThermostat(
             thermostat_id=thermostat_id,
@@ -343,3 +368,40 @@ class NestSensorDevice(Serializable):
             device_id=data.get('device_id'),
             device_name=data.get('device_name'),
             created_date=data.get('created_date'))
+
+
+class NestSensorDataQueryResult(Serializable):
+    def __init__(
+        self,
+        device_id: str,
+        data: List[NestSensorData]
+    ):
+        self.device_id = device_id
+        self.data = data
+
+
+class SensorDataPurgeResult(Serializable):
+    def __init__(
+        self,
+        deleted
+    ):
+        self.deleted = deleted
+
+
+class HealthStatus(enum.StrEnum):
+    Healthy = 'healthy'
+    Unhealthy = 'unhealthy'
+
+
+class ThermostatMode(enum.StrEnum):
+    Heat = 'HEAT'
+    Cool = 'COOL'
+    Range = 'HEATCOOL'
+    Off = 'OFF'
+
+
+class NestCommandType:
+    SetRange = 'SetRange'
+    SetHeat = 'SetHeat'
+    SetCool = 'SetCool'
+    SetPowerOff = 'SetPowerOff'

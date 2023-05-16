@@ -129,3 +129,12 @@ class NestSensorDataRequest(Serializable):
 
         self.degrees_celsius = round(degrees_celsius, 2)
         self.humidity_percent = round(humidity_percent, 2)
+
+
+class NestCommandRequest(Serializable):
+    def __init__(
+        self,
+        data: Dict
+    ):
+        self.command_type = data.get('command_type')
+        self.params = data.get('params')

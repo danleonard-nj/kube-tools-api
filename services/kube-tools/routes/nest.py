@@ -6,7 +6,8 @@ from quart import request
 
 from clients.nest_client import NestClient
 from domain.auth import AuthPolicy
-from domain.rest import NestSensorDataRequest
+from domain.rest import NestCommandRequest, NestSensorDataRequest
+from services.nest_command_service import NestCommandService
 from services.nest_service import NestService
 
 
@@ -80,3 +81,31 @@ async def get_grouped_sensor_data(container: ServiceProvider):
 
     return await service.get_grouped_sensor_data(
         start_timestamp=start_timestamp)
+
+
+@nest_bp.configure('/api/nest/sensor/info', methods=['GET'], auth_scheme=AuthPolicy.Default)
+async def get_sensor_info(container: ServiceProvider):
+    service: NestService = container.resolve(NestService)
+
+    return await service.get_sensor_info()
+
+
+@nest_bp.configure('/api/nest/sensor/info/poll', methods=['POST'], auth_scheme=AuthPolicy.Default)
+async def get_sensor_info_poll(container: ServiceProvider):
+    service: NestService = container.resolve(NestService)
+
+    return await service.poll_sensor_status()
+
+
+@nest_bp.configure('/api/nest/command', methods=['POST'], auth_scheme=AuthPolicy.Default)
+async def post_command(container: ServiceProvider):
+    service: NestCommandService = container.resolve(NestCommandService)
+
+    body = await request.get_json()
+
+    command_request = NestCommandRequest(
+        data=body)
+
+    return await service.handle_command(
+        command_type=command_request.command_type,
+        params=command_request.params)

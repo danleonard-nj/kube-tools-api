@@ -1,6 +1,8 @@
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
 
+from pymongo.collection import Collection
+
 
 class NestSensorRepository(MongoRepositoryAsync):
     def __init__(
@@ -30,6 +32,18 @@ class NestSensorRepository(MongoRepositoryAsync):
 
         return await result.to_list(
             length=None)
+
+    async def get_top_sensor_record(
+        self,
+        sensor_id: str
+    ):
+        query_filter = {
+            'sensor_id': sensor_id
+        }
+
+        return await self.collection.find_one(
+            filter=query_filter,
+            sort=[('timestamp', -1)])
 
 
 class NestDeviceRepository(MongoRepositoryAsync):

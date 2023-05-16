@@ -1,10 +1,29 @@
+from datetime import datetime
+import hashlib
 import json
 import uuid
 from hashlib import md5
+import time
 
 from framework.logger.providers import get_logger
 
 logger = get_logger(__name__)
+
+
+class DateTimeUtil:
+    @staticmethod
+    def timestamp():
+        return int(time.time())
+
+
+class KeyUtils:
+    @staticmethod
+    def create_uuid(**kwargs):
+        digest = hashlib.md5(json.dumps(
+            kwargs,
+            default=str).encode())
+
+        return str(uuid.UUID(digest.hexdigest()))
 
 
 def parse_bool(value):
@@ -49,3 +68,8 @@ def sort_by(items, key):
 #         if arg[0] != args[-1][0]:
 #             url += '&'
 #     return url
+
+
+def to_celsius(degrees_fahrenheit, round_digits=2):
+    value = (degrees_fahrenheit - 32) * (5/9)
+    return round(value, round_digits)

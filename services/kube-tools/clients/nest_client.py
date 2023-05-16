@@ -81,6 +81,19 @@ class NestClient:
 
         return response.json()
 
+    async def execute_command(
+        self,
+        command: Dict
+    ):
+        headers = await self.get_headers()
+
+        response = await self.__http_client.post(
+            url=f'{self.__base_url}/v1/enterprises/{self.__project_id}/devices/{self.__device_id}:executeCommand',
+            headers=headers,
+            json=command)
+
+        return response.json()
+
     async def __fetch_token(
         self
     ):
