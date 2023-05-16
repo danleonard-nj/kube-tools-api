@@ -5,7 +5,6 @@ import json
 from typing import Dict, List
 import uuid
 from framework.serialization import Serializable
-from matplotlib.style import available
 
 
 def to_fahrenheit(
