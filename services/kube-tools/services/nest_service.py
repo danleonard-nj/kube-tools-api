@@ -75,7 +75,7 @@ class NestService:
             degrees_celsius=sensor_request.degrees_celsius,
             timestamp=DateTimeUtil.timestamp())
 
-        logger.info(f'Capturing sensor data: {sensor_data}')
+        logger.info(f'Capturing sensor data: {sensor_data.to_dict()}')
 
         result = await self.__sensor_repository.insert(
             document=sensor_data.to_dict())
