@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List
 
 from framework.serialization import Serializable
@@ -18,6 +18,7 @@ class MongoDatabase:
     Sms = 'SMS'
     Gpt = 'GPT'
     Health = 'Health'
+    MongoExport = 'MongoExport'
 
 
 class MongoCollection:
@@ -32,6 +33,7 @@ class MongoCollection:
     GptJob = 'GptJob'
     DeadManSwitch = 'DeadManSwitch'
     DeadManSwitchConfiguration = 'DeadManSwitchConfiguration'
+    MongoExportHistory = 'MongoExportHistory'
 
 
 class MongoExportPurgeResult(Serializable):
@@ -96,3 +98,18 @@ class MongoExportResult(Serializable):
         self.stderr = stderr
         self.uploaded = uploaded
         self.purged = purged
+
+
+class MongoExportHistoryRecord(Serializable):
+    def __init__(
+        self,
+        blob_name: str,
+        elapsed: timedelta,
+        stdout: str,
+        stderr: str
+    ):
+        self.blob_name = blob_name
+        self.elapsed = elapsed
+        self.stdout = stdout
+        self.stderr = stderr
+        self.created_date = datetime.utcnow()

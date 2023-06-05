@@ -138,7 +138,7 @@ class PodcastService:
         return [{
             'Show': episode.show.show_title,
             'Episode': episode.episode.episode_title,
-            'Size': episode.size
+            'Size': f'{episode.size} mb'
         } for episode in episodes]
 
     async def __wait_random_delay(

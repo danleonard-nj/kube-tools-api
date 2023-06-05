@@ -30,11 +30,13 @@ from data.google.google_reverse_geocode_repository import \
     GoogleReverseGeocodingRepository
 from data.location_repository import (WeatherStationRepository,
                                       ZipLatLongRepository)
+from data.mongo_export_repository import MongoExportRepository
 from data.nest_repository import NestDeviceRepository, NestSensorRepository
 from data.podcast_repository import PodcastRepository
 from domain.auth import AdRole, AuthPolicy
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
+from services.chat_gpt_proxy_service import ChatGptProxyService
 from services.dead_man_switch_service import DeadManSwitchService
 from services.event_service import EventService
 from services.gmail_service import GmailService
@@ -151,6 +153,7 @@ def register_repositories(
     descriptors.add_singleton(DeadManSwitchRepository)
     descriptors.add_singleton(NestSensorRepository)
     descriptors.add_singleton(NestDeviceRepository)
+    descriptors.add_singleton(MongoExportRepository)
 
 
 def register_services(
@@ -170,6 +173,7 @@ def register_services(
     descriptors.add_singleton(GmailService)
     descriptors.add_singleton(NestService)
     descriptors.add_singleton(NestCommandService)
+    descriptors.add_singleton(ChatGptProxyService)
 
 
 class ContainerProvider(ProviderBase):

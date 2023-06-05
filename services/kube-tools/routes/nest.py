@@ -87,6 +87,10 @@ async def get_grouped_sensor_data(container: ServiceProvider):
 async def get_sensor_info(container: ServiceProvider):
     service: NestService = container.resolve(NestService)
 
+    start_timestamp = request.args.get(
+        'start_timestamp',
+        default_start_timestamp())
+
     return await service.get_sensor_info()
 
 

@@ -1,6 +1,7 @@
 from datetime import datetime
 import hashlib
 import json
+from typing import Union
 import uuid
 from hashlib import md5
 import time
@@ -24,6 +25,27 @@ class KeyUtils:
             default=str).encode())
 
         return str(uuid.UUID(digest.hexdigest()))
+
+
+class ValueConverter:
+    MegabyteInBytes = 1048576
+
+    @classmethod
+    def bytes_to_megabytes(
+        cls,
+        bytes,
+        round_result=True
+    ) -> Union[int, float]:
+
+        if bytes == 0:
+            return 0
+
+        result = bytes / cls.MegabyteInBytes
+
+        return (
+            round(result) if round_result
+            else result
+        )
 
 
 def parse_bool(value):

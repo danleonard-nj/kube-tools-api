@@ -6,6 +6,8 @@ from typing import Any
 from framework.crypto.hashing import md5
 from framework.validators.nulls import none_or_whitespace
 
+from utilities.utils import KeyUtils
+
 
 def generate_uuid(data: Any):
     parsed = json.dumps(data, default=str)
@@ -55,9 +57,8 @@ class CacheKey:
         device_id,
         key
     ) -> str:
-        hash_key = generate_uuid([
-            device_id,
-            key
-        ])
+        hash_key = KeyUtils.create_uuid(
+            device_id=device_id,
+            key=key)
 
         return f'google-nest-gsd-{hash_key}'

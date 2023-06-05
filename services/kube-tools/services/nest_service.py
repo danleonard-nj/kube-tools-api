@@ -1,7 +1,7 @@
 import json
 import uuid
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import pandas as pd
 from framework.clients.cache_client import CacheClientAsync
@@ -15,7 +15,8 @@ from data.nest_repository import NestDeviceRepository, NestSensorRepository
 from domain.cache import CacheKey
 from domain.nest import (HealthStatus, NestSensorData,
                          NestSensorDataQueryResult, NestSensorDevice,
-                         NestThermostat, SensorDataPurgeResult)
+                         NestThermostat, SensorDataPurgeResult, SensorHealth,
+                         SensorHealthStats, SensorPollResult)
 from domain.rest import NestSensorDataRequest
 from services.event_service import EventService
 from utilities.utils import DateTimeUtil
@@ -68,6 +69,18 @@ class NestService:
         sensor_request: NestSensorDataRequest
     ) -> NestSensorData:
 
+        sensor = await self.__get_sensor(
+            device_id=sensor_request.sensor_id)
+
+        if sensor is None:
+            logger.info(f'Sensor not found: {sensor_request.sensor_id}')
+            raise Exception(
+                f"No sensor with the ID '{sensor_request.sensor_id}' exists")
+
+        last_record = await self.__get_top_sensor_record(
+            device_id=sensor_request.sensor_id)
+
+        # Create the sensor data record w/ stats
         sensor_data = NestSensorData(
             record_id=str(uuid.uuid4()),
             sensor_id=sensor_request.sensor_id,
@@ -77,6 +90,7 @@ class NestService:
 
         logger.info(f'Capturing sensor data: {sensor_data.to_dict()}')
 
+        # Write the new sensor data
         result = await self.__sensor_repository.insert(
             document=sensor_data.to_dict())
 
@@ -89,6 +103,8 @@ class NestService:
     ):
         logger.info(f'Purging sensor data: {self.__purge_days} days back')
 
+        # Get the cutoff date and purge any records
+        # that step over that line
         cutoff_date = datetime.utcnow() - timedelta(
             days=self.__purge_days)
 
@@ -103,17 +119,26 @@ class NestService:
 
         logger.info(f'Deleted: {result.deleted_count}')
 
-        email_request, endpoint = self.__email_gateway.get_email_request(
-            recipient='dcl525@gmail.com',
-            subject='Sensor Data Service',
-            body=self.__get_email_message_body(
-                cutoff_date=cutoff_date,
-                deleted_count=result.deleted_count
-            ))
+        if result.deleted_count > 0:
+            logger.info('Sending purge result email')
+            await self.__email_gateway.send_email(
+                recipient='dcl525@gmail.com',
+                subject='Sensor Data Service',
+                body=self.__get_email_message_body(
+                    cutoff_date=cutoff_date,
+                    deleted_count=result.deleted_count))
 
-        await self.__event_service.dispatch_email_event(
-            endpoint=endpoint,
-            message=email_request.to_dict())
+        # email_request, endpoint = self.__email_gateway.get_email_request(
+        #     recipient='dcl525@gmail.com',
+        #     subject='Sensor Data Service',
+        #     body=self.__get_email_message_body(
+        #         cutoff_date=cutoff_date,
+        #         deleted_count=result.deleted_count
+        #     ))
+
+        # await self.__event_service.dispatch_email_event(
+        #     endpoint=endpoint,
+        #     message=email_request.to_dict())
 
         return SensorDataPurgeResult(
             deleted=result.deleted_count)
@@ -156,11 +181,11 @@ class NestService:
         data = await self.get_sensor_data(
             start_timestamp=start_timestamp)
 
-        with open(r'C:\temp\sensor_data.json', 'w') as file:
-            for device in data:
-                device['data'] = [x.to_dict() for x in device['data']]
+        # with open(r'C:\temp\sensor_data.json', 'w') as file:
+        #     for device in data:
+        #         device['data'] = [x.to_dict() for x in device['data']]
 
-            file.write(json.dumps(data, default=str, indent=True))
+        #     file.write(json.dumps(data, default=str, indent=True))
 
         tasks = TaskCollection()
 
@@ -230,93 +255,145 @@ class NestService:
         data = await self.__cache_client.get_json(
             key=cache_key)
 
-    async def get_sensor_info(
+    async def __get_top_sensor_record(
+        self,
+        device_id: str
+    ) -> NestSensorData:
+
+        last_entity = await self.__sensor_repository.get_top_sensor_record(
+            sensor_id=device_id)
+
+        if last_entity is None:
+            return None
+
+        last_record = NestSensorData.from_entity(
+            data=last_entity)
+
+        return last_record
+
+    async def __get_all_devices(
         self
-    ):
-        logger.info(f'Getting sensor info')
+    ) -> List[NestSensorDevice]:
+
         entities = await self.__device_repository.get_all()
 
         devices = [NestSensorDevice.from_entity(data=entity)
                    for entity in entities]
 
-        device_health = list()
+        return devices
+
+    def __get_health_status(
+        self,
+        record: NestSensorData
+    ) -> Tuple[str, int]:
+
         now = DateTimeUtil.timestamp()
+
+        seconds_elapsed = now - record.timestamp
+        logger.info(f'Seconds elapsed: {seconds_elapsed}')
+
+        # Health status (healthy/unhealthy)
+        health_status = (
+            HealthStatus.Unhealthy
+            if seconds_elapsed >= SENSOR_UNHEALTHY_SECONDS
+            else HealthStatus.Healthy
+        )
+
+        return (
+            health_status,
+            seconds_elapsed
+        )
+
+    async def get_sensor_info(
+        self
+    ) -> List[SensorHealth]:
+
+        logger.info(f'Getting sensor info')
+        devices = await self.__get_all_devices()
+
+        device_health = list()
 
         for device in devices:
             logger.info(f'Calculating health stats: {device.device_id}')
 
-            last_entity = await self.__sensor_repository.get_top_sensor_record(
-                sensor_id=device.device_id)
-            last_record = NestSensorData.from_entity(
-                data=last_entity)
+            last_record = await self.__get_top_sensor_record(
+                device_id=device.device_id)
 
-            seconds_elapsed = now - last_record.timestamp
-            logger.info(f'Seconds elapsed: {seconds_elapsed}')
+            health_status, seconds_elapsed = self.__get_health_status(
+                record=last_record)
 
-            health_status = HealthStatus.Healthy
-            if seconds_elapsed >= SENSOR_UNHEALTHY_SECONDS:
-                logger.info(f'Unhealthy sensor: {device.device_id}')
-                health_status = HealthStatus.Unhealthy
+            stats = SensorHealthStats(
+                status=health_status,
+                last_contact=last_record.timestamp,
+                seconds_elapsed=seconds_elapsed)
 
-            stats = {
-                'status': health_status,
-                'last_contact': last_record.timestamp,
-                'seconds_elapsed': seconds_elapsed
-            }
+            health = SensorHealth(
+                device_id=device.device_id,
+                device_name=device.device_name,
+                health=stats,
+                data=last_record)
 
-            device_health.append({
-                'device_id': device.device_id,
-                'device_name': device.device_name,
-                'health': stats,
-                'data': last_record
-            })
+            device_health.append(health)
 
         return device_health
+
+    async def __get_sensor(
+        self,
+        device_id: str
+    ) -> NestSensorDevice:
+
+        entity = await self.__device_repository.get({
+            'device_id': device_id
+        })
+
+        if entity is None:
+            return None
+
+        device = NestSensorDevice.from_entity(
+            data=entity)
+
+        return device
 
     async def poll_sensor_status(
         self
     ):
         health = await self.get_sensor_info()
-
         results = list()
 
         for device in health:
-            is_unhealthy = False
-            device_id = device.get('device_id')
-            status = device.get('health', dict()).get('status')
-            seconds_elapsed = device.get(
-                'health', dict()).get('seconds_elapsed')
 
-            if status != HealthStatus.Healthy:
-                is_unhealthy = True
-                logger.info(f'Sending unhealthy alert for device: {device_id}')
-                entity = await self.__device_repository.get({
-                    'device_id': device_id
-                })
+            # Sensor health
+            is_unhealthy = (
+                device.health.status != HealthStatus.Healthy
+            )
 
-                device = NestSensorDevice.from_entity(
-                    data=entity)
+            if not is_unhealthy:
+                continue
 
-                body = self.__get_sensor_failure_email_message_body(
-                    device=device,
-                    elapsed_seconds=seconds_elapsed)
+            logger.info(
+                f'Sending unhealthy alert for device: {device.device_id}')
 
-                message, endpoint = self.__email_gateway.get_email_request(
-                    recipient='dcl525@gmail.com',
-                    subject='ESP8266 Sensor Failure',
-                    body=body)
+            body = self.__get_sensor_failure_email_message_body(
+                device=device,
+                elapsed_seconds=device.health.seconds_elapsed)
 
-                logger.info(f'Dispatching event message: {message.to_dict()}')
-                logger.info(f'Event endpoint: {endpoint}')
+            message, endpoint = self.__email_gateway.get_email_request(
+                recipient='dcl525@gmail.com',
+                subject='ESP8266 Sensor Failure',
+                body=body)
 
-                await self.__event_service.dispatch_email_event(
-                    endpoint=endpoint,
-                    message=message.to_dict())
+            logger.info(f'Dispatching event message: {message.to_dict()}')
+            logger.info(f'Event endpoint: {endpoint}')
 
-            results.append({
-                'device': device_id,
-                'is_healthy': not is_unhealthy
-            })
+            await self.__event_service.dispatch_email_event(
+                endpoint=endpoint,
+                message=message.to_dict())
+
+            result = SensorPollResult(
+                device_id=device.device_id,
+                is_healthy=not is_unhealthy)
+
+            results.append(result)
 
         return results
 

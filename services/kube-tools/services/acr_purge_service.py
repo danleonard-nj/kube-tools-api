@@ -11,6 +11,7 @@ from clients.azure_gateway_client import AzureGatewayClient
 from clients.email_gateway_client import EmailGatewayClient
 from services.acr_service import AcrImage, AcrService
 from services.event_service import EventService
+from utilities.utils import ValueConverter
 
 logger = get_logger(__name__)
 
@@ -44,42 +45,53 @@ class AcrPurgeService:
 
         processed_images = []
         repos = await self.__acr_service.get_acr_repo_names()
+
+        # Get a list of all the active images running
+        # in the cluster to be excluded from the purge
         active_images = await self.__azure_gateway_client.get_pod_images()
 
-        active_df = pd.DataFrame([{
-            'active_image': image,
+        def format_row(data): return {
+            'active_image': data,
             'is_active': True
-        } for image in active_images.get(
-            'pods', [])])
+        }
+
+        active_image_pods = active_images.get(
+            'pods', [])
+
+        active_df = pd.DataFrame([
+            format_row(image)
+            for image in active_image_pods
+        ])
 
         for repo in repos:
             logger.info(f'Processing repo: {repo}')
 
+            # Verify the repo is not excluded by
+            # evaluating the exclusion rules defined
+            # in the service configuration
             if self.__is_excluded(
                     repository_name=repo):
                 continue
 
-            images = await self.purge_repo(
+            purged_images = await self.purge_repo(
                 active_images=active_df,
                 repo_name=repo,
                 days_back=days_back,
                 top_count=top_count)
 
-            logger.info(f'Purge images for repo: {repo}: {len(images)}:')
+            logger.info(f'Purge images for repo: {repo}: {len(purged_images)}')
 
-            def get_table_data(x): return (
-                x.to_dict() | {
+            def format_result_row(data): return (
+                data.to_dict() | {
                     'repo_name': repo,
-                    'size_mb': (
-                        x.image_size / 1024 / 1024
-                        if x.image_size != 0 else 0
-                    )
+                    'size_mb': ValueConverter.bytes_to_megabytes(
+                        bytes=data.image_size)
                 }
             )
 
             processed_images.extend([
-                get_table_data(image)
-                for image in images
+                format_result_row(image)
+                for image in purged_images
             ])
 
         if any(processed_images):

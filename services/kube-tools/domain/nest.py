@@ -404,3 +404,46 @@ class NestCommandType:
     SetHeat = 'SetHeat'
     SetCool = 'SetCool'
     SetPowerOff = 'SetPowerOff'
+
+
+class SensorHealthStats(Serializable):
+    def __init__(
+        self,
+        status: str,
+        last_contact: int,
+        seconds_elapsed: int
+    ):
+        self.status = status
+        self.last_contact = last_contact
+        self.seconds_elapsed = seconds_elapsed
+
+
+class SensorHealth(Serializable):
+    def __init__(
+        self,
+        device_id: str,
+        device_name: str,
+        health: SensorHealthStats,
+        data: Dict
+    ):
+        self.device_id = device_id
+        self.device_name = device_name
+        self.health = health
+        self.data = data
+
+    def to_dict(
+        self
+    ) -> Dict:
+        return super().to_dict() | {
+            'health': self.health.to_dict()
+        }
+
+
+class SensorPollResult:
+    def __init__(
+        self,
+        device_id: str,
+        is_healthy: bool
+    ):
+        self.device = device_id
+        self.is_healthy = is_healthy

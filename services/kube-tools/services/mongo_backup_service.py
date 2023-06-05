@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
 
 import aiofiles
@@ -9,8 +9,13 @@ from framework.logger import get_logger
 
 from clients.email_gateway_client import EmailGatewayClient
 from clients.storage_client import StorageClient
+from data.mongo_export_repository import MongoExportRepository
 from domain.mongo import (MongoBackupConstants, MongoExportBlob,
-                          MongoExportPurgeResult, MongoExportResult)
+                          MongoExportHistoryRecord, MongoExportPurgeResult,
+                          MongoExportResult)
+
+EMAIL_SUBJECT = 'MongoDB Backup Service'
+EMAIL_RECIPIENT = 'dcl525@gmai.com'
 
 logger = get_logger(__name__)
 
@@ -18,12 +23,14 @@ logger = get_logger(__name__)
 class MongoBackupService:
     def __init__(
         self,
+        export_repository: MongoExportRepository,
         storage_client: StorageClient,
         configuration: Configuration,
         email_client: EmailGatewayClient
     ):
         self.__storage_client = storage_client
-        self.__email_client = email_client
+        self.__email_gateway_client = email_client
+        self.__export_repository = export_repository
 
         self.__connection_string = configuration.mongo.get(
             'connection_string')
@@ -33,17 +40,26 @@ class MongoBackupService:
         purge_days: int
     ) -> MongoExportResult:
 
+        ArgumentNullException.if_none(purge_days, 'purge_days')
+
         logger.info('Mongo backup export started')
+        export_start = datetime.utcnow()
 
         # Run mongodump as subprocess
         stdout, stderr = await self.__run_backup_subprocess()
+        export_end = datetime.utcnow()
 
         blob_name = self.__get_export_name()
         logger.info(f'Uploading to blob storage: {blob_name}')
 
         # Upload the export to blob storage
+        upload_start = datetime.utcnow()
+
         blob_result = await self.__upload_export_blob(
             blob_name=blob_name)
+
+        upload_end = datetime.utcnow()
+        logger.info(f'Upload complete in: {upload_end - upload_start}')
 
         # Purge any expired exports
         purged = await self.__purge_expired_exports(
@@ -53,6 +69,10 @@ class MongoBackupService:
         # is complete
         await self.__send_email_notification(
             blob_name=blob_name)
+
+        # await self.__write_history_record(
+        #     blob_name=blob_name,
+        #     elapsed=(export_end - export_start))
 
         return MongoExportResult(
             stdout=stdout,
@@ -112,6 +132,8 @@ class MongoBackupService:
         self,
         days: int
     ) -> List[Dict]:
+
+        ArgumentNullException.if_none(days, 'days')
 
         # Existing backups
         storage_blobs = await self.__storage_client.get_blobs(
@@ -181,14 +203,45 @@ class MongoBackupService:
 
     async def __send_email_notification(
         self,
-        blob_name: str
+        blob_name: str,
+        elapsed: timedelta
     ) -> None:
 
         ArgumentNullException.if_none_or_whitespace(blob_name, 'blob_name')
 
         logger.info('Sending notification email')
 
-        await self.__email_client.send_email(
-            subject='MongoDB Backup Service',
-            recipient='dcl525@gmail.com',
-            message=f'MongoDB backup completed successfully: {blob_name}')
+        # await self.__email_client.send_email(
+        #     subject='MongoDB Backup Service',
+        #     recipient='dcl525@gmail.com',
+        #     message=f'MongoDB backup completed successfully: {blob_name}')
+
+        email_request, endpoint = self.__email_gateway_client.get_email_request(
+            recipient=EMAIL_RECIPIENT,
+            subject=EMAIL_SUBJECT,
+            body=f'MongoDB backup completed successfully: {blob_name}')
+
+        await self.__event_service.dispatch_email_event(
+            endpoint=endpoint,
+            message=email_request.to_dict())
+
+    async def __write_history_record(
+        self,
+        blob_name: str,
+        elapsed: timedelta,
+        stdout: str,
+        stderr: str
+    ) -> None:
+
+        ArgumentNullException.if_none_or_whitespace(blob_name, 'blob_name')
+
+        record = MongoExportHistoryRecord(
+            blob_name=blob_name,
+            elapsed=elapsed,
+            stderr=stderr,
+            stdout=stdout)
+
+        logger.info(f'Writing history record: {record.to_dict()}')
+
+        await self.__export_repository.insert(
+            document=record.to_dict())
