@@ -116,6 +116,11 @@ class ChatGptProxyService:
 
         return result
 
+    async def get_image_generation(
+        self
+    ):
+        pass
+
     async def __get_history(
         self,
         start_timestamp: int,

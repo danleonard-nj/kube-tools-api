@@ -30,16 +30,13 @@ async def post_completions(container):
 
 
 @chatgpt_bp.configure('/api/chatgpt/engines', methods=['GET'], auth_scheme='default')
-async def post_engines(container):
+async def get_engines(container):
     service: ChatGptProxyService = container.resolve(
         ChatGptProxyService)
 
-    body = await request.get_json()
-
     return await service.proxy_request(
         endpoint='/v1/engines',
-        method='GET',
-        request_body=body)
+        method='GET')
 
 
 @chatgpt_bp.configure('/api/chatgpt/images/generations', methods=['POST'], auth_scheme='default')
