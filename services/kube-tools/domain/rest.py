@@ -1,5 +1,7 @@
 from typing import Dict, List
+
 from framework.serialization import Serializable
+from quart import Response
 
 
 class AuthorizationHeader(Serializable):
@@ -138,3 +140,59 @@ class NestCommandRequest(Serializable):
     ):
         self.command_type = data.get('command_type')
         self.params = data.get('params')
+
+
+class ChatGptProxyResponse(Serializable):
+    def __init__(
+        self,
+        request_body: Dict,
+        response: Response,
+        duration: float
+    ):
+        self.__request_body = request_body
+        self.__response = response
+        self.__duration = duration
+
+    def to_dict(
+        self
+    ) -> Dict:
+        return {
+            'request': {
+                'body': self.__request_body,
+            },
+            'response': {
+                'body': self.__response.json(),
+                'status_code': self.__response.status_code,
+                'headers': dict(self.__response.headers),
+            },
+            'stats': {
+                'duration': f'{self.__duration}s'
+            }
+        }
+
+
+class ChatGptHistoryEndpointsResponse(Serializable):
+    def __init__(
+        self,
+        results: List[Dict]
+    ):
+        self.__results = results
+
+    def __group_results(
+        self
+    ):
+        grouped = dict()
+        for result in self.__results:
+            if grouped.get(result.endpoint) is None:
+                grouped[result.endpoint] = []
+            grouped[result.endpoint].append(result)
+
+        return grouped
+
+    def to_dict(self) -> Dict:
+        grouped = self.__group_results()
+
+        return {
+            'endpoints': list(grouped.keys()),
+            'data': grouped
+        }

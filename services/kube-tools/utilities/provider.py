@@ -21,6 +21,7 @@ from clients.identity_client import IdentityClient
 from clients.nest_client import NestClient
 from clients.storage_client import StorageClient
 from clients.twilio_gateway import TwilioGatewayClient
+from data.chat_gpt_repository import ChatGptRepository
 from data.dead_man_switch_repository import DeadManSwitchRepository
 from data.google.google_auth_repository import GoogleAuthRepository
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
@@ -154,6 +155,7 @@ def register_repositories(
     descriptors.add_singleton(NestSensorRepository)
     descriptors.add_singleton(NestDeviceRepository)
     descriptors.add_singleton(MongoExportRepository)
+    descriptors.add_singleton(ChatGptRepository)
 
 
 def register_services(

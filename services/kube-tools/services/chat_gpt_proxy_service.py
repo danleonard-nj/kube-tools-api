@@ -1,7 +1,18 @@
+import asyncio
+import time
 from typing import Dict
+
+from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
+from framework.logger import get_logger
 from httpx import AsyncClient
-from quart import Response
+
+from data.chat_gpt_repository import ChatGptRepository
+from domain.gpt import ChatGptHistoryRecord
+from domain.rest import ChatGptHistoryEndpointsResponse, ChatGptProxyResponse
+from utilities.utils import DateTimeUtil, KeyUtils
+
+logger = get_logger(__name__)
 
 CONTENT_TYPE = 'application/json'
 
@@ -10,9 +21,13 @@ class ChatGptProxyService:
     def __init__(
         self,
         configuration: Configuration,
-        http_client: AsyncClient
+        repository: ChatGptRepository,
+        http_client: AsyncClient,
+        cache_client: CacheClientAsync
     ):
         self.__http_client = http_client
+        self.__repository = repository
+        self.__cache_client = cache_client
 
         self.__base_url = configuration.chatgpt.get(
             'base_url')
@@ -27,13 +42,41 @@ class ChatGptProxyService:
             'Content-Type': CONTENT_TYPE
         }
 
+    def __get_cache_key(
+        self,
+        **kwargs
+    ) -> str:
+        key = KeyUtils.create_uuid(
+            **kwargs)
+
+        return f'chatgpt-request-{key}'
+
     async def proxy_request(
         self,
         endpoint: str,
         method: str,
         request_body: dict = None
     ):
+        logger.info(f'Proxy request: {method}: {endpoint}')
         headers = self.__get_headers()
+
+        key = self.__get_cache_key(
+            headers=headers,
+            endpoint=endpoint,
+            method=method,
+            request_body=request_body)
+
+        logger.info(f'Request key: {key}')
+
+        cached_response = await self.__cache_client.get_json(
+            key=key)
+
+        if cached_response is not None:
+            logger.info(f'Returning cached response: {key}')
+            return cached_response
+
+        # Track request time for history record
+        start_time = time.time()
 
         response = await self.__http_client.request(
             url=f'{self.__base_url}/{endpoint}',
@@ -41,13 +84,91 @@ class ChatGptProxyService:
             json=request_body,
             headers=headers)
 
-        return {
-            'request': {
-                'body': request_body,
-            },
-            'response': {
-                'body': response.json(),
-                'status_code': response.status_code,
-                'headers': dict(response.headers)
-            }
-        }
+        duration = round(time.time() - start_time, 2)
+
+        logger.info(f'Status: {response.status_code}')
+        logger.info(f'Headers: {dict(response.headers)}')
+        logger.info(f'Duration: {duration}s')
+
+        result = ChatGptProxyResponse(
+            request_body=request_body,
+            response=response,
+            duration=duration)
+
+        # Cache the response async
+        logger.info(f'Firing cache response task')
+        asyncio.create_task(
+            self.__cache_client.set_json(
+                key=key,
+                value=result.to_dict(),
+                ttl=60 * 24 * 7))
+
+        logger.info('Storing history record')
+        record = ChatGptHistoryRecord(
+            endpoint=endpoint,
+            method=method,
+            response=result.to_dict(),
+            created_date=DateTimeUtil.timestamp())
+
+        insert_result = await self.__repository.insert(
+            document=record.to_dict())
+        logger.info(f'Record inserted: {insert_result.inserted_id}')
+
+        return result
+
+    async def __get_history(
+        self,
+        start_timestamp: int,
+        end_timestamp: int = None,
+        endpoint: str = None
+    ):
+        end_timestamp = int(
+            end_timestamp or DateTimeUtil.timestamp()
+        )
+
+        entities = await self.__repository.get_history(
+            start_timestamp=int(start_timestamp),
+            end_timestamp=end_timestamp,
+            endpoint=endpoint)
+
+        results = [ChatGptHistoryRecord.from_entity(entity)
+                   for entity in entities]
+
+        return results
+
+    async def get_history(
+        self,
+        start_timestamp: int,
+        end_timestamp: int = None,
+        endpoint: str = None
+    ):
+        logger.info(f'Get history: {start_timestamp} - {end_timestamp}')
+
+        return await self.__get_history(
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
+            endpoint=endpoint)
+
+    async def get_endpoint_history(
+        self,
+        start_timestamp: int,
+        end_timestamp: int = None,
+        endpoint=None
+    ):
+        logger.info(
+            f'Get grouped history: {start_timestamp} - {end_timestamp}')
+
+        end_timestamp = int(
+            end_timestamp or DateTimeUtil.timestamp()
+        )
+
+        entities = await self.__repository.get_history(
+            start_timestamp=int(start_timestamp),
+            end_timestamp=end_timestamp,
+            endpoint=endpoint)
+
+        results = [ChatGptHistoryRecord.from_entity(entity)
+                   for entity in entities]
+
+        return ChatGptHistoryEndpointsResponse(
+            results=results)

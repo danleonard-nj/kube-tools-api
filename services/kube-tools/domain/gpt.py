@@ -1,6 +1,8 @@
 
 import uuid
 from datetime import datetime
+from typing import Dict
+
 from framework.serialization import Serializable
 
 
@@ -58,3 +60,25 @@ class GptUserRequest(Serializable):
             user_id=str(uuid.uuid4()),
             timestamp=get_timestamp(),
             phone_number=phone_number)
+
+
+class ChatGptHistoryRecord(Serializable):
+    def __init__(
+        self,
+        endpoint: str,
+        method: str,
+        response: Dict,
+        created_date: int
+    ):
+        self.endpoint = endpoint
+        self.method = method
+        self.response = response
+        self.created_date = created_date
+
+    @staticmethod
+    def from_entity(data):
+        return ChatGptHistoryRecord(
+            endpoint=data.get('endpoint'),
+            method=data.get('method'),
+            response=data.get('response'),
+            created_date=data.get('created_date'))
