@@ -16,6 +16,13 @@ def get_history_args() -> Tuple[str, str, str]:
     )
 
 
+def get_usage_args() -> Tuple[str, str]:
+    return (
+        request.args.get('start_date'),
+        request.args.get('end_date')
+    )
+
+
 @chatgpt_bp.configure('/api/chatgpt/completions', methods=['POST'], auth_scheme='default')
 async def post_completions(container):
     service: ChatGptProxyService = container.resolve(
@@ -50,6 +57,18 @@ async def post_generate_images(container):
         endpoint='/v1/images/generations',
         method='POST',
         request_body=body)
+
+
+@chatgpt_bp.configure('/api/chatgpt/usage', methods=['GET'], auth_scheme='default')
+async def get_usage(container):
+    service: ChatGptProxyService = container.resolve(
+        ChatGptProxyService)
+
+    start_date, end_date = get_usage_args()
+
+    return await service.get_usage(
+        start_date=start_date,
+        end_date=end_date)
 
 
 @chatgpt_bp.configure('/api/chatgpt/history', methods=['GET'], auth_scheme='default')

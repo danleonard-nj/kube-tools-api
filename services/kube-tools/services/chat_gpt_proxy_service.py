@@ -5,6 +5,7 @@ from typing import Dict
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from framework.logger import get_logger
+from framework.uri import build_url
 from httpx import AsyncClient
 
 from data.chat_gpt_repository import ChatGptRepository
@@ -55,7 +56,8 @@ class ChatGptProxyService:
         self,
         endpoint: str,
         method: str,
-        request_body: dict = None
+        request_body: dict = None,
+        capture_history: bool = True
     ):
         logger.info(f'Proxy request: {method}: {endpoint}')
         headers = self.__get_headers()
@@ -103,6 +105,21 @@ class ChatGptProxyService:
                 value=result.to_dict(),
                 ttl=60 * 24 * 7))
 
+        if capture_history:
+            # Capture history async
+            asyncio.create_task(self.capture_history(
+                endpoint=endpoint,
+                method=method,
+                result=result))
+
+        return result
+
+    async def capture_history(
+        self,
+        endpoint: str,
+        method: str,
+        result: ChatGptProxyResponse
+    ):
         logger.info('Storing history record')
         record = ChatGptHistoryRecord(
             endpoint=endpoint,
@@ -114,12 +131,29 @@ class ChatGptProxyService:
             document=record.to_dict())
         logger.info(f'Record inserted: {insert_result.inserted_id}')
 
-        return result
-
     async def get_image_generation(
         self
     ):
         pass
+
+    async def get_usage(
+        self,
+        start_date,
+        end_date
+    ):
+        end_date = (end_date or
+                    DateTimeUtil.get_iso_date())
+
+        endpoint = build_url(
+            base=f'/dashboard/billing/usage',
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        return await self.proxy_request(
+            endpoint=endpoint,
+            method='GET',
+            capture_history=False)
 
     async def __get_history(
         self,

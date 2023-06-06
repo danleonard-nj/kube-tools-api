@@ -1,10 +1,10 @@
-from datetime import datetime
 import hashlib
 import json
-from typing import Union
-import uuid
-from hashlib import md5
 import time
+import uuid
+from datetime import datetime
+from hashlib import md5
+from typing import Union
 
 from framework.logger.providers import get_logger
 
@@ -12,9 +12,22 @@ logger = get_logger(__name__)
 
 
 class DateTimeUtil:
+    IsoDateTimeFormat = '%Y-%m-%dT%H:%M:%S.%fZ'
+    IsoDateFormat = '%Y-%m-%d'
+
     @staticmethod
-    def timestamp():
+    def timestamp() -> int:
         return int(time.time())
+
+    @classmethod
+    def get_iso_date(
+        cls
+    ) -> str:
+        return (
+            datetime
+            .now()
+            .strftime(cls.IsoDateFormat)
+        )
 
 
 class KeyUtils:
