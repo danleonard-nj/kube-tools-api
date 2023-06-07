@@ -141,14 +141,19 @@ class ChatGptProxyService:
         start_date,
         end_date
     ):
-        end_date = (end_date or
-                    DateTimeUtil.get_iso_date())
+        logger.info(f'Get usage: {start_date} - {end_date}')
+
+        end_date = (
+            end_date or DateTimeUtil.get_iso_date()
+        )
 
         endpoint = build_url(
             base=f'/dashboard/billing/usage',
             start_date=start_date,
             end_date=end_date
         )
+
+        logger.info(f'Endpoint: {endpoint}')
 
         return await self.proxy_request(
             endpoint=endpoint,

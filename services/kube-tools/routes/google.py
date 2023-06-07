@@ -1,15 +1,34 @@
 from framework.rest.blueprints.meta import MetaBlueprint
-from quart import request
+from quart import Response, jsonify, request
 from domain.rest import CreateEmailRuleRequest, UpdateEmailRuleRequest
 
 from services.gmail_rule_service import GmailRuleService
 from services.gmail_service import GmailService
 from framework.exceptions.nulls import ArgumentNullException
 
+from services.google_auth_service import GoogleAuthService
+
 google_bp = MetaBlueprint('google_bp', __name__)
 
 
-@google_bp.configure('/api/google/gmail', methods=['POST'], auth_scheme='default')
+@google_bp.configure('/api/google/auth', methods=['POST'], auth_scheme='default')
+async def get_auth(container):
+    service: GoogleAuthService = container.resolve(
+        GoogleAuthService)
+
+    body = await request.get_json()
+    scopes = body.get('scopes', [])
+
+    client = await service.get_auth_client(
+        scopes=scopes)
+
+    return Response(
+        response=client.to_json(),
+        content_type='application/json'
+    )
+
+
+@ google_bp.configure('/api/google/gmail', methods=['POST'], auth_scheme='default')
 async def post_gmail(container):
     service: GmailService = container.resolve(
         GmailService)
@@ -17,7 +36,7 @@ async def post_gmail(container):
     return await service.run_mail_service()
 
 
-@google_bp.configure('/api/google/gmail/rule', methods=['GET'], auth_scheme='default')
+@ google_bp.configure('/api/google/gmail/rule', methods=['GET'], auth_scheme='default')
 async def get_gmail_rules(container):
     service: GmailRuleService = container.resolve(
         GmailRuleService)
@@ -25,7 +44,7 @@ async def get_gmail_rules(container):
     return await service.get_rules()
 
 
-@google_bp.configure('/api/google/gmail/rule/<rule_id>', methods=['GET'], auth_scheme='default')
+@ google_bp.configure('/api/google/gmail/rule/<rule_id>', methods=['GET'], auth_scheme='default')
 async def get_gmail_rule(container, rule_id: str):
     service: GmailRuleService = container.resolve(
         GmailRuleService)
@@ -37,7 +56,7 @@ async def get_gmail_rule(container, rule_id: str):
         rule_id=rule_id)
 
 
-@google_bp.configure('/api/google/gmail/rule/<rule_id>', methods=['DELETE'], auth_scheme='default')
+@ google_bp.configure('/api/google/gmail/rule/<rule_id>', methods=['DELETE'], auth_scheme='default')
 async def delete_gmail_rule(container, rule_id: str):
     service: GmailRuleService = container.resolve(
         GmailRuleService)
@@ -49,7 +68,7 @@ async def delete_gmail_rule(container, rule_id: str):
         rule_id=rule_id)
 
 
-@google_bp.configure('/api/google/gmail/rule', methods=['POST'], auth_scheme='default')
+@ google_bp.configure('/api/google/gmail/rule', methods=['POST'], auth_scheme='default')
 async def post_gmail_rule(container):
     service: GmailRuleService = container.resolve(
         GmailRuleService)
@@ -63,7 +82,7 @@ async def post_gmail_rule(container):
         create_request=create_request)
 
 
-@google_bp.configure('/api/google/gmail/rule', methods=['PUT'], auth_scheme='default')
+@ google_bp.configure('/api/google/gmail/rule', methods=['PUT'], auth_scheme='default')
 async def put_gmail_rule(container):
     service: GmailRuleService = container.resolve(
         GmailRuleService)
