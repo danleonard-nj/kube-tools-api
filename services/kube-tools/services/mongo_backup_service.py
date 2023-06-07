@@ -68,11 +68,12 @@ class MongoBackupService:
         # Send email notification that process
         # is complete
         await self.__send_email_notification(
-            blob_name=blob_name)
+            blob_name=blob_name,
+            elapsed=(export_end - export_start))
 
-        # await self.__write_history_record(
-        #     blob_name=blob_name,
-        #     elapsed=(export_end - export_start))
+        await self.__write_history_record(
+            blob_name=blob_name,
+            elapsed=(export_end - export_start))
 
         return MongoExportResult(
             stdout=stdout,
@@ -219,7 +220,7 @@ class MongoBackupService:
         email_request, endpoint = self.__email_gateway_client.get_email_request(
             recipient=EMAIL_RECIPIENT,
             subject=EMAIL_SUBJECT,
-            body=f'MongoDB backup completed successfully: {blob_name}')
+            body=f'MongoDB backup completed successfully in {round(elapsed, 2)}s: {blob_name}')
 
         await self.__event_service.dispatch_email_event(
             endpoint=endpoint,
