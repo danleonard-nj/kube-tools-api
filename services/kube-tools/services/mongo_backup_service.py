@@ -202,29 +202,43 @@ class MongoBackupService:
 
             return result
 
+    # async def __send_email_notification(
+    #     self,
+    #     blob_name: str,
+    #     elapsed: timedelta
+    # ) -> None:
+
+    #     ArgumentNullException.if_none_or_whitespace(blob_name, 'blob_name')
+
+    #     logger.info('Sending notification email')
+
+    #     # await self.__email_client.send_email(
+    #     #     subject='MongoDB Backup Service',
+    #     #     recipient='dcl525@gmail.com',
+    #     #     message=f'MongoDB backup completed successfully: {blob_name}')
+
+    #     email_request, endpoint = self.__email_gateway_client.get_email_request(
+    #         recipient=EMAIL_RECIPIENT,
+    #         subject=EMAIL_SUBJECT,
+    #         body=f'MongoDB backup completed successfully in {round(elapsed, 2)}s: {blob_name}')
+
+    #     await self.__event_service.dispatch_email_event(
+    #         endpoint=endpoint,
+    #         message=email_request.to_dict())
+
     async def __send_email_notification(
         self,
-        blob_name: str,
-        elapsed: timedelta
+        blob_name: str
     ) -> None:
 
         ArgumentNullException.if_none_or_whitespace(blob_name, 'blob_name')
 
         logger.info('Sending notification email')
 
-        # await self.__email_client.send_email(
-        #     subject='MongoDB Backup Service',
-        #     recipient='dcl525@gmail.com',
-        #     message=f'MongoDB backup completed successfully: {blob_name}')
-
-        email_request, endpoint = self.__email_gateway_client.get_email_request(
-            recipient=EMAIL_RECIPIENT,
-            subject=EMAIL_SUBJECT,
-            body=f'MongoDB backup completed successfully in {round(elapsed, 2)}s: {blob_name}')
-
-        await self.__event_service.dispatch_email_event(
-            endpoint=endpoint,
-            message=email_request.to_dict())
+        await self.__email_gateway_client.send_email(
+            subject='MongoDB Backup Service',
+            recipient='dcl525@gmail.com',
+            message=f'MongoDB backup completed successfully: {blob_name}')
 
     async def __write_history_record(
         self,
