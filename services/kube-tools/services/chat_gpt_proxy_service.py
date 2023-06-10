@@ -1,21 +1,27 @@
 import asyncio
+import io
 import time
-from typing import Dict
+from typing import Dict, List
+import uuid
+from azure.storage.blob import ContainerClient
 
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from framework.logger import get_logger
 from framework.uri import build_url
 from httpx import AsyncClient
+from clients.storage_client import StorageClient
 
 from data.chat_gpt_repository import ChatGptRepository
 from domain.gpt import ChatGptHistoryRecord
-from domain.rest import ChatGptHistoryEndpointsResponse, ChatGptProxyResponse
+from domain.rest import ChatGptHistoryEndpointsResponse, ChatGptProxyResponse, ChatGptResponse
 from utilities.utils import DateTimeUtil, KeyUtils
 
 logger = get_logger(__name__)
 
 CONTENT_TYPE = 'application/json'
+BLOB_CONTAINER_NAME = 'chatgpt-image-results'
+IMAGE_ENDPOINT = '/v1/images/generations'
 
 
 class ChatGptProxyService:
@@ -24,11 +30,13 @@ class ChatGptProxyService:
         configuration: Configuration,
         repository: ChatGptRepository,
         http_client: AsyncClient,
+        storage_client: StorageClient,
         cache_client: CacheClientAsync
     ):
         self.__http_client = http_client
         self.__repository = repository
         self.__cache_client = cache_client
+        self.__storage_client = storage_client
 
         self.__base_url = configuration.chatgpt.get(
             'base_url')
@@ -52,13 +60,78 @@ class ChatGptProxyService:
 
         return f'chatgpt-request-{key}'
 
+    async def __capture_images(
+        self,
+        history_id: str,
+        result: ChatGptProxyResponse
+    ):
+        # List of result images
+        image_urls = (
+            result.response
+            .json()
+            .get('data', [])
+        )
+
+        image_urls = [x.get('url') for x in image_urls]
+        logger.info(f'Image urls: {image_urls}')
+
+        if not any(image_urls):
+            return
+
+        async def save_image(url: str, index: int):
+            response = await self.__http_client.get(
+                url=url)
+
+            if response.status_code != 200:
+                logger.error(f'Failed to store image: {url}')
+                return
+
+            await self.__storage_client.upload_blob(
+                container_name=BLOB_CONTAINER_NAME,
+                blob_name=f'{history_id}/{index}.png',
+                blob_data=response.content)
+
+        await asyncio.gather(*[
+            save_image(url, index)
+            for index, url in enumerate(image_urls)
+        ])
+
+    async def __get_history(
+        self,
+        start_timestamp: int,
+        end_timestamp: int = None,
+        endpoint: str = None
+    ):
+        end_timestamp = int(
+            end_timestamp or DateTimeUtil.timestamp()
+        )
+
+        entities = await self.__repository.get_history(
+            start_timestamp=int(start_timestamp),
+            end_timestamp=end_timestamp,
+            endpoint=endpoint)
+
+        results = [ChatGptHistoryRecord.from_entity(entity)
+                   for entity in entities]
+
+        # Look up stored image results
+        for result in results:
+            if result.endpoint == IMAGE_ENDPOINT:
+                image_count = result.get_image_list()
+                blob_names = [f'https://stazureks.blob.core.windows.net/chatgpt-image-results/{result.history_id}/{index}.png'
+                              for index in range(len(image_count))]
+                result.images = blob_names
+
+        return results
+
     async def proxy_request(
         self,
         endpoint: str,
         method: str,
         request_body: dict = None,
         capture_history: bool = True
-    ):
+    ) -> ChatGptProxyResponse:
+
         logger.info(f'Proxy request: {method}: {endpoint}')
         headers = self.__get_headers()
 
@@ -75,7 +148,9 @@ class ChatGptProxyService:
 
         if cached_response is not None:
             logger.info(f'Returning cached response: {key}')
-            return cached_response
+
+            return ChatGptProxyResponse.from_dict(
+                data=cached_response)
 
         # Track request time for history record
         start_time = time.time()
@@ -92,9 +167,15 @@ class ChatGptProxyService:
         logger.info(f'Headers: {dict(response.headers)}')
         logger.info(f'Duration: {duration}s')
 
+        gpt_response = ChatGptResponse(
+            body=response.json(),
+            status_code=response.status_code,
+            headers=dict(response.headers)
+        )
+
         result = ChatGptProxyResponse(
             request_body=request_body,
-            response=response,
+            response=gpt_response,
             duration=duration)
 
         # Cache the response async
@@ -119,9 +200,11 @@ class ChatGptProxyService:
         endpoint: str,
         method: str,
         result: ChatGptProxyResponse
-    ):
+    ) -> str:
+
         logger.info('Storing history record')
         record = ChatGptHistoryRecord(
+            history_id=str(uuid.uuid4()),
             endpoint=endpoint,
             method=method,
             response=result.to_dict(),
@@ -131,10 +214,11 @@ class ChatGptProxyService:
             document=record.to_dict())
         logger.info(f'Record inserted: {insert_result.inserted_id}')
 
-    async def get_image_generation(
-        self
-    ):
-        pass
+        # Store image results
+        if endpoint == IMAGE_ENDPOINT:
+            await self.__capture_images(
+                history_id=record.history_id,
+                result=result)
 
     async def get_usage(
         self,
@@ -159,26 +243,6 @@ class ChatGptProxyService:
             endpoint=endpoint,
             method='GET',
             capture_history=False)
-
-    async def __get_history(
-        self,
-        start_timestamp: int,
-        end_timestamp: int = None,
-        endpoint: str = None
-    ):
-        end_timestamp = int(
-            end_timestamp or DateTimeUtil.timestamp()
-        )
-
-        entities = await self.__repository.get_history(
-            start_timestamp=int(start_timestamp),
-            end_timestamp=end_timestamp,
-            endpoint=endpoint)
-
-        results = [ChatGptHistoryRecord.from_entity(entity)
-                   for entity in entities]
-
-        return results
 
     async def get_history(
         self,

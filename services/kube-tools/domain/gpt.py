@@ -5,6 +5,8 @@ from typing import Dict
 
 from framework.serialization import Serializable
 
+from domain.rest import ChatGptProxyResponse
+
 
 def get_timestamp() -> int:
     return int(
@@ -65,11 +67,13 @@ class GptUserRequest(Serializable):
 class ChatGptHistoryRecord(Serializable):
     def __init__(
         self,
+        history_id: str,
         endpoint: str,
         method: str,
         response: Dict,
         created_date: int
     ):
+        self.history_id = history_id
         self.endpoint = endpoint
         self.method = method
         self.response = response
@@ -78,7 +82,16 @@ class ChatGptHistoryRecord(Serializable):
     @staticmethod
     def from_entity(data):
         return ChatGptHistoryRecord(
+            history_id=data.get('history_id'),
             endpoint=data.get('endpoint'),
             method=data.get('method'),
             response=data.get('response'),
             created_date=data.get('created_date'))
+
+    def get_image_list(
+        self
+    ):
+        return (self.response
+                .get('response', dict())
+                .get('body', dict())
+                .get('data', dict()))
