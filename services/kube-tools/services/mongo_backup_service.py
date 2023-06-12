@@ -68,8 +68,7 @@ class MongoBackupService:
         # Send email notification that process
         # is complete
         await self.__send_email_notification(
-            blob_name=blob_name,
-            elapsed=(export_end - export_start))
+            blob_name=blob_name)
 
         await self.__write_history_record(
             blob_name=blob_name,
