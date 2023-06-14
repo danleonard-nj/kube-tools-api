@@ -17,6 +17,9 @@ from domain.mongo import (MongoBackupConstants, MongoExportBlob,
 EMAIL_SUBJECT = 'MongoDB Backup Service'
 EMAIL_RECIPIENT = 'dcl525@gmai.com'
 
+MONGO_TOOLS_CWD = '/app/utilities/mongotools/bin'
+MONGO_TOOLS_ARG = '--archive=dump.gz --gzip'
+
 logger = get_logger(__name__)
 
 
@@ -98,12 +101,12 @@ class MongoBackupService:
         self
     ) -> Tuple[str, str]:
 
-        mongodump = f"./mongodump '{self.__connection_string}' --archive=dump.gz --gzip"
+        mongodump = f"./mongodump '{self.__connection_string}' {MONGO_TOOLS_ARG}"
         logger.info(f'Running mongodump shell command: {mongodump}')
 
         process = await asyncio.create_subprocess_shell(
             mongodump,
-            cwd='/app/utilities/mongotools/bin',
+            cwd=MONGO_TOOLS_CWD,
             stderr=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE)
 

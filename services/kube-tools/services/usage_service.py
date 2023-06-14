@@ -19,6 +19,21 @@ def element_at(_list, index):
         return None
 
 
+REPORT_EMAIL_SUBJECT = 'Azure Usage'
+REPORT_SORT_KEY = 'Cost'
+REPORT_COLUMNS = [
+    'Cost',
+    'CostUSD',
+    'Currency',
+    'Product'
+]
+
+REPORT_GROUP_KEYS = [
+    'Product',
+    'Currency'
+]
+
+
 class UsageService:
     def __init__(
         self,
@@ -53,19 +68,16 @@ class UsageService:
 
         data = content.get('data')
 
-        df = pd.DataFrame(data)[[
-            'Cost',
-            'CostUSD',
-            'Currency',
-            'Product'
-        ]]
+        df = pd.DataFrame(data)[REPORT_COLUMNS]
 
-        df = df.groupby(by=[
-            'Product', 'Currency'],
-            as_index=False).sum()
+        df = (df
+              .groupby(
+                  by=REPORT_GROUP_KEYS,
+                  as_index=False)
+              .sum())
 
         df = df.sort_values(
-            by='Cost',
+            by=REPORT_SORT_KEY,
             ascending=False)
 
         table = df.to_dict(
@@ -75,7 +87,7 @@ class UsageService:
 
         event_request, endpoint = self.__email_client.get_datatable_email_request(
             recipient=self.__recipient,
-            subject=f'Azure Usage: {range_key}',
+            subject=f'{REPORT_EMAIL_SUBJECT}: {range_key}',
             data=table)
 
         await self.__event_service.dispatch_email_event(

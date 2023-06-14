@@ -287,6 +287,12 @@ class NestService:
         record: NestSensorData
     ) -> Tuple[str, int]:
 
+        if record is None:
+            return (
+                HealthStatus.Unhealthy,
+                0
+            )
+
         now = DateTimeUtil.timestamp()
 
         seconds_elapsed = now - record.timestamp
@@ -324,7 +330,9 @@ class NestService:
 
             stats = SensorHealthStats(
                 status=health_status,
-                last_contact=last_record.timestamp,
+                last_contact=(last_record.timestamp
+                              if last_record is not None
+                              else 0),
                 seconds_elapsed=seconds_elapsed)
 
             health = SensorHealth(

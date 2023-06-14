@@ -5,6 +5,11 @@ import json
 from typing import Dict, List
 import uuid
 from framework.serialization import Serializable
+from framework.logger import get_logger
+
+from utilities.utils import KeyUtils
+
+logger = get_logger(__name__)
 
 
 def to_fahrenheit(
@@ -157,12 +162,6 @@ class NestThermostat(Serializable):
         self.heat_celsius = heat_celsius
         self.cool_celsius = cool_celsius
         self.ambient_temperature_celsius = ambient_temperature_celsius
-
-    def __to_fahrenheit(
-        self,
-        celsius: float
-    ) -> float:
-        return (celsius * 9/5) + 32
 
     def to_dict(self) -> Dict:
         return super().to_dict() | {
@@ -327,6 +326,13 @@ class NestSensorData(Serializable):
             self.degrees_celsius,
             self.humidity_percent
         ])
+
+        shadow_key = KeyUtils.create_uuid([
+            self.degrees_celsius,
+            self.humidity_percent
+        ])
+
+        logger.info(f'Shadow key: {shadow_key}')
 
         hashed = hashlib.md5(data.encode())
         key = uuid.UUID(hashed.hexdigest())

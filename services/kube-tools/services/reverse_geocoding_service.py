@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple, Union, TypeVar
 
 from framework.concurrency import TaskCollection
 
@@ -26,6 +26,7 @@ class GoogleReverseGeocodingService:
         self,
         coordinate_pairs
     ) -> List[ReverseGeocodingModel]:
+
         fetch_tasks = TaskCollection()
 
         for pair in coordinate_pairs:
@@ -35,7 +36,11 @@ class GoogleReverseGeocodingService:
 
         return await fetch_tasks.run()
 
-    async def get_or_fetch_reverse_geocode(self, coordinate_pair) -> ReverseGeocodingModel:
+    async def get_or_fetch_reverse_geocode(
+        self,
+        coordinate_pair: Tuple[Union[float, int], Union[float, int]]
+    ) -> ReverseGeocodingModel:
+
         latitude, longitude = coordinate_pair
         key = CoordinateKey(
             latitude=latitude,
