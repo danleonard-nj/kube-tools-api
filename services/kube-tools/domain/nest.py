@@ -327,13 +327,6 @@ class NestSensorData(Serializable):
             self.humidity_percent
         ])
 
-        shadow_key = KeyUtils.create_uuid([
-            self.degrees_celsius,
-            self.humidity_percent
-        ])
-
-        logger.info(f'Shadow key: {shadow_key}')
-
         hashed = hashlib.md5(data.encode())
         key = uuid.UUID(hashed.hexdigest())
         return str(key)
