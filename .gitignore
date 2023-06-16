@@ -3,3 +3,4 @@ services/kube-tools/credentials.json
 services/kube-tools/myfitnesspal.json
 services/kube-tools/oauth.json
 services/kube-tools/token.json
+services/kube-tools/gpt_workbook.ipynb

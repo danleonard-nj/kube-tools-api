@@ -1,23 +1,18 @@
 import re
-from typing import Dict, List, OrderedDict
-
-import xmltodict
+from typing import Callable, Dict, List, OrderedDict
 from framework.logger import get_logger
 from framework.serialization import Serializable
 
-from domain.exceptions import InvalidSchemaException
 
 logger = get_logger(__name__)
 
 
 class Episode(Serializable):
-    Acast = 'acast:episodeId'
-
     def __init__(
         self,
-        episode_id,
-        episode_title,
-        audio
+        episode_id: str,
+        episode_title: str,
+        audio: str
     ):
         self.episode_id = episode_id
         self.episode_title = episode_title
@@ -26,23 +21,23 @@ class Episode(Serializable):
     @classmethod
     def from_feed(
         cls,
-        data
+        data,
+        id_selector: Callable,
+        title_selector: Callable,
+        audio_selector: Callable
     ) -> 'Episode':
         '''
         Parse episode from RSS feed data
         '''
 
-        if cls.Acast in data:
-            # Parse acast tags
-            return Episode(
-                episode_id=data.get('acast:episodeId'),
-                episode_title=data.get('itunes:title'),
-                audio=data.get('enclosure').get('@url'))
+        episode_id = id_selector(data)
+        episode_title = title_selector(data)
+        audio = audio_selector(data)
 
-        else:
-            # Log if the schema changes and notify
-            logger.info(f'RSS schema is not known: {data}')
-            raise InvalidSchemaException(data)
+        return Episode(
+            episode_id=episode_id,
+            episode_title=episode_title,
+            audio=audio)
 
     def get_filename(
         self,
@@ -60,6 +55,7 @@ class Feed:
     ):
         self.name = data.get('name')
         self.feed = data.get('feed')
+        self.type = data.get('type')
 
 
 class Show(Serializable):
@@ -130,27 +126,6 @@ class Show(Serializable):
         episode_id: str
     ):
         return episode_id in self.episode_ids
-
-
-class FeedHandler:
-    @classmethod
-    def get_show(
-        cls,
-        feed: str
-    ) -> Show:
-
-        dct = xmltodict.parse(xml_input=feed)
-        channel = dct.get('rss').get('channel')
-
-        episodes = [
-            Episode.from_feed(data=episode)
-            for episode in channel.get('item')
-        ]
-
-        return Show(
-            show_id=channel.get('acast:showId'),
-            show_title=channel.get('title'),
-            episodes=episodes)
 
 
 class DownloadedEpisode:

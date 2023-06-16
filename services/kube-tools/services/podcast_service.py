@@ -11,7 +11,8 @@ from clients.email_gateway_client import EmailGatewayClient
 from clients.google_drive_client import GoogleDriveClient
 from data.podcast_repository import PodcastRepository
 from domain.features import Feature
-from domain.podcasts import DownloadedEpisode, Episode, Feed, FeedHandler, Show
+from domain.podcasts.handlers import AcastFeedHandler, GenericFeedHandler
+from domain.podcasts.podcasts import DownloadedEpisode, Episode, Feed, Show
 from services.event_service import EventService
 
 logger = get_logger(__name__)
@@ -46,6 +47,7 @@ class PodcastService:
         Sync podcast feeds
         '''
 
+        # Get a list of feeds to sync
         feeds = self.get_feeds()
         results = list()
 
@@ -243,7 +245,15 @@ class PodcastService:
             rss_feed=rss_feed)
 
         logger.info(f'Parsing show from feed data')
-        show = FeedHandler.get_show(
+
+        if rss_feed.type == 'rss-acast':
+            handler = AcastFeedHandler()
+        elif rss_feed.type == 'rss-generic':
+            handler = GenericFeedHandler()
+        else:
+            raise Exception(f'Unsupported feed type: {rss_feed.type}')
+
+        show = handler.get_show(
             feed=feed_data.text)
 
         logger.info(f'Feed episode count: {len(show.episodes)}')
