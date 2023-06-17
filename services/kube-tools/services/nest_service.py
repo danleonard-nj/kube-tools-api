@@ -77,8 +77,8 @@ class NestService:
             raise Exception(
                 f"No sensor with the ID '{sensor_request.sensor_id}' exists")
 
-        last_record = await self.__get_top_sensor_record(
-            device_id=sensor_request.sensor_id)
+        # last_record = await self.__get_top_sensor_record(
+        #     device_id=sensor_request.sensor_id)
 
         # Create the sensor data record w/ stats
         sensor_data = NestSensorData(
@@ -88,13 +88,9 @@ class NestService:
             degrees_celsius=sensor_request.degrees_celsius,
             timestamp=DateTimeUtil.timestamp())
 
-        logger.info(f'Capturing sensor data: {sensor_data.to_dict()}')
-
         # Write the new sensor data
-        result = await self.__sensor_repository.insert(
+        await self.__sensor_repository.insert(
             document=sensor_data.to_dict())
-
-        logger.info(f'Success: {result.acknowledged}')
 
         return sensor_data
 

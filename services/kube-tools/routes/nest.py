@@ -52,8 +52,6 @@ async def post_sensor_data(container: ServiceProvider):
 
     body = await request.get_json()
 
-    logger.info(f'Body: {body}')
-
     sensor_request = NestSensorDataRequest(
         data=body)
 
