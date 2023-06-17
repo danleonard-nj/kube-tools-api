@@ -236,7 +236,7 @@ class NestService:
                 'degrees_celsius': entry.degrees_celsius,
                 'degrees_fahrenheit': entry.degrees_fahrenheit,
                 'humidity_percent': entry.humidity_percent,
-                'timestamp': entry.get_timestamp_datetime()
+                'timestamp': entry.get_datetime_from_timestamp()
             })
 
         return pd.DataFrame(data)

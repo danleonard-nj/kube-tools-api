@@ -115,3 +115,10 @@ async def post_command(container: ServiceProvider):
     return await service.handle_command(
         command_type=command_request.command_type,
         params=command_request.params)
+
+
+@nest_bp.configure('/api/nest/command', methods=['GET'], auth_scheme=AuthPolicy.Default)
+async def get_command(container: ServiceProvider):
+    service: NestCommandService = container.resolve(NestCommandService)
+
+    return await service.list_commands()

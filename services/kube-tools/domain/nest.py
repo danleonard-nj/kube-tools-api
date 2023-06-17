@@ -331,7 +331,7 @@ class NestSensorData(Serializable):
         key = uuid.UUID(hashed.hexdigest())
         return str(key)
 
-    def get_timestamp_datetime(
+    def get_datetime_from_timestamp(
         self
     ) -> datetime:
 
@@ -398,11 +398,11 @@ class ThermostatMode(enum.StrEnum):
     Off = 'OFF'
 
 
-class NestCommandType:
-    SetRange = 'SetRange'
-    SetHeat = 'SetHeat'
-    SetCool = 'SetCool'
-    SetPowerOff = 'SetPowerOff'
+class NestCommandType(enum.StrEnum):
+    SetRange = 'set-range'
+    SetHeat = 'set-heat'
+    SetCool = 'set-cool'
+    SetPowerOff = 'set-power-off'
 
 
 class SensorHealthStats(Serializable):

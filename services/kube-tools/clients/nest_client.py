@@ -1,5 +1,5 @@
 import asyncio
-from typing import Dict
+from typing import Dict, Tuple
 
 import httpx
 from framework.clients.cache_client import CacheClientAsync
@@ -84,7 +84,10 @@ class NestClient:
     async def execute_command(
         self,
         command: Dict
-    ):
+    ) -> Tuple[Dict, int]:
+
+        logger.info(f'Nest command: {command}')
+
         headers = await self.get_headers()
 
         response = await self.__http_client.post(
@@ -92,7 +95,9 @@ class NestClient:
             headers=headers,
             json=command)
 
-        return response.json()
+        return (
+            response.json(),
+            response.status_code)
 
     async def __fetch_token(
         self
