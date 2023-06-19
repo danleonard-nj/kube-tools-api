@@ -11,11 +11,14 @@ from clients.email_gateway_client import EmailGatewayClient
 from clients.google_drive_client import GoogleDriveClient
 from data.podcast_repository import PodcastRepository
 from domain.features import Feature
-from domain.podcasts.handlers import AcastFeedHandler, GenericFeedHandler
+from domain.podcasts.handlers import (AcastFeedHandler, FeedHandler,
+                                      GenericFeedHandler)
 from domain.podcasts.podcasts import DownloadedEpisode, Episode, Feed, Show
 from services.event_service import EventService
 
 logger = get_logger(__name__)
+
+DRY_RUN = False
 
 
 class PodcastService:
@@ -65,10 +68,7 @@ class PodcastService:
                 # feed
                 logger.exception(f'Failed to update show: {str(ex)}')
 
-        return {
-            download.show.show_id: download.show.to_dict()
-            for download in results if download is not None
-        }
+        return dict()
 
     async def handle_feed(
         self,
@@ -77,20 +77,19 @@ class PodcastService:
         logger.info(f'Handling RSS feed: {feed.name}')
 
         # Get episodes to download and show model
-        downloads, show = await self.__sync_feed(
+        downloads, show, is_new = await self.__sync_feed(
             rss_feed=feed)
 
         if not any(downloads):
             logger.info(f'No new episodes for show')
             return
 
-        logger.info(
-            f'Downloading {len(downloads)} episodes for show')
-
-        # Update the show with new episodes
-        await self.__podcast_repository.update(
-            values=show.to_dict(),
-            selector=show.get_selector())
+        if not is_new:
+            # Update the show with new episodes
+            await self.__podcast_repository.update(
+                selector=show.get_selector(),
+                values=show.to_dict()
+            )
 
         # Send an email for the downloaded episodes
         await self.__send_email(
@@ -192,7 +191,7 @@ class PodcastService:
         Fetch the RSS feed
         '''
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=None) as client:
             return await client.get(
                 url=rss_feed.feed,
                 follow_redirects=True)
@@ -209,7 +208,7 @@ class PodcastService:
     async def __get_saved_show(
         self,
         show: Show
-    ) -> Show:
+    ) -> Tuple[Show, bool]:
         '''
         Get the saved show record
         '''
@@ -224,13 +223,34 @@ class PodcastService:
         if entity is None:
             logger.info(f'Initial insert for show: {show.show_title}')
 
-            return Show(
+            new_show = Show(
                 show_id=show.show_id,
                 show_title=show.show_title,
                 episodes=list())
 
-        return Show.from_entity(
+            result = await self.__podcast_repository.insert(
+                document=new_show.to_dict())
+
+            logger.info(f'Insert result: {result.inserted_id}')
+
+            return (new_show, True)
+
+        saved_show = Show.from_entity(
             entity=entity)
+
+        return (saved_show, False)
+
+    def __get_handler(
+        self,
+        handler_type: str
+    ) -> FeedHandler:
+
+        if handler_type == 'rss-acast':
+            return AcastFeedHandler()
+        elif handler_type == 'rss-generic':
+            return GenericFeedHandler()
+        else:
+            raise Exception(f'Unsupported feed type: {handler_type}')
 
     async def __sync_feed(
         self,
@@ -246,12 +266,9 @@ class PodcastService:
 
         logger.info(f'Parsing show from feed data')
 
-        if rss_feed.type == 'rss-acast':
-            handler = AcastFeedHandler()
-        elif rss_feed.type == 'rss-generic':
-            handler = GenericFeedHandler()
-        else:
-            raise Exception(f'Unsupported feed type: {rss_feed.type}')
+        # Get the correct handler for given feed type
+        handler = self.__get_handler(
+            handler_type=rss_feed.type)
 
         show = handler.get_show(
             feed=feed_data.text)
@@ -259,8 +276,9 @@ class PodcastService:
         logger.info(f'Feed episode count: {len(show.episodes)}')
 
         # Get the stored show
-        entity = await self.__get_saved_show(
+        entity, is_new = await self.__get_saved_show(
             show=show)
+
         logger.info(f'Entity episode count: {len(entity.episodes)}')
 
         download_queue = []
@@ -271,20 +289,26 @@ class PodcastService:
 
                 logger.info(f'Save episode: {episode.episode_title}')
 
-                audio_data = await self.__get_episode_audio(
-                    episode=episode)
+                if not DRY_RUN:
+                    audio_data = await self.__get_episode_audio(
+                        episode=episode)
 
-                logger.info(f'Bytes fetched: {len(audio_data.content)}')
+                    logger.info(f'Bytes fetched: {len(audio_data.content)}')
 
                 downloaded_episode = DownloadedEpisode(
                     episode=episode,
                     show=show,
-                    size=len(audio_data.content))
+                    size=len(audio_data.content) if not DRY_RUN else 0)
 
                 download_queue.append(downloaded_episode)
 
-                await self.__upload_file(
-                    episode=downloaded_episode,
-                    audio=audio_data.content)
+                if not DRY_RUN:
+                    await self.__upload_file(
+                        episode=downloaded_episode,
+                        audio=audio_data.content)
 
-        return (download_queue, show)
+        return (
+            download_queue,
+            show,
+            is_new
+        )

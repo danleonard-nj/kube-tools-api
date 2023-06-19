@@ -128,7 +128,7 @@ class Show(Serializable):
         return episode_id in self.episode_ids
 
 
-class DownloadedEpisode:
+class DownloadedEpisode(Serializable):
     def __init__(
         self,
         episode: Episode,
@@ -149,3 +149,10 @@ class DownloadedEpisode:
     ) -> str:
         return self.episode.get_filename(
             show_title=self.show.show_title)
+
+    def to_dict(self) -> Dict:
+        return {
+            'episode': self.episode.to_dict(),
+            'show': self.show.to_dict(),
+            'size': self.size
+        }
