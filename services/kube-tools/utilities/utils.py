@@ -29,6 +29,14 @@ class DateTimeUtil:
             .strftime(cls.IsoDateFormat)
         )
 
+    @staticmethod
+    def iso_from_timestamp(timestamp: int) -> str:
+        return (
+            datetime
+            .fromtimestamp(timestamp)
+            .isoformat()
+        )
+
 
 class KeyUtils:
     @staticmethod

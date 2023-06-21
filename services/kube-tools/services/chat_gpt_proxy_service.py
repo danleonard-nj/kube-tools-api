@@ -78,7 +78,10 @@ class ChatGptProxyService:
         if not any(image_urls):
             return
 
-        async def save_image(url: str, index: int):
+        async def save_image(
+            url: str,
+            index: int
+        ):
             response = await self.__http_client.get(
                 url=url)
 

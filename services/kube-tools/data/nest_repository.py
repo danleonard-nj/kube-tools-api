@@ -55,3 +55,14 @@ class NestDeviceRepository(MongoRepositoryAsync):
             client=client,
             database='Nest',
             collection='Device')
+
+
+class NestLogRepository(MongoRepositoryAsync):
+    def __init__(
+        self,
+        client: AsyncIOMotorClient
+    ):
+        super().__init__(
+            client=client,
+            database='Nest',
+            collection='Log')

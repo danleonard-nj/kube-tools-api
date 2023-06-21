@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+
 from framework.di.service_provider import ServiceProvider
 from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
@@ -6,14 +7,15 @@ from quart import request
 
 from clients.nest_client import NestClient
 from domain.auth import AuthPolicy
-from domain.rest import NestCommandRequest, NestSensorDataRequest
+from domain.rest import NestCommandRequest, NestSensorDataRequest, NestSensorLogRequest
 from services.nest_command_service import NestCommandService
 from services.nest_service import NestService
-
 
 logger = get_logger(__name__)
 
 nest_bp = MetaBlueprint('nest_bp', __name__)
+
+API_KEY_NAME = 'nest-sensor-api-key'
 
 
 def default_start_timestamp():
@@ -46,7 +48,20 @@ async def post_sensor_purge(container: ServiceProvider):
     return await service.purge_sensor_data()
 
 
-@nest_bp.with_key_auth('/api/nest/sensor', methods=['POST'], key_name='nest-sensor-api-key')
+@nest_bp.with_key_auth('/api/nest/sensor/log', methods=['POST'], key_name=API_KEY_NAME)
+async def post_sensor_log(container: ServiceProvider):
+    service: NestService = container.resolve(NestService)
+
+    body = await request.get_json()
+
+    req = NestSensorLogRequest(
+        data=body)
+
+    return await service.log_message(
+        req=req)
+
+
+@nest_bp.with_key_auth('/api/nest/sensor', methods=['POST'], key_name=API_KEY_NAME)
 async def post_sensor_data(container: ServiceProvider):
     service: NestService = container.resolve(NestService)
 

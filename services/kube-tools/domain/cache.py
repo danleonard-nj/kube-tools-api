@@ -62,3 +62,9 @@ class CacheKey:
             key=key)
 
         return f'google-nest-gsd-{hash_key}'
+
+    @staticmethod
+    def nest_device(
+        device_id: str
+    ) -> str:
+        return f'google-nest-device-{device_id}'
