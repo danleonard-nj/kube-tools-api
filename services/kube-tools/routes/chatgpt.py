@@ -36,6 +36,19 @@ async def post_completions(container):
         request_body=body)
 
 
+@chatgpt_bp.configure('/api/chatgpt/chat/completions', methods=['POST'], auth_scheme='default')
+async def post_chat_completions(container):
+    service: ChatGptProxyService = container.resolve(
+        ChatGptProxyService)
+
+    body = await request.get_json()
+
+    return await service.proxy_request(
+        endpoint='/v1/chat/completions',
+        method='POST',
+        request_body=body)
+
+
 @chatgpt_bp.configure('/api/chatgpt/engines', methods=['GET'], auth_scheme='default')
 async def get_engines(container):
     service: ChatGptProxyService = container.resolve(
@@ -43,6 +56,16 @@ async def get_engines(container):
 
     return await service.proxy_request(
         endpoint='/v1/engines',
+        method='GET')
+
+
+@chatgpt_bp.configure('/api/chatgpt/models', methods=['GET'], auth_scheme='default')
+async def get_models(container):
+    service: ChatGptProxyService = container.resolve(
+        ChatGptProxyService)
+
+    return await service.proxy_request(
+        endpoint='/v1/models',
         method='GET')
 
 
@@ -55,6 +78,19 @@ async def post_generate_images(container):
 
     return await service.proxy_request(
         endpoint='/v1/images/generations',
+        method='POST',
+        request_body=body)
+
+
+@chatgpt_bp.configure('/api/chatgpt/images/edits', methods=['POST'], auth_scheme='default')
+async def post_generate_image_edit(container):
+    service: ChatGptProxyService = container.resolve(
+        ChatGptProxyService)
+
+    body = await request.get_json()
+
+    return await service.proxy_request(
+        endpoint='/v1/images/edits',
         method='POST',
         request_body=body)
 

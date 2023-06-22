@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uuid
 from datetime import datetime, timedelta
@@ -353,6 +354,11 @@ class NestService:
 
         if entity is None:
             return None
+
+        logger.info(f'Cache set: {cache_key}')
+        asyncio.create_task(self.__cache_client.set_json(
+            key=cache_key,
+            value=entity))
 
         device = NestSensorDevice.from_entity(
             data=entity)
