@@ -11,6 +11,7 @@ from routes.health import health_bp
 from routes.kubernetes import kubernetes_bp
 from routes.location_history import location_history_bp
 from routes.mongo_backup import mongo_backup_bp
+from routes.api_event_history import api_event_history_bp
 from routes.nest import nest_bp
 from routes.podcasts import podcasts_bp
 from routes.chatgpt import chatgpt_bp
@@ -40,6 +41,7 @@ app.register_blueprint(location_history_bp)
 app.register_blueprint(health_bp)
 app.register_blueprint(nest_bp)
 app.register_blueprint(chatgpt_bp)
+app.register_blueprint(api_event_history_bp)
 
 ContainerProvider.initialize_provider()
 InternalProvider.bind(ContainerProvider.get_service_provider())

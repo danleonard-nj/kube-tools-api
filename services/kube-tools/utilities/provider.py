@@ -21,6 +21,7 @@ from clients.identity_client import IdentityClient
 from clients.nest_client import NestClient
 from clients.storage_client import StorageClient
 from clients.twilio_gateway import TwilioGatewayClient
+from data.api_event_repository import ApiEventRepository
 from data.chat_gpt_repository import ChatGptRepository
 from data.dead_man_switch_repository import DeadManSwitchRepository
 from data.google.google_auth_repository import GoogleAuthRepository
@@ -37,6 +38,7 @@ from data.podcast_repository import PodcastRepository
 from domain.auth import AdRole, AuthPolicy
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
+from services.api_event_service import ApiEventHistoryService
 from services.chat_gpt_proxy_service import ChatGptProxyService
 from services.dead_man_switch_service import DeadManSwitchService
 from services.event_service import EventService
@@ -157,6 +159,7 @@ def register_repositories(
     descriptors.add_singleton(MongoExportRepository)
     descriptors.add_singleton(ChatGptRepository)
     descriptors.add_singleton(NestLogRepository)
+    descriptors.add_singleton(ApiEventRepository)
 
 
 def register_services(
@@ -177,6 +180,7 @@ def register_services(
     descriptors.add_singleton(NestService)
     descriptors.add_singleton(NestCommandService)
     descriptors.add_singleton(ChatGptProxyService)
+    descriptors.add_singleton(ApiEventHistoryService)
 
 
 class ContainerProvider(ProviderBase):
