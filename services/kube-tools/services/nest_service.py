@@ -92,7 +92,8 @@ class NestService:
             sensor_id=sensor_request.sensor_id,
             humidity_percent=sensor_request.humidity_percent,
             degrees_celsius=sensor_request.degrees_celsius,
-            timestamp=DateTimeUtil.timestamp())
+            timestamp=DateTimeUtil.timestamp(),
+            diagnostics=sensor_request.diagnostics)
 
         # Write the new sensor data
         await self.__sensor_repository.insert(

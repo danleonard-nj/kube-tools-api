@@ -132,6 +132,7 @@ class NestSensorDataRequest(Serializable):
 
         self.degrees_celsius = round(degrees_celsius or 0, 2)
         self.humidity_percent = round(humidity_percent or 0, 2)
+        self.diagnostics = data.get('diagnostics')
 
 
 class NestCommandRequest(Serializable):
