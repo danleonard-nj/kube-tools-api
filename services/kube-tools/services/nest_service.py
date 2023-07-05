@@ -25,8 +25,8 @@ from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
 
-SENSOR_UNHEALTHY_SECONDS = 4
-DEFAULT_PURGE_DAYS = 90
+SENSOR_UNHEALTHY_SECONDS = 60
+DEFAULT_PURGE_DAYS = 270
 
 
 class NestService:
@@ -43,10 +43,7 @@ class NestService:
     ):
         self.__thermostat_id = configuration.nest.get(
             'thermostat_id')
-        self.__purge_days = configuration.nest.get(
-            'purge_days', DEFAULT_PURGE_DAYS)
-        self.__purge_days = configuration.nest.get(
-            'purge_days', DEFAULT_PURGE_DAYS)
+        self.__purge_days = DEFAULT_PURGE_DAYS
 
         self.__nest_client = nest_client
         self.__sensor_repository = sensor_repository
