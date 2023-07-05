@@ -1,13 +1,12 @@
-from datetime import datetime, timedelta
 import enum
 import hashlib
 import json
-from typing import Dict, List
 import uuid
-from framework.serialization import Serializable
-from framework.logger import get_logger
+from datetime import datetime, timedelta
+from typing import Dict, List
 
-from utilities.utils import KeyUtils
+from framework.logger import get_logger
+from framework.serialization import Serializable
 
 logger = get_logger(__name__)
 
@@ -18,17 +17,6 @@ def to_fahrenheit(
     if celsius is None or celsius == 0:
         return 0
     return round((celsius * 9/5) + 32, 1)
-
-
-class NestConfiguration:
-    def __init_(
-        self,
-        data: Dict
-    ):
-        self.expiration_minutes = data.get('expiration_minutes')
-        self.notification_recipients = data.get('notification_recipients')
-        self.contacts = data.get('contacts')
-        self.created_date = data.get('created_date')
 
 
 class NestThermostatMode:

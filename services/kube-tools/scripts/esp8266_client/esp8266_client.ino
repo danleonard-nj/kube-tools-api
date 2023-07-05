@@ -5,115 +5,140 @@
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
 
-#define DHTPIN 5     // Digital pin connected to the DHT sensor
-#define DHTTYPE    DHT22     // DHT 22 (AM2302)
+typedef struct SensorData
+{
+  float temperature;
+  float humidity;
+};
 
-char* ssid     = "HotGiblets24";
-char* password = "vN55]8T7D7`+/W42I=BP:56CMXJ6$]w2";
-//char* deviceId = "41651552-6c5c-4465-b5ed-4cd32d17772e";
-//char* deviceId = "3974a713-174a-471e-a86f-e850ce97d937";
-char* deviceId = "f0a719fa-0dc7-4842-bd25-2a0c4f76677f";
-char* apiKey = "50384447-cc4c-485b-84fb-7057591fcea2";
-char* device_key = "bedroom-temp-monitor";
-char* base_url = "https://api.dan-leonard.com";
+ADC_MODE(ADC_VCC);
+
+#define DHTPIN 5      // Digital pin connected to the DHT sensor
+#define DHTTYPE DHT22 // DHT 22 (AM2302)
+
+const unsigned long period = 5000;
+const char *ssid = "";
+const char *password = "";
+const char *deviceId = "f0a719fa-0dc7-4842-bd25-2a0c4f76677f";
+const char *apiKey = "50384447-cc4c-485b-84fb-7057591fcea2";
+const char *device_key = "bedroom-temp-monitor";
+const char *base_url = "https://api.dan-leonard.com/";
+const char *url = "https://api.dan-leonard.com/api/tools/nest/sensor";
+
+uint32_t heap_free;
+uint16_t heap_max;
+uint8_t heap_frag;
+
+unsigned long currentMillis;
+unsigned long startMillis;
+unsigned long cycles = 0;
+
+String json_body = String("");
+
+SensorData captured;
 
 DHT dht(DHTPIN, DHTTYPE);
 WiFiClient wifiClient;
 HTTPClient httpClient;
 
-struct SensorData {
-  float temperature;
-  float humidity;
-};
-
-void print(String message) {
+void print(String message)
+{
   Serial.println(message);
   Serial.println("");
 }
 
-SensorData get_sensor_data() {
-  SensorData data;
-
-  data.temperature = dht.readTemperature();
-  data.humidity = dht.readHumidity();
-
-  return data;
+void get_sensor_data()
+{
+  captured.temperature = dht.readTemperature();
+  captured.humidity = dht.readHumidity();
 }
-  
-String build_json_payload(SensorData data, char* deviceId) {
+
+void build_json_payload(String &rtn)
+{
   JSONVar payload;
+  JSONVar diag;
 
-  print("Building JSON payload");
-
-  payload["degrees_celsius"] = data.temperature;
-  payload["humidity_percent"] = data.humidity;
+  payload["degrees_celsius"] = captured.temperature;
+  payload["humidity_percent"] = captured.humidity;
   payload["sensor_id"] = deviceId;
 
-  String jsonString = JSON.stringify(payload);
-  Serial.println(jsonString);
+  ESP.getHeapStats(&heap_free, &heap_max, &heap_frag);
 
-  return jsonString;
+  diag["vcc"] = (int)ESP.getVcc();
+  diag["rsr"] = (String)ESP.getResetReason();
+  diag["mil"] = (int)millis();
+  diag["cyc"] = (int)cycles;
+
+  JSONVar heap;
+
+  heap["free"] = (int)heap_free;
+  heap["max"] = (int)heap_max;
+  heap["frag"] = (float)heap_frag;
+
+  diag["heap"] = heap;
+  payload["diagnostics"] = diag;
+
+  rtn = JSON.stringify(payload);
 }
 
-void connect_wifi() {
+void connect_wifi()
+{
   Serial.print("Connecting to: ");
   Serial.println(ssid);
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED)
+  {
     delay(1000);
     Serial.print(".");
   }
 }
 
-void post_json(String endpoint, String json) {
-  HTTPClient https;
-  WiFiClientSecure client;
-
+void post_json(String endpoint, String json)
+{
   // Allow insecure requests (workaround for HTTPS)
-  client.setInsecure();
+  wifiClient.setInsecure();
 
   // Configure the request (content type, key auth)
-  https.begin(client, endpoint);
-  https.addHeader("Content-Type", "application/json");
-  https.addHeader("X-Api-Key", "50384447-cc4c-485b-84fb-7057591fcea2");
+  httpClient.begin(client, endpoint);
+  httpClient.addHeader("Content-Type", "application/json");
+  httpClient.addHeader("X-Api-Key", "50384447-cc4c-485b-84fb-7057591fcea2");
 
   // POST sensor data to the service endpoint
   // and get the response as a string
-  int statusCode = https.POST(json);
-  String response = https.getString();
-  
+  int statusCode = httpClient.POST(json);
+  String response = httpClient.getString();
+
   Serial.println("Response: ");
   Serial.print(response);
   Serial.println("");
-  
-  https.end();
 
   Serial.println("Status code: ");
   Serial.print(statusCode);
   Serial.println("");
+
+  httpClient.end();
 }
 
-void post_sensor_data() {
+void post_sensor_data()
+{
   print("Posting sensor data");
 
-  // Sensor data request endpoint
-  String url = String(base_url) + String("/api/tools/nest/sensor");
-  print(url);
+  get_sensor_data();
 
   // Capture DHT22 sensor data (temp and humidity)
   // and create the request payload as a JSON string
-  String json = build_json_payload(
-    get_sensor_data(),
-    deviceId);
+  build_json_payload(
+      json_body);
 
   // POST the sensor data to service endpoint
-  post_json(url, json);
+  post_json(url, json_body);
 }
 
-void setup() {
+void setup()
+{
   Serial.begin(115200);
   dht.begin();
 
@@ -121,9 +146,14 @@ void setup() {
 
   Serial.println("Connected: ");
   Serial.println(WiFi.localIP());
+
+  startMillis = millis();
 }
 
-void loop() {
+void loop()
+{
   post_sensor_data();
-  delay(1000);
+
+  delay(3000);
+  cycles++;
 }

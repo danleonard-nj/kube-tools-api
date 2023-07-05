@@ -1,11 +1,16 @@
+import logging
+
 from framework.abstractions.abstract_request import RequestContextProvider
 from framework.di.static_provider import InternalProvider
+from framework.logger.loggers import Loggers
 from framework.logger.providers import get_logger
 from framework.serialization.serializer import configure_serializer
 from framework.swagger.quart.swagger import Swagger
 from quart import Quart
 
 from routes.acr import acr_bp
+from routes.api_event_history import api_event_history_bp
+from routes.chatgpt import chatgpt_bp
 from routes.google import google_bp
 from routes.health import health_bp
 from routes.kubernetes import kubernetes_bp
@@ -14,9 +19,11 @@ from routes.mongo_backup import mongo_backup_bp
 from routes.api_event_history import api_event_history_bp
 from routes.nest import nest_bp
 from routes.podcasts import podcasts_bp
-from routes.chatgpt import chatgpt_bp
 from routes.usage import usage_bp
 from utilities.provider import ContainerProvider
+
+logging.getLogger(Loggers.Caching).setLevel(logging.ERROR)
+logging.getLogger(Loggers.Authorization).setLevel(logging.WARNING)
 
 logger = get_logger(__name__)
 app = Quart(__name__)

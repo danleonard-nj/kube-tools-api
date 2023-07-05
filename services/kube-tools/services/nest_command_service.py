@@ -1,12 +1,12 @@
-from typing import Dict, Union
+from typing import Dict
 
+from framework.configuration import Configuration
 from framework.logger import get_logger
+from framework.serialization import Serializable
 
 from clients.nest_client import NestClient
-from domain.nest import NestCommandType, NestThermostat, ThermostatMode
-from framework.configuration import Configuration
+from domain.nest import NestCommandType, ThermostatMode
 from utilities.utils import to_celsius
-from framework.serialization import Serializable
 
 logger = get_logger(__name__)
 
