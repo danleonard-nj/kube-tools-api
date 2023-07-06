@@ -40,7 +40,7 @@ class GmailClient:
     ) -> str:
 
         cache_key = CacheKey.gmail_token()
-        logger.info(f'Gmail token cache key: {cache_key}')
+        # logger.info(f'Gmail token cache key: {cache_key}')
 
         token = self.__memory_cache.get(cache_key)
 
