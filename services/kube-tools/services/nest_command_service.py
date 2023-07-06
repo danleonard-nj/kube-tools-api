@@ -93,7 +93,7 @@ class NestCommandService:
             mode=mode.value
         )
 
-        logger.info(f'Set mode: {mode}')
+        logger.info(f'Set mode: {mode.to_dict()}')
 
         return await self.__nest_client.execute_command(
             command=command.to_dict())
@@ -117,7 +117,7 @@ class NestCommandService:
             heatCelsius=to_celsius(heat_degrees_fahrenheit)
         )
 
-        logger.info(f'Set heat: {command}')
+        logger.info(f'Set heat: {command.to_dict()}')
         return await self.__nest_client.execute_command(
             command=command.to_dict())
 
@@ -141,7 +141,7 @@ class NestCommandService:
             coolCelsius=to_celsius(cool_degrees_fahrenheit)
         )
 
-        logger.info(f'Set cool: {command}')
+        logger.info(f'Set cool: {command.to_dict()}')
         return await self.__nest_client.execute_command(
             command=command.to_dict())
 
@@ -169,7 +169,7 @@ class NestCommandService:
             coolCelsius=to_celsius(cool_degrees_fahrenheit)
         )
 
-        logger.info(f'Set range: {command}')
+        logger.info(f'Set range: {command.to_dict()}')
         return await self.__nest_client.execute_command(
             command=command.to_dict())
 
@@ -182,7 +182,9 @@ class NestCommandService:
     async def list_commands(
         self
     ):
-        return [{
+        commands = [{
             'command': command.name,
             'key': command.value
         } for command in NestCommandType]
+
+        return commandss
