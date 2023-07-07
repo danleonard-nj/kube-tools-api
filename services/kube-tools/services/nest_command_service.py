@@ -93,7 +93,7 @@ class NestCommandService:
             mode=mode.value
         )
 
-        logger.info(f'Set mode: {mode.to_dict()}')
+        logger.info(f'Set mode: {mode}')
 
         return await self.__nest_client.execute_command(
             command=command.to_dict())
