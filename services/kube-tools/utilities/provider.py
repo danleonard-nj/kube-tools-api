@@ -35,6 +35,7 @@ from data.location_repository import (WeatherStationRepository,
                                       ZipLatLongRepository)
 from data.mongo_export_repository import MongoExportRepository
 from data.nest_repository import NestDeviceRepository, NestLogRepository, NestSensorRepository
+from data.pfsense_log_repository import PfSenseLogRepository
 from data.podcast_repository import PodcastRepository
 from domain.auth import AdRole, AuthPolicy
 from services.acr_purge_service import AcrPurgeService
@@ -49,6 +50,7 @@ from services.location_history_service import LocationHistoryService
 from services.mongo_backup_service import MongoBackupService
 from services.nest_command_service import NestCommandService
 from services.nest_service import NestService
+from services.pfsense_log_service import PfSenseLogService
 from services.podcast_service import PodcastService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
 from services.usage_service import UsageService
@@ -162,6 +164,7 @@ def register_repositories(
     descriptors.add_singleton(NestLogRepository)
     descriptors.add_singleton(ApiEventRepository)
     descriptors.add_singleton(GoogleEmailLogRepository)
+    descriptors.add_singleton(PfSenseLogRepository)
 
 
 def register_services(
@@ -183,6 +186,7 @@ def register_services(
     descriptors.add_singleton(NestCommandService)
     descriptors.add_singleton(ChatGptProxyService)
     descriptors.add_singleton(ApiEventHistoryService)
+    descriptors.add_singleton(PfSenseLogService)
 
 
 class ContainerProvider(ProviderBase):
