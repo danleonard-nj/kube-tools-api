@@ -20,6 +20,7 @@ class MongoDatabase:
     Health = 'Health'
     MongoExport = 'MongoExport'
     ChatGPT = 'ChatGPT'
+    Google = 'Google'
 
 
 class MongoCollection:
@@ -36,6 +37,8 @@ class MongoCollection:
     DeadManSwitchConfiguration = 'DeadManSwitchConfiguration'
     MongoExportHistory = 'MongoExportHistory'
     History = 'History'
+    EmailServiceLog = 'EmailServiceLog'
+    EmailRule = 'EmailRule'
 
 
 class MongoExportPurgeResult(Serializable):

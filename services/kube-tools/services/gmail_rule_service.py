@@ -1,16 +1,18 @@
 import uuid
 from datetime import datetime
-from typing import List
+from typing import Dict, List
 
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
+from data.google.google_email_log_repository import GoogleEmailLogRepository
 
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from domain.exceptions import (EmailRuleExistsException,
                                EmailRuleNotFoundException)
-from domain.google import GmailEmailRule
+from domain.google import EmailRuleLog, GmailEmailRule
 from domain.rest import (CreateEmailRuleRequest, DeleteGmailEmailRuleResponse,
                          UpdateEmailRuleRequest)
+from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
 
@@ -19,8 +21,10 @@ class GmailRuleService:
     def __init__(
         self,
         email_rule_repository: GoogleEmailRuleRepository,
+        log_repository: GoogleEmailLogRepository
     ):
         self.__email_rule_repository = email_rule_repository
+        self.__log_repository = log_repository
 
     async def get_rules(
         self
@@ -167,23 +171,18 @@ class GmailRuleService:
 
         return rule
 
-    async def update_rule_items_caught_count(
+    async def log_results(
         self,
-        rule_id: str,
-        count_processed: int
+        results: Dict
     ):
-        ArgumentNullException.if_none_or_whitespace(rule_id, 'rule_id')
+        logger.info(f'Logging rule service results: {results}')
 
-        logger.info(
-            f'Rule: {rule_id}: Uptating count processed: {count_processed}')
+        record = EmailRuleLog(
+            log_id=str(uuid.uuid4()),
+            results=results,
+            created_date=DateTimeUtil.timestamp())
 
-        # Will throw on non-numeric value
-        mod = {
-            '$inc': {
-                'count_processed': count_processed or 0
-            }
-        }
+        logger.info(f'Log record: {record.to_dict()}')
 
-        await self.__email_rule_repository.collection.update_one(
-            {'rule_id': rule_id},
-            mod)
+        await self.__log_repository.insert(
+            document=record.to_dict())

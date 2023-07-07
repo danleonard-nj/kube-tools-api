@@ -187,4 +187,4 @@ class NestCommandService:
             'key': command.value
         } for command in NestCommandType]
 
-        return commandss
+        return commands

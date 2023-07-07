@@ -4,7 +4,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from domain.mongo import MongoCollection, MongoDatabase
 
 
-class GoogleEmailRuleRepository(MongoRepositoryAsync):
+class GoogleEmailLogRepository(MongoRepositoryAsync):
     def __init__(
         self,
         client: AsyncIOMotorClient
@@ -12,4 +12,4 @@ class GoogleEmailRuleRepository(MongoRepositoryAsync):
         super().__init__(
             client=client,
             database=MongoDatabase.Google,
-            collection=MongoCollection.EmailRule)
+            collection=MongoCollection.EmailServiceLog)

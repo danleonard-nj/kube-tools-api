@@ -352,3 +352,15 @@ class GoogleDriveFileUpload:
     def __exit__(self, *args, **kwargs):
         if not self.__data.closed:
             self.__data.close()
+
+
+class EmailRuleLog(Serializable):
+    def __init__(
+        self,
+        log_id: str,
+        results: Dict,
+        created_date: datetime
+    ):
+        self.log_id = log_id
+        self.results = results
+        self.created_date = created_date

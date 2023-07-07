@@ -1,3 +1,4 @@
+import asyncio
 from typing import Dict, List
 
 from framework.configuration import Configuration
@@ -62,6 +63,9 @@ class GmailService:
             logger.info(
                 f'Rule: {rule.name}: Emails affected: {affected_count}')
 
+        asyncio.create_task(self.__rule_service.log_results(
+            results=run_results))
+
         return run_results
 
     async def process_archive_rule(
@@ -76,6 +80,7 @@ class GmailService:
 
         logger.info(f'Result count: {len(query_result.messages)}')
 
+        archived = 0
         for message_id in query_result.message_ids:
             message = await self.__gmail_client.get_message(
                 message_id=message_id)
@@ -85,10 +90,11 @@ class GmailService:
 
             logger.info(f'Rule: {rule.name}: Archiving email: {message_id}')
 
+            archived += 1
             await self.__gmail_client.archive_message(
                 message_id=message_id)
 
-        return len(query_result.message_ids)
+        return archived
 
     async def process_sms_rule(
         self,
@@ -105,7 +111,7 @@ class GmailService:
         notify_count = 0
 
         for message_id in query_result.message_ids:
-            logger.info(f'Get email message: {message_id}')
+            logger.debug(f'Get email message: {message_id}')
 
             message = await self.__gmail_client.get_message(
                 message_id=message_id)
@@ -140,7 +146,7 @@ class GmailService:
 
             logger.info(f'Tags add/remove: {to_add}: {to_remove}')
 
-            await self.__rule_service.update_rule_items_caught_count(
+            await self.__rule_service.log_results(
                 rule_id=rule.rule_id,
                 count_processed=rule.count_processed)
 

@@ -25,6 +25,7 @@ from data.api_event_repository import ApiEventRepository
 from data.chat_gpt_repository import ChatGptRepository
 from data.dead_man_switch_repository import DeadManSwitchRepository
 from data.google.google_auth_repository import GoogleAuthRepository
+from data.google.google_email_log_repository import GoogleEmailLogRepository
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from data.google.google_location_history_repository import \
     GoogleLocationHistoryRepository
@@ -160,6 +161,7 @@ def register_repositories(
     descriptors.add_singleton(ChatGptRepository)
     descriptors.add_singleton(NestLogRepository)
     descriptors.add_singleton(ApiEventRepository)
+    descriptors.add_singleton(GoogleEmailLogRepository)
 
 
 def register_services(

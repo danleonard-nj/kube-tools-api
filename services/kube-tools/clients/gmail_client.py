@@ -40,12 +40,10 @@ class GmailClient:
     ) -> str:
 
         cache_key = CacheKey.gmail_token()
-        # logger.info(f'Gmail token cache key: {cache_key}')
 
         token = self.__memory_cache.get(cache_key)
 
         if token is not None:
-            logger.info(f'Using cached token: {token}')
             return token
 
         logger.info(f'Fetching token from auth client')
@@ -83,7 +81,7 @@ class GmailClient:
 
         # Build endpoint with message
         endpoint = f'{self.__base_url}/v1/users/me/messages/{message_id}'
-        logger.info(f'Endpoint: {endpoint}')
+        logger.debug(f'Endpoint: {endpoint}')
 
         auth_headers = await self.__get_auth_headers()
         message_response = await self.__http_client.get(
