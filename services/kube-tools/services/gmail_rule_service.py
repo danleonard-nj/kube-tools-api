@@ -2,13 +2,15 @@ import uuid
 from datetime import datetime
 from typing import Dict, List
 
+from framework.clients.feature_client import FeatureClientAsync
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
-from data.google.google_email_log_repository import GoogleEmailLogRepository
 
+from data.google.google_email_log_repository import GoogleEmailLogRepository
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from domain.exceptions import (EmailRuleExistsException,
                                EmailRuleNotFoundException)
+from domain.features import Feature
 from domain.google import EmailRuleLog, GmailEmailRule
 from domain.rest import (CreateEmailRuleRequest, DeleteGmailEmailRuleResponse,
                          UpdateEmailRuleRequest)
@@ -21,10 +23,12 @@ class GmailRuleService:
     def __init__(
         self,
         email_rule_repository: GoogleEmailRuleRepository,
-        log_repository: GoogleEmailLogRepository
+        log_repository: GoogleEmailLogRepository,
+        feature_client: FeatureClientAsync
     ):
         self.__email_rule_repository = email_rule_repository
         self.__log_repository = log_repository
+        self.__feature_client = feature_client
 
     async def get_rules(
         self
@@ -176,6 +180,13 @@ class GmailRuleService:
         results: Dict
     ):
         logger.info(f'Logging rule service results: {results}')
+
+        is_enabled = await self.__feature_client.is_enabled(
+            feature_key=Feature.EmailRuleLogIngestion)
+
+        if not is_enabled:
+            logger.info(f'Email rule log ingestion is disabled')
+            return
 
         record = EmailRuleLog(
             log_id=str(uuid.uuid4()),

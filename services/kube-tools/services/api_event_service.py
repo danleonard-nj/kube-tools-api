@@ -1,7 +1,8 @@
 from typing import Dict, List
-from framework.logger import get_logger
-from data.api_event_repository import ApiEventRepository
 
+from framework.logger import get_logger
+
+from data.api_event_repository import ApiEventRepository
 
 logger = get_logger(__name__)
 
