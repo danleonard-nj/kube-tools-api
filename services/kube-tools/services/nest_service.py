@@ -10,7 +10,6 @@ from framework.clients.cache_client import CacheClientAsync
 from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
 from framework.logger import get_logger
-from sqlalchemy import FetchedValue
 
 from clients.email_gateway_client import EmailGatewayClient
 from clients.nest_client import NestClient
