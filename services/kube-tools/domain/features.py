@@ -7,3 +7,4 @@ class Feature:
     DeadManSwitch = 'dead-man-switch'
     PfSenseLogIngestion = 'pf-sense-data-ingestion'
     EmailRuleLogIngestion = 'email-rule-log-ingestion'
+    NestSensorDataIngestion = 'nest-sensor-data-ingestion'

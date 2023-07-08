@@ -1,4 +1,5 @@
 import asyncio
+from faulthandler import is_enabled
 import json
 import uuid
 from datetime import datetime, timedelta
@@ -9,12 +10,14 @@ from framework.clients.cache_client import CacheClientAsync
 from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
 from framework.logger import get_logger
+from sqlalchemy import FetchedValue
 
 from clients.email_gateway_client import EmailGatewayClient
 from clients.nest_client import NestClient
 from data.nest_repository import (NestDeviceRepository, NestLogRepository,
                                   NestSensorRepository)
 from domain.cache import CacheKey
+from domain.features import Feature
 from domain.nest import (HealthStatus, NestSensorData,
                          NestSensorDataQueryResult, NestSensorDevice,
                          NestThermostat, SensorDataPurgeResult, SensorHealth,
@@ -22,6 +25,7 @@ from domain.nest import (HealthStatus, NestSensorData,
 from domain.rest import NestSensorDataRequest, NestSensorLogRequest
 from services.event_service import EventService
 from utilities.utils import DateTimeUtil
+from framework.clients.feature_client import FeatureClientAsync
 
 logger = get_logger(__name__)
 
@@ -39,7 +43,8 @@ class NestService:
         log_repository: NestLogRepository,
         event_service: EventService,
         email_gateway: EmailGatewayClient,
-        cache_client: CacheClientAsync
+        cache_client: CacheClientAsync,
+        feature_client: FeatureClientAsync
     ):
         self.__thermostat_id = configuration.nest.get(
             'thermostat_id')
@@ -52,6 +57,7 @@ class NestService:
         self.__email_gateway = email_gateway
         self.__cache_client = cache_client
         self.__log_repository = log_repository
+        self.__feature_client = feature_client
 
     async def get_thermostat(
         self
@@ -71,6 +77,13 @@ class NestService:
     ) -> NestSensorData:
 
         logger.info(f'Logging sensor data: {sensor_request.sensor_id}')
+
+        is_enabled = await self.__feature_client.is_enabled(
+            feature_key=Feature.NestSensorDataIngestion)
+
+        if not is_enabled:
+            logger.info(f'Nest sensor data ingestion is disabled')
+            return
 
         sensor = await self.__get_sensor(
             device_id=sensor_request.sensor_id)
