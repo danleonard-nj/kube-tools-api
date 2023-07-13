@@ -66,8 +66,10 @@ class GmailQueryResult(Serializable):
         self,
         messages
     ):
-        return [message_id.get('id')
-                for message_id in messages]
+        if messages is not None:
+            return [message_id.get('id')
+                    for message_id in messages
+                    if message_id is not None]
 
 
 class GmailEmail(Serializable):

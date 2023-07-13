@@ -7,10 +7,15 @@ from framework.logger import get_logger
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
 from constants.google import GmailRuleAction, GoogleEmailHeader, GoogleEmailLabel
-from domain.google import GmailEmail, GmailEmailRule
+from domain.google import GmailEmail, GmailEmailHeaders, GmailEmailRule
+from services.bank_service import BankService
 from services.gmail_rule_service import GmailRuleService
 
 logger = get_logger(__name__)
+
+WELLS_FARGO_RULE_ID = '7062d7af-c920-4f2e-bdc5-e52314d69194'
+WELLS_FARGO_BALANCE_EMAIL_KEY = 'Balance summary'
+WELLS_FARGO_BANK_KEY = 'wells-fargo'
 
 
 class GmailService:
@@ -19,11 +24,13 @@ class GmailService:
         configuration: Configuration,
         gmail_client: GmailClient,
         rule_service: GmailRuleService,
+        bank_service: BankService,
         twilio_gateway: TwilioGatewayClient
     ):
         self.__gmail_client = gmail_client
         self.__rule_service = rule_service
         self.__twilio_gateway = twilio_gateway
+        self.__bank_service = bank_service
 
         self.__sms_recipient = configuration.gmail.get(
             'sms_recipient')
@@ -78,10 +85,10 @@ class GmailService:
             query=rule.query,
             max_results=rule.max_results)
 
-        logger.info(f'Result count: {len(query_result.messages)}')
+        logger.info(f'Result count: {len(query_result.messages or [])}')
 
         archived = 0
-        for message_id in query_result.message_ids:
+        for message_id in query_result.message_ids or []:
             message = await self.__gmail_client.get_message(
                 message_id=message_id)
 
@@ -122,7 +129,7 @@ class GmailService:
 
             logger.info(f'Message eligible for notification: {message_id}')
 
-            body = self.__get_message_body(
+            body = await self.__get_message_body(
                 rule=rule,
                 message=message)
 
@@ -146,15 +153,11 @@ class GmailService:
 
             logger.info(f'Tags add/remove: {to_add}: {to_remove}')
 
-            await self.__rule_service.log_results(
-                rule_id=rule.rule_id,
-                count_processed=rule.count_processed)
-
             notify_count += 1
 
         return notify_count
 
-    def __get_message_body(
+    async def __get_message_body(
         self,
         rule: GmailEmailRule,
         message: GmailEmail
@@ -170,4 +173,29 @@ class GmailService:
         body += '\n'
         body += f'https://mail.google.com/mail/u/0/#inbox/{message.message_id}'
 
+        if rule.rule_id == WELLS_FARGO_RULE_ID:
+            logger.info('Wells Fargo rule detected')
+
+            if WELLS_FARGO_BALANCE_EMAIL_KEY in message.snippet:
+                logger.info('Wells Fargo balance email detected')
+                await self.handle_bank_email(
+                    message=message)
+
         return body
+
+    async def handle_bank_email(
+        self,
+        message: GmailEmail
+    ):
+
+        try:
+            balance = message.snippet.split('Ending Balance: ')[
+                1].split(' ')[0].replace('$', '')
+
+            await self.__bank_service.capture_balance(
+                bank_key=WELLS_FARGO_BANK_KEY,
+                balance=float(balance))
+
+        except Exception as ex:
+            logger.exception(f'Error parsing balance: {ex.message}')
+            balance = 0.0

@@ -18,6 +18,8 @@ from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
 
+WELLS_FARGO_RULE_ID = '7062d7af-c920-4f2e-bdc5-e52314d69194'
+
 
 class GmailRuleService:
     def __init__(
