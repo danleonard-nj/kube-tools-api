@@ -1,4 +1,5 @@
-from typing import Dict
+import enum
+from typing import Dict, List
 import uuid
 from framework.configuration import Configuration
 from data.bank_repository import BankBalanceRepository
@@ -10,6 +11,10 @@ from framework.serialization import Serializable
 logger = get_logger(__name__)
 
 BANK_KEY_WELLS_FARGO = 'wells-fargo'
+
+
+class BankKey(enum.StrEnum):
+    WellsFargo = 'wells-fargo'
 
 
 class BankBalance(Serializable):
@@ -68,14 +73,19 @@ class BankService:
     async def get_balance(
         self,
         bank_key: str
-    ):
+    ) -> BankBalance:
+
         logger.info(f'Getting balance for bank {bank_key}')
 
+        # Parse the bank key, this will throw if an
+        # invalid key is provided
+        key = BankKey(bank_key)
+
         query_filter = {
-            'bank_key': bank_key
+            'bank_key': key.value
         }
 
-        entity = await self.__balance_repository.find_one(
+        entity = await self.__balance_repository.collection.find_one(
             filter=query_filter,
             sort=[('timestamp', -1)])
 
@@ -90,3 +100,19 @@ class BankService:
             data=entity)
 
         return balance
+
+    async def get_balances(
+        self
+    ) -> List[BankBalance]:
+
+        logger.info(f'Getting balances for all banks')
+
+        results = list()
+        for key in BankKey:
+            logger.info(f'Getting balance for bank {key}')
+            result = await self.get_balance(
+                bank_key=str(key))
+
+            results.append(result)
+
+        return results
