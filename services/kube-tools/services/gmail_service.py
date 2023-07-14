@@ -1,13 +1,18 @@
 import asyncio
+import json
 import re
 from typing import Dict, List
 
 from bs4 import BeautifulSoup
+from cachetools import cached
+from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from framework.logger import get_logger
+from framework.crypto.hashing import sha256
 from framework.validators.nulls import none_or_whitespace
 
-from clients.chat_gpt_service_client import ChatGptException, ChatGptServiceClient
+from clients.chat_gpt_service_client import (ChatGptException,
+                                             ChatGptServiceClient)
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
 from constants.google import (GmailRuleAction, GoogleEmailHeader,
@@ -15,6 +20,7 @@ from constants.google import (GmailRuleAction, GoogleEmailHeader,
 from domain.google import GmailEmail, GmailEmailRule, parse_gmail_body
 from services.bank_service import BankService
 from services.gmail_rule_service import GmailRuleService
+from utilities.utils import KeyUtils
 
 logger = get_logger(__name__)
 
@@ -45,13 +51,15 @@ class GmailService:
         rule_service: GmailRuleService,
         bank_service: BankService,
         twilio_gateway: TwilioGatewayClient,
-        chat_gpt_service_client: ChatGptServiceClient
+        chat_gpt_service_client: ChatGptServiceClient,
+        cache_client: CacheClientAsync
     ):
         self.__gmail_client = gmail_client
         self.__rule_service = rule_service
         self.__twilio_gateway = twilio_gateway
         self.__bank_service = bank_service
         self.__chat_gpt_client = chat_gpt_service_client
+        self.__cache_client = cache_client
 
         self.__sms_recipient = configuration.gmail.get(
             'sms_recipient')
@@ -347,21 +355,41 @@ class GmailService:
 
                 logger.info(f'Balance prompt: {log_truncate(balance_prompt)}')
 
-                # Max 5 attempts to parse balance from string
-                for _ in range(5):
-                    try:
-                        logger.info(f'Parse balance from string w/ GPT')
-                        balance, usage = await self.__chat_gpt_client.get_chat_completion(
-                            prompt=balance_prompt)
+                key = f'gpt-balance-prompt-{sha256(balance_prompt)}'
+                cached_response = await self.__cache_client.get_json(
+                    key=key)
 
-                    except ChatGptException as ex:
-                        if ex.retry:
-                            logger.info(f'GPT retryable error: {ex.message}')
-                        else:
-                            logger.info(
-                                f'GPT non-retryable error: {ex.message}')
-                            balance = 'N/A'
+                if cached_response is not None:
+                    balance = cached_response.get('balance')
+                    usage = cached_response.get('usage')
+
+                else:
+
+                    # Max 5 attempts to parse balance from string
+                    for _ in range(5):
+                        try:
+                            logger.info(f'Parse balance from string w/ GPT')
+                            balance, usage = await self.__chat_gpt_client.get_chat_completion(
+                                prompt=balance_prompt)
+
+                            # Fire the cache task
+                            self.fire_cache_gpt_response(
+                                key=key,
+                                balance=balance,
+                                usage=usage)
+
+                            logger.info(f'Breaking from GPT loop')
                             break
+
+                        except ChatGptException as ex:
+                            if ex.retry:
+                                logger.info(
+                                    f'GPT retryable error: {ex.message}')
+                            else:
+                                logger.info(
+                                    f'GPT non-retryable error: {ex.message}')
+                                balance = 'N/A'
+                                break
 
                 if usage > 0:
                     total_tokens += usage
@@ -432,3 +460,22 @@ class GmailService:
                 break
 
         return bank_key
+
+    def fire_cache_gpt_response(
+        self,
+        key: str,
+        balance: float,
+        usage: int
+    ):
+        logger.info(f'Firing cache task for GPT response')
+
+        value = dict(
+            balance=balance,
+            usage=usage
+        )
+
+        asyncio.create_task(
+            self.__cache_client.set_json(
+                key=key,
+                value=value,
+                ttl=60 * 60 * 24 * 7))

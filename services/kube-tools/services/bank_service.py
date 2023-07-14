@@ -6,7 +6,7 @@ from services.event_service import EventService
 from clients.email_gateway_client import EmailGatewayClient
 from data.bank_repository import BankBalanceRepository
 from framework.logger import get_logger
-
+from framework.clients.cache_client import CacheClientAsync
 from utilities.utils import DateTimeUtil
 from framework.serialization import Serializable
 
@@ -58,12 +58,14 @@ class BankService:
         configuration: Configuration,
         balance_repository: BankBalanceRepository,
         email_client: EmailGatewayClient,
-        event_service: EventService
+        event_service: EventService,
+        cache_client: CacheClientAsync
     ):
         self.__configuration = configuration
         self.__balance_repository = balance_repository
         self.__email_client = email_client
         self.__event_service = event_service
+        self.__cache_client = cache_client
 
     async def capture_balance(
         self,
