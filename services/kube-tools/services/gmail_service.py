@@ -18,7 +18,7 @@ from clients.twilio_gateway import TwilioGatewayClient
 from constants.google import (GmailRuleAction, GoogleEmailHeader,
                               GoogleEmailLabel)
 from domain.google import GmailEmail, GmailEmailRule, parse_gmail_body
-from services.bank_service import BankService
+from services.bank_service import BankKey, BankService
 from services.gmail_rule_service import GmailRuleService
 from utilities.utils import KeyUtils
 
@@ -344,7 +344,7 @@ class GmailService:
         self,
         body_segments: List[str]
     ):
-        bank_key = 'capital-one'
+        bank_key = BankKey.CapitalOne
 
         for email_body in body_segments:
             email_body = email_body.lower()
@@ -352,17 +352,17 @@ class GmailService:
             # SavorOne
             if 'savorone' in email_body:
                 logger.info(f'CapitalOne SavorOne card detected')
-                bank_key = f'{bank_key}-savorone'
+                bank_key = BankKey.CapitalOneSavor
                 break
             # VentureOne
             if 'venture' in email_body:
                 logger.info(f'CapitalOne Venture card detected')
-                bank_key = f'{bank_key}-venture'
+                bank_key = BankKey.CapitalOneVenture
                 break
             # QuickSilver
             if 'quicksilver' in email_body:
                 logger.info(f'CapitalOne Quiksilver card detected')
-                bank_key = f'{bank_key}-quiksilver'
+                bank_key = BankKey.CapitalOneQuickSilver
                 break
 
         return bank_key
@@ -550,9 +550,11 @@ class GmailService:
                 else:
 
                     # Max 5 attempts to parse balance from string
-                    for _ in range(5):
+                    for attempt in range(5):
                         try:
-                            logger.info(f'Parse balance from string w/ GPT')
+                            logger.info(
+                                f'Parse balance from string w/ GPT: Attempt {attempt + 1}')
+
                             balance, usage = await self.__chat_gpt_client.get_chat_completion(
                                 prompt=balance_prompt)
 

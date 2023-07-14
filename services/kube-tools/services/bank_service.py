@@ -20,9 +20,10 @@ EMAIL_SUBJECT = 'Bank Balance Captured'
 class BankKey(enum.StrEnum):
     WellsFargo = 'wells-fargo'
     Chase = 'chase'
+    CapitalOne = 'capital-one'
     CapitalOneQuickSilver = 'capital-one-quicksilver'
     CapitalOneVenture = 'capital-one-venture'
-    CapitalOneSavor = 'capital-one-savor'
+    CapitalOneSavor = 'capital-one-savorone'
 
 
 class BankBalance(Serializable):
@@ -144,6 +145,7 @@ class BankService:
 
         results = list()
         missing = list()
+
         for key in BankKey:
             logger.info(f'Getting balance for bank {key}')
             result = await self.get_balance(
