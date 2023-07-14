@@ -73,3 +73,8 @@ class CacheKey:
     def chatgpt_service_token(
     ) -> str:
         return f'kube-tools-chatgpt-service-token'
+
+    @staticmethod
+    def bank_rule_mapping(
+    ) -> str:
+        return f'kube-tools-bank-rule-mapping'

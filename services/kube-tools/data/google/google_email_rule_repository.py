@@ -1,5 +1,23 @@
+from typing import List
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
+
+
+class EmailRulesByNamesQuery:
+    def __init__(
+        self,
+        rule_names: List[str]
+    ):
+        self.rule_names = rule_names
+
+    def get_query(
+        self
+    ):
+        return {
+            'name': {
+                '$in': self.rule_names
+            }
+        }
 
 
 class GoogleEmailRuleRepository(MongoRepositoryAsync):
@@ -21,6 +39,21 @@ class GoogleEmailRuleRepository(MongoRepositoryAsync):
         })
 
         return rule is not None
+
+    async def get_email_rules_by_names(
+        self,
+        names: List[str]
+    ):
+        query = EmailRulesByNamesQuery(
+            rule_names=names)
+
+        results = self.collection.find(
+            query.get_query())
+
+        entities = await results.to_list(
+            length=None)
+
+        return entities
 
 
 class GoogleEmailHistoryRepository(MongoRepositoryAsync):

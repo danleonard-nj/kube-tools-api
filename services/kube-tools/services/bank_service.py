@@ -2,6 +2,7 @@ import enum
 from typing import Dict, List
 import uuid
 from framework.configuration import Configuration
+from domain.bank import BankBalance, BankKey
 from services.event_service import EventService
 from clients.email_gateway_client import EmailGatewayClient
 from data.bank_repository import BankBalanceRepository
@@ -9,51 +10,14 @@ from framework.logger import get_logger
 from framework.clients.cache_client import CacheClientAsync
 from utilities.utils import DateTimeUtil
 from framework.serialization import Serializable
+from framework.clients.feature_client import FeatureClientAsync
 
 logger = get_logger(__name__)
 
 BANK_KEY_WELLS_FARGO = 'wells-fargo'
 EMAIL_RECIPIENT = 'dcl525@gmail.com'
 EMAIL_SUBJECT = 'Bank Balance Captured'
-
-
-class BankKey(enum.StrEnum):
-    WellsFargo = 'wells-fargo'
-    Chase = 'chase'
-    CapitalOne = 'capital-one'
-    CapitalOneQuickSilver = 'capital-one-quicksilver'
-    CapitalOneVenture = 'capital-one-venture'
-    CapitalOneSavor = 'capital-one-savorone'
-
-
-class BankBalance(Serializable):
-    def __init__(
-        self,
-        balance_id: str,
-        bank_key: str,
-        balance: float,
-        timestamp: int,
-        gpt_tokens: int = 0,
-        message_bk: str = None
-    ):
-        self.balance_id = balance_id
-        self.bank_key = bank_key
-        self.balance = balance
-        self.gpt_tokens = gpt_tokens
-        self.message_bk = message_bk
-        self.timestamp = timestamp
-
-    @staticmethod
-    def from_entity(
-        data: Dict
-    ):
-        return BankBalance(
-            balance_id=data.get('balance_id'),
-            bank_key=data.get('bank_key'),
-            balance=data.get('balance'),
-            gpt_tokens=data.get('gpt_tokens'),
-            message_bk=data.get('message_bk'),
-            timestamp=data.get('timestamp'))
+BALANCE_CAPTURE_EMAILS_FEATURE_KEY = 'banking-balance-capture-emails'
 
 
 class BankService:
@@ -63,13 +27,15 @@ class BankService:
         balance_repository: BankBalanceRepository,
         email_client: EmailGatewayClient,
         event_service: EventService,
-        cache_client: CacheClientAsync
+        cache_client: CacheClientAsync,
+        feature_client: FeatureClientAsync
     ):
         self.__configuration = configuration
         self.__balance_repository = balance_repository
         self.__email_client = email_client
         self.__event_service = event_service
         self.__cache_client = cache_client
+        self.__feature_client = feature_client
 
     async def capture_balance(
         self,
@@ -91,21 +57,38 @@ class BankService:
         result = await self.__balance_repository.insert(
             document=balance.to_dict())
 
-        logger.info(f'Sending email for bank {bank_key}')
-        email_request, endpoint = self.__email_client.get_json_email_request(
-            recipient='dcl525@gmail.com',
-            subject=f'{EMAIL_SUBJECT} - {bank_key}',
-            json=balance.to_dict())
-
-        logger.info(f'Email request: {endpoint}: {email_request.to_dict()}')
-
-        await self.__event_service.dispatch_email_event(
-            endpoint=endpoint,
-            message=email_request.to_dict())
+        await self.__handle_balance_capture_alert_email(
+            balance=balance)
 
         logger.info(f'Inserted bank record: {result.inserted_id}')
 
         return balance
+
+    async def __handle_balance_capture_alert_email(
+        self,
+        balance: BankBalance
+    ):
+        is_enabled = await self.__feature_client.is_enabled(
+            feature_key=BALANCE_CAPTURE_EMAILS_FEATURE_KEY)
+
+        if not is_enabled:
+            logger.info(f'Balance capture emails are disabled')
+            return
+
+        logger.info(f'Sending email for bank {balance.bank_key}')
+
+        # Send an alert email when a bank balance has been
+        email_request, endpoint = self.__email_client.get_json_email_request(
+            recipient=EMAIL_RECIPIENT,
+            subject=f'{EMAIL_SUBJECT} - {balance.bank_key}',
+            json=balance.to_dict())
+
+        logger.info(f'Email request: {endpoint}: {email_request.to_dict()}')
+
+        # Drop the trigger message on the service bus queue
+        await self.__event_service.dispatch_email_event(
+            endpoint=endpoint,
+            message=email_request.to_dict())
 
     async def get_balance(
         self,
@@ -116,7 +99,8 @@ class BankService:
 
         # Parse the bank key, this will throw if an
         # invalid key is provided
-        key = BankKey(bank_key)
+        key = BankKey(
+            value=bank_key)
 
         query_filter = {
             'bank_key': key.value

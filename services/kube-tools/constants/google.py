@@ -16,3 +16,4 @@ class GmailRuleAction:
     Archive = 'archive'
     SMS = 'sms'
     Event = 'send-http'
+    BankSync = 'bank-sync'
