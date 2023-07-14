@@ -1,21 +1,40 @@
 import asyncio
+import re
 from typing import Dict, List
 
+from bs4 import BeautifulSoup
 from framework.configuration import Configuration
 from framework.logger import get_logger
+from framework.validators.nulls import none_or_whitespace
 
+from clients.chat_gpt_service_client import ChatGptException, ChatGptServiceClient
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
-from constants.google import GmailRuleAction, GoogleEmailHeader, GoogleEmailLabel
-from domain.google import GmailEmail, GmailEmailHeaders, GmailEmailRule
+from constants.google import (GmailRuleAction, GoogleEmailHeader,
+                              GoogleEmailLabel)
+from domain.google import GmailEmail, GmailEmailRule, parse_gmail_body
 from services.bank_service import BankService
 from services.gmail_rule_service import GmailRuleService
 
 logger = get_logger(__name__)
 
+
+def log_truncate(segment):
+    if len(segment) < 100:
+        return segment
+
+    return f'{segment[:50]}...{segment[-50:]}'
+
+
 WELLS_FARGO_RULE_ID = '7062d7af-c920-4f2e-bdc5-e52314d69194'
 WELLS_FARGO_BALANCE_EMAIL_KEY = 'Balance summary'
 WELLS_FARGO_BANK_KEY = 'wells-fargo'
+
+BankRuleMapping = {
+    'e5bec174-12ad-40f1-9413-f8a1e69f2eed': 'chase',
+    '7062d7af-c920-4f2e-bdc5-e52314d69194': 'wells-fargo',
+    'bffcec15-f23f-4935-9e5e-50282c264325': 'capital-one'
+}
 
 
 class GmailService:
@@ -25,12 +44,14 @@ class GmailService:
         gmail_client: GmailClient,
         rule_service: GmailRuleService,
         bank_service: BankService,
-        twilio_gateway: TwilioGatewayClient
+        twilio_gateway: TwilioGatewayClient,
+        chat_gpt_service_client: ChatGptServiceClient
     ):
         self.__gmail_client = gmail_client
         self.__rule_service = rule_service
         self.__twilio_gateway = twilio_gateway
         self.__bank_service = bank_service
+        self.__chat_gpt_client = chat_gpt_service_client
 
         self.__sms_recipient = configuration.gmail.get(
             'sms_recipient')
@@ -44,6 +65,8 @@ class GmailService:
         run_results = dict()
 
         rules = await self.__rule_service.get_rules()
+        rules.reverse()
+
         logger.info(f'Rules gathered: {len(rules)}')
 
         for rule in rules:
@@ -173,29 +196,239 @@ class GmailService:
         body += '\n'
         body += f'https://mail.google.com/mail/u/0/#inbox/{message.message_id}'
 
-        if rule.rule_id == WELLS_FARGO_RULE_ID:
-            logger.info('Wells Fargo rule detected')
+        if rule.rule_id in BankRuleMapping:
+            logger.info('Bank rule detected')
 
-            if WELLS_FARGO_BALANCE_EMAIL_KEY in message.snippet:
-                logger.info('Wells Fargo balance email detected')
-                await self.handle_bank_email(
-                    message=message)
+            await self.handle_bank_email(
+                rule_id=rule.rule_id,
+                message=message)
 
         return body
 
+    def clean_message_string(
+        self,
+        message: str
+    ):
+        logger.info(f'Initial message length: {len(message)}')
+
+        # Remove unwanted chars
+        message = ''.join([
+            c for c in message
+            if c.isalnum()
+            or c in ['.', '$', ' ']
+        ])
+
+        # Consolidate spaces
+        message = re.sub(' +', ' ', message)
+
+        logger.info(f'Reduced message length: {len(message)}')
+
+        return message
+
+    def get_chat_gpt_balance_prompt(
+        self,
+        message: str
+    ):
+        prefix = 'Get the current available bank balance (if present) from this string'
+        suffix = 'Response with only the balance or "N/A"'
+        prompt = f"{prefix}: '{message}'. {suffix}"
+
+        logger.info(f'Prompt: {prompt}')
+        return prompt
+
+    def get_email_body_text(
+        self,
+        segments: List[str]
+    ) -> List[str]:
+        logger.info(f'Parsing email body segments: {len(segments)}')
+
+        results = []
+        for segment in segments:
+            if none_or_whitespace(segment):
+                logger.info(f'Segment is empty')
+                continue
+
+            logger.info(f'Parsing segment: {log_truncate(segment)}')
+            soup = BeautifulSoup(segment)
+
+            body = soup.find('body')
+
+            if body is None:
+                logger.info(f'No body found in segment')
+                continue
+
+            content = (
+                body
+                .get_text()
+                .strip()
+                .replace('\n', ' ')
+                .replace('\t', '')
+                .replace('\r', '')
+            )
+
+            results.append(content)
+
+        return results
+
+    def is_banking_email(
+        self,
+        segment: str,
+        match_threshold=3
+    ):
+        matches = []
+        keys = [
+            'balance',
+            'bank',
+            'wells',
+            'fargo',
+            'chase',
+            'discover',
+            'account',
+            'summary'
+            'activity',
+            'transactions',
+            'credit',
+            'card'
+        ]
+
+        text = segment.lower()
+
+        for key in keys:
+            if key in text:
+                logger.info(f'Bank email key matched: {key}')
+                matches.append(key)
+
+        return len(matches) >= match_threshold
+
     async def handle_bank_email(
         self,
+        rule_id: str,
         message: GmailEmail
     ):
 
         try:
-            balance = message.snippet.split('Ending Balance: ')[
-                1].split(' ')[0].replace('$', '')
+            logger.info(f'Parsing Gmail body')
+            email_body_segments = parse_gmail_body(
+                message=message)
+
+            if none_or_whitespace(email_body_segments):
+                email_body_segments = [message.snippet]
+                logger.info(f'Using snippet instead of email body')
+
+            else:
+                logger.info(f'Parsing email body')
+                email_body_segments = self.get_email_body_text(
+                    segments=email_body_segments)
+
+            balance = 'UNDEFINED'
+            total_tokens = 0
+            for segment in email_body_segments:
+                # If the email text does not contain more than the
+                # threshold number of banking keywords it doesn't
+                # meet the criteria for a banking email
+                if not self.is_banking_email(
+                        segment=segment,
+                        match_threshold=3):
+                    continue
+
+                # Reduce message length
+                logger.info(f'Cleaning message string')
+                segment = self.clean_message_string(
+                    message=segment)
+
+                if len(segment) > 500:
+                    logger.info(
+                        f'Truncating segment from {len(segment)} to 500 chars')
+                    segment = segment[:500]
+
+                logger.info(f'Generating balance prompt')
+                balance_prompt = self.get_chat_gpt_balance_prompt(
+                    message=segment)
+
+                logger.info(f'Balance prompt: {log_truncate(balance_prompt)}')
+
+                # Max 5 attempts to parse balance from string
+                for _ in range(5):
+                    try:
+                        logger.info(f'Parse balance from string w/ GPT')
+                        balance, usage = await self.__chat_gpt_client.get_chat_completion(
+                            prompt=balance_prompt)
+
+                    except ChatGptException as ex:
+                        if ex.retry:
+                            logger.info(f'GPT retryable error: {ex.message}')
+                        else:
+                            logger.info(
+                                f'GPT non-retryable error: {ex.message}')
+                            balance = 'N/A'
+                            break
+
+                if usage > 0:
+                    total_tokens += usage
+
+                if balance != 'N/A':
+                    break
+                else:
+                    logger.info(
+                        f'GPT failed to find balance info in string: {log_truncate(balance_prompt)}')
+
+            # Strip currency formatting chars
+            num_results = re.findall("\d+\.\d+", balance)
+
+            if any(num_results):
+                balance = num_results[0]
+
+            balance = balance.replace('$', '').replace(',', '')
+
+            if balance == 'UNDEFINED':
+                logger.info(f'Balance not found in email')
+                return
+
+            # Strip any formatting chars
+            balance = float(balance)
+
+            logger.info(f'Balance: {balance}')
+
+            bank_key = BankRuleMapping.get(rule_id)
+
+            logger.info(f'Bank key: {bank_key}')
+
+            # For CapitalOne emails, we need to determine the card type
+            # to store the balance against
+            if bank_key == 'capital-one':
+                logger.info(f'Parsing CapitalOne card type')
+                bank_key = self.get_capital_one_bank_key(
+                    body_segments=email_body_segments)
 
             await self.__bank_service.capture_balance(
-                bank_key=WELLS_FARGO_BANK_KEY,
-                balance=float(balance))
+                bank_key=bank_key,
+                balance=float(balance),
+                tokens=total_tokens)
 
         except Exception as ex:
             logger.exception(f'Error parsing balance: {ex.message}')
             balance = 0.0
+
+    def get_capital_one_bank_key(
+        self,
+        body_segments: List[str]
+    ):
+        bank_key = 'capital-one'
+
+        for email_body in body_segments:
+            email_body = email_body.lower()
+
+            if 'savorone' in email_body:
+                logger.info(f'CapitalOne SavorOne card detected')
+                bank_key = f'{bank_key}-savorone'
+                break
+            if 'venture' in email_body:
+                logger.info(f'CapitalOne Venture card detected')
+                bank_key = f'{bank_key}-venture'
+                break
+            if 'quicksilver' in email_body:
+                logger.info(f'CapitalOne Quiksilver card detected')
+                bank_key = f'{bank_key}-quiksilver'
+                break
+
+        return bank_key

@@ -68,3 +68,8 @@ class CacheKey:
         device_id: str
     ) -> str:
         return f'google-nest-device-{device_id}'
+
+    @staticmethod
+    def chatgpt_service_token(
+    ) -> str:
+        return f'kube-tools-chatgpt-service-token'

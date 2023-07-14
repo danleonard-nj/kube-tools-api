@@ -12,6 +12,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from quart import Quart
 
 from clients.azure_gateway_client import AzureGatewayClient
+from clients.chat_gpt_service_client import ChatGptServiceClient
 from clients.email_gateway_client import EmailGatewayClient
 from clients.event_client import EventClient
 from clients.gmail_client import GmailClient, GmailRuleService
@@ -144,6 +145,7 @@ def register_clients(
     descriptors.add_singleton(GmailClient)
     descriptors.add_singleton(DeadManSwitchService)
     descriptors.add_singleton(NestClient)
+    descriptors.add_singleton(ChatGptServiceClient)
 
 
 def register_repositories(

@@ -97,6 +97,22 @@ class EmailGatewayClient:
 
         return content, endpoint
 
+    def get_json_email_request(
+        self,
+        recipient: str,
+        subject: str,
+        json: Dict
+    ):
+        endpoint = f'{self.__base_url}/api/email/json'
+        logger.info(f'Endpoint: {endpoint}')
+
+        content = EmailGatewayRequest(
+            recipient=recipient,
+            subject=subject,
+            json=json)
+
+        return content, endpoint
+
     def get_email_request(
         self,
         recipient: str,

@@ -3,13 +3,16 @@ import io
 from datetime import datetime
 from typing import Dict, List
 
-from framework.exceptions.nulls import ArgumentNullException
-from framework.serialization import Serializable
-from googleapiclient.http import MediaIoBaseUpload
-from framework.validators.nulls import none_or_whitespace
 from framework.crypto.hashing import md5
+from framework.exceptions.nulls import ArgumentNullException
+from framework.logger import get_logger
+from framework.serialization import Serializable
+from framework.validators.nulls import none_or_whitespace
+from googleapiclient.http import MediaIoBaseUpload
 
 from domain.rest import UpdateEmailRuleRequest
+
+logger = get_logger(__name__)
 
 
 def update(current_value, new_value):
@@ -77,8 +80,11 @@ class GmailEmail(Serializable):
     def body(
         self
     ):
+        if self.body_raw is None:
+            return ''
+
         return base64.urlsafe_b64decode(
-            self.body_raw.get('data'))
+            self.body_raw)
 
     @property
     def timestamp(
@@ -89,7 +95,7 @@ class GmailEmail(Serializable):
 
     def __init__(
         self,
-        data
+        data: Dict
     ):
         self.message_id = data.get('id')
         self.thread_id = data.get('threadId')
@@ -97,7 +103,8 @@ class GmailEmail(Serializable):
         self.snippet = data.get('snippet')
         self.internal_date = data.get('internalDate')
 
-        self.body_raw = data.get('payload').get('body')
+        self.raw = data
+        self.body_raw = data.get('payload').get('body').get('data')
         self.headers_raw = data.get('payload').get('headers')
 
         self.headers = GmailEmailHeaders(
@@ -366,3 +373,79 @@ class EmailRuleLog(Serializable):
         self.log_id = log_id
         self.results = results
         self.created_date = created_date
+
+
+def parse_gmail_body(
+        message: GmailEmail
+):
+    results = []
+    data = message.raw
+    payload = data.get('payload')
+
+    if 'body' in payload:
+        logger.info(f'Found body in first layer payload')
+        top_body = payload.get('body')
+
+        if 'data' in top_body:
+            logger.info(f'Found data in first layer body')
+            top_data = top_body.get('data')
+            results.append(top_data)
+
+    if 'parts' in payload:
+        logger.info(f'Handling parts')
+        parts = payload.get('parts')
+        if any(parts):
+            logger.info(f'Parts found: {parts}')
+
+            for part in parts:
+                if 'body' in part:
+                    logger.info(f'Found body in part')
+                    part_body = part.get('body')
+
+                    if 'data' in part_body:
+                        logger.info(f'Found data in part body')
+                        part_data = part_body.get('data')
+                        results.append(part_data)
+
+                    if 'parts' in part:
+                        level_two_parts = part.get('parts')
+                        if any(level_two_parts):
+                            for level_two_part in level_two_parts:
+                                if 'body' in level_two_part:
+                                    logger.info(
+                                        f'Found body in level two part')
+                                    level_two_part_body = level_two_part.get(
+                                        'body')
+
+                                    if 'data' in level_two_part_body:
+                                        logger.info(
+                                            f'Found data in level two part body')
+                                        level_two_part_data = level_two_part_body.get(
+                                            'data')
+                                        results.append(level_two_part_data)
+
+                                    if 'parts' in part:
+                                        level_three_parts = part.get(
+                                            'parts')
+                                        if any(level_three_parts):
+                                            for level_three_part in level_three_parts:
+                                                if 'body' in level_three_part:
+                                                    logger.info(
+                                                        f'Found body in level three part')
+                                                    level_three_part_body = level_three_part.get(
+                                                        'body')
+
+                                                    if 'data' in level_three_part_body:
+                                                        logger.info(
+                                                            f'Found data in level three part body')
+                                                        level_three_part_data = level_three_part_body.get(
+                                                            'data')
+                                                        results.append(
+                                                            level_three_part_data)
+
+    decoded = []
+    for result in results:
+        value = base64.urlsafe_b64decode(result.encode())
+        decoded.append(value.decode())
+
+    return decoded

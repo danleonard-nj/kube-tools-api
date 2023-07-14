@@ -2,6 +2,8 @@ import enum
 from typing import Dict, List
 import uuid
 from framework.configuration import Configuration
+from services.event_service import EventService
+from clients.email_gateway_client import EmailGatewayClient
 from data.bank_repository import BankBalanceRepository
 from framework.logger import get_logger
 
@@ -11,10 +13,16 @@ from framework.serialization import Serializable
 logger = get_logger(__name__)
 
 BANK_KEY_WELLS_FARGO = 'wells-fargo'
+EMAIL_RECIPIENT = 'dcl525@gmail.com'
+EMAIL_SUBJECT = 'Bank Balance Captured'
 
 
 class BankKey(enum.StrEnum):
     WellsFargo = 'wells-fargo'
+    Chase = 'chase'
+    CapitalOneQuickSilver = 'capital-one-quicksilver'
+    CapitalOneVenture = 'capital-one-venture'
+    CapitalOneSavor = 'capital-one-savor'
 
 
 class BankBalance(Serializable):
@@ -23,11 +31,13 @@ class BankBalance(Serializable):
         balance_id: str,
         bank_key: str,
         balance: float,
-        timestamp: int
+        timestamp: int,
+        gpt_tokens: int = 0
     ):
         self.balance_id = balance_id
         self.bank_key = bank_key
         self.balance = balance
+        self.gpt_tokens = gpt_tokens
         self.timestamp = timestamp
 
     @staticmethod
@@ -38,6 +48,7 @@ class BankBalance(Serializable):
             balance_id=data.get('balance_id'),
             bank_key=data.get('bank_key'),
             balance=data.get('balance'),
+            gpt_tokens=data.get('gpt_tokens'),
             timestamp=data.get('timestamp'))
 
 
@@ -46,14 +57,19 @@ class BankService:
         self,
         configuration: Configuration,
         balance_repository: BankBalanceRepository,
+        email_client: EmailGatewayClient,
+        event_service: EventService
     ):
         self.__configuration = configuration
         self.__balance_repository = balance_repository
+        self.__email_client = email_client
+        self.__event_service = event_service
 
     async def capture_balance(
         self,
         bank_key: str,
         balance: float,
+        tokens: int = 0
     ):
         logger.info(f'Capturing balance for bank {bank_key}')
 
@@ -65,6 +81,18 @@ class BankService:
 
         result = await self.__balance_repository.insert(
             document=balance.to_dict())
+
+        logger.info(f'Sending email for bank {bank_key}')
+        email_request, endpoint = self.__email_client.get_json_email_request(
+            recipient='dcl525@gmail.com',
+            subject=f'{EMAIL_SUBJECT} - {bank_key}',
+            json=balance.to_dict())
+
+        logger.info(f'Email request: {endpoint}: {email_request.to_dict()}')
+
+        await self.__event_service.dispatch_email_event(
+            endpoint=endpoint,
+            message=email_request.to_dict())
 
         logger.info(f'Inserted bank record: {result.inserted_id}')
 
@@ -91,8 +119,7 @@ class BankService:
 
         if entity is None:
             logger.info(f'Could not find balance for bank {bank_key}')
-            raise Exception(
-                f"Could not find balance for bank with key '{bank_key}'")
+            return
 
         logger.info(f'Found balance for bank {bank_key}: {entity}')
 
@@ -108,11 +135,18 @@ class BankService:
         logger.info(f'Getting balances for all banks')
 
         results = list()
+        missing = list()
         for key in BankKey:
             logger.info(f'Getting balance for bank {key}')
             result = await self.get_balance(
                 bank_key=str(key))
 
-            results.append(result)
+            if result is None:
+                missing.append(key)
+            else:
+                results.append(result)
 
-        return results
+        return {
+            'balances': results,
+            'no_data': missing
+        }
