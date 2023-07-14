@@ -213,6 +213,190 @@ class GmailService:
 
         return body
 
+    async def handle_bank_email(
+        self,
+        rule_id: str,
+        message: GmailEmail
+    ):
+
+        try:
+            logger.info(f'Parsing Gmail body')
+            email_body_segments = parse_gmail_body(
+                message=message)
+
+            if none_or_whitespace(email_body_segments):
+                email_body_segments = [message.snippet]
+                logger.info(f'Using snippet instead of email body')
+
+            else:
+                logger.info(f'Parsing email body')
+                email_body_segments = self.get_email_body_text(
+                    segments=email_body_segments)
+
+            balance = 'UNDEFINED'
+            total_tokens = 0
+            for segment in email_body_segments:
+                # If the email text does not contain more than the
+                # threshold number of banking keywords it doesn't
+                # meet the criteria for a banking email
+                if not self.is_banking_email(
+                        segment=segment,
+                        match_threshold=3):
+                    continue
+
+                # Reduce message length
+                logger.info(f'Cleaning message string')
+                segment = self.clean_message_string(
+                    message=segment)
+
+                # Truncate the reduced message to 500 chars max not
+                # to exceed GPTs token limit
+                if len(segment) > 500:
+                    logger.info(
+                        f'Truncating segment from {len(segment)} to 500 chars')
+                    segment = segment[:500]
+
+                logger.info(f'Generating balance prompt')
+                # Generate the GPT prompt to get the balance from
+                # the string
+                balance_prompt = self.get_chat_gpt_balance_prompt(
+                    message=segment)
+
+                logger.info(f'Balance prompt: {log_truncate(balance_prompt)}')
+
+                # Max 5 attempts to parse balance from string
+                for _ in range(5):
+                    try:
+                        logger.info(f'Parse balance from string w/ GPT')
+                        balance, usage = await self.__chat_gpt_client.get_chat_completion(
+                            prompt=balance_prompt)
+                        break
+
+                    except ChatGptException as ex:
+                        if ex.retry:
+                            logger.info(f'GPT retryable error: {ex.message}')
+                        else:
+                            logger.info(
+                                f'GPT non-retryable error: {ex.message}')
+                            balance = 'N/A'
+                            break
+
+                # Capture the total tokens used
+                if usage > 0:
+                    total_tokens += usage
+
+                # If we've got the balance from this email segment
+                # then break out the jobs done
+                if balance != 'N/A':
+                    break
+                else:
+                    logger.info(
+                        f'GPT failed to find balance info in string: {log_truncate(balance_prompt)}')
+
+            # Strip duplicate spaces w/ regex
+            num_results = re.findall("\d+\.\d+", balance)
+
+            # Update the balance to the regex result if found
+            if any(num_results):
+                balance = num_results[0]
+
+            # Strip any currency formatting chars
+            balance = balance.replace('$', '').replace(',', '')
+
+            # If we still don't have a balance then bail out
+            if balance == 'UNDEFINED':
+                logger.info(f'Balance not found in email')
+                return
+
+            # Try to parse the balance as a float
+            try:
+                balance = float(balance)
+            except Exception as ex:
+                logger.info(f'Balance is not a float: {balance}')
+                raise Exception(f'Failed to parse balance: {balance}') from ex
+
+            logger.info(f'Balance: {balance}')
+
+            # Get the bank key from the mapping
+            bank_key = BankRuleMapping.get(rule_id)
+
+            logger.info(f'Bank key: {bank_key}')
+
+            # For CapitalOne emails, we need to determine the card type
+            # to store the balance against
+            if bank_key == 'capital-one':
+                logger.info(f'Parsing CapitalOne card type')
+                bank_key = self.get_capital_one_bank_key(
+                    body_segments=email_body_segments)
+
+            # Store the balance record
+            await self.__bank_service.capture_balance(
+                bank_key=bank_key,
+                balance=float(balance),
+                tokens=total_tokens,
+                message_bk=message.message_id)
+
+        except Exception as ex:
+            logger.exception(f'Error parsing balance: {ex.message}')
+            balance = 0.0
+
+    def get_capital_one_bank_key(
+        self,
+        body_segments: List[str]
+    ):
+        bank_key = 'capital-one'
+
+        for email_body in body_segments:
+            email_body = email_body.lower()
+
+            # SavorOne
+            if 'savorone' in email_body:
+                logger.info(f'CapitalOne SavorOne card detected')
+                bank_key = f'{bank_key}-savorone'
+                break
+            # VentureOne
+            if 'venture' in email_body:
+                logger.info(f'CapitalOne Venture card detected')
+                bank_key = f'{bank_key}-venture'
+                break
+            # QuickSilver
+            if 'quicksilver' in email_body:
+                logger.info(f'CapitalOne Quiksilver card detected')
+                bank_key = f'{bank_key}-quiksilver'
+                break
+
+        return bank_key
+
+    def is_banking_email(
+        self,
+        segment: str,
+        match_threshold=3
+    ):
+        matches = []
+        keys = [
+            'balance',
+            'bank',
+            'wells',
+            'fargo',
+            'chase',
+            'discover',
+            'account',
+            'summary'
+            'activity',
+            'transactions',
+            'credit',
+            'card'
+        ]
+
+        text = segment.lower()
+
+        for key in keys:
+            if key in text:
+                logger.info(f'Bank email key matched: {key}')
+                matches.append(key)
+
+        return len(matches) >= match_threshold
+
     def clean_message_string(
         self,
         message: str

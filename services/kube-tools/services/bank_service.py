@@ -32,12 +32,14 @@ class BankBalance(Serializable):
         bank_key: str,
         balance: float,
         timestamp: int,
-        gpt_tokens: int = 0
+        gpt_tokens: int = 0,
+        message_bk: str = None
     ):
         self.balance_id = balance_id
         self.bank_key = bank_key
         self.balance = balance
         self.gpt_tokens = gpt_tokens
+        self.message_bk = message_bk
         self.timestamp = timestamp
 
     @staticmethod
@@ -49,6 +51,7 @@ class BankBalance(Serializable):
             bank_key=data.get('bank_key'),
             balance=data.get('balance'),
             gpt_tokens=data.get('gpt_tokens'),
+            message_bk=data.get('message_bk'),
             timestamp=data.get('timestamp'))
 
 
@@ -71,7 +74,8 @@ class BankService:
         self,
         bank_key: str,
         balance: float,
-        tokens: int = 0
+        tokens: int = 0,
+        message_bk: str = None
     ):
         logger.info(f'Capturing balance for bank {bank_key}')
 
@@ -79,6 +83,8 @@ class BankService:
             balance_id=str(uuid.uuid4()),
             bank_key=bank_key,
             balance=balance,
+            gpt_tokens=tokens,
+            message_bk=message_bk,
             timestamp=DateTimeUtil.timestamp())
 
         result = await self.__balance_repository.insert(
