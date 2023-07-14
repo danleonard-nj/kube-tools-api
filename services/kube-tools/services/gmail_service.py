@@ -615,7 +615,8 @@ class GmailService:
             await self.__bank_service.capture_balance(
                 bank_key=bank_key,
                 balance=float(balance),
-                tokens=total_tokens)
+                tokens=total_tokens,
+                message_bk=message.message_id)
 
         except Exception as ex:
             logger.exception(f'Error parsing balance: {ex.message}')
