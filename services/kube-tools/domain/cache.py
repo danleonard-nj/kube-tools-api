@@ -78,3 +78,9 @@ class CacheKey:
     def bank_rule_mapping(
     ) -> str:
         return f'kube-tools-bank-rule-mapping'
+
+    @staticmethod
+    def weather_cardinality_by_zip(
+        zip_code: str
+    ) -> str:
+        return f'kube-tools-weather-sync-zip-{zip_code}-cardinality-key'

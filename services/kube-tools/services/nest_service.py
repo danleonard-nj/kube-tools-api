@@ -13,6 +13,7 @@ from framework.logger import get_logger
 
 from clients.email_gateway_client import EmailGatewayClient
 from clients.nest_client import NestClient
+from clients.open_weather_client import OpenWeatherClient
 from data.nest_repository import (NestDeviceRepository, NestLogRepository,
                                   NestSensorRepository)
 from domain.cache import CacheKey
@@ -43,7 +44,8 @@ class NestService:
         event_service: EventService,
         email_gateway: EmailGatewayClient,
         cache_client: CacheClientAsync,
-        feature_client: FeatureClientAsync
+        feature_client: FeatureClientAsync,
+        open_weather_client: OpenWeatherClient
     ):
         self.__thermostat_id = configuration.nest.get(
             'thermostat_id')
@@ -57,6 +59,7 @@ class NestService:
         self.__cache_client = cache_client
         self.__log_repository = log_repository
         self.__feature_client = feature_client
+        self.__open_weather_client = open_weather_client
 
     async def get_thermostat(
         self

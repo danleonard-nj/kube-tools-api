@@ -20,6 +20,7 @@ from clients.google_drive_client import GoogleDriveClient
 from clients.google_maps_client import GoogleMapsClient
 from clients.identity_client import IdentityClient
 from clients.nest_client import NestClient
+from clients.open_weather_client import OpenWeatherClient
 from clients.plaid_client import PlaidClient
 from clients.storage_client import StorageClient
 from clients.twilio_gateway import TwilioGatewayClient
@@ -39,6 +40,7 @@ from data.location_repository import (WeatherStationRepository,
 from data.mongo_export_repository import MongoExportRepository
 from data.nest_repository import NestDeviceRepository, NestLogRepository, NestSensorRepository
 from data.podcast_repository import PodcastRepository
+from data.weather_repository import WeatherRepository
 from domain.auth import AdRole, AuthPolicy
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
@@ -56,6 +58,7 @@ from services.nest_service import NestService
 from services.podcast_service import PodcastService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
 from services.usage_service import UsageService
+from services.weather_service import WeatherService
 
 
 def configure_azure_ad(container):
@@ -148,6 +151,7 @@ def register_clients(
     descriptors.add_singleton(NestClient)
     descriptors.add_singleton(ChatGptServiceClient)
     descriptors.add_singleton(PlaidClient)
+    descriptors.add_singleton(OpenWeatherClient)
 
 
 def register_repositories(
@@ -169,6 +173,7 @@ def register_repositories(
     descriptors.add_singleton(ApiEventRepository)
     descriptors.add_singleton(GoogleEmailLogRepository)
     descriptors.add_singleton(BankBalanceRepository)
+    descriptors.add_singleton(WeatherRepository)
 
 
 def register_services(
@@ -191,6 +196,7 @@ def register_services(
     descriptors.add_singleton(ChatGptProxyService)
     descriptors.add_singleton(ApiEventHistoryService)
     descriptors.add_singleton(BankService)
+    descriptors.add_singleton(WeatherService)
 
 
 class ContainerProvider(ProviderBase):
