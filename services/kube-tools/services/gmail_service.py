@@ -1,14 +1,13 @@
 import asyncio
-import json
 import re
 from typing import Dict, List
 
 from bs4 import BeautifulSoup
-from cachetools import cached
 from framework.clients.cache_client import CacheClientAsync
+from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration import Configuration
-from framework.logger import get_logger
 from framework.crypto.hashing import sha256
+from framework.logger import get_logger
 from framework.validators.nulls import none_or_whitespace
 
 from clients.chat_gpt_service_client import (ChatGptException,
@@ -17,13 +16,11 @@ from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
 from constants.google import (GmailRuleAction, GoogleEmailHeader,
                               GoogleEmailLabel)
-from domain.bank import BankRuleConfig
-from framework.clients.feature_client import FeatureClientAsync
+from domain.bank import BankRuleConfig, SyncType
 from domain.cache import CacheKey
 from domain.google import GmailEmail, GmailEmailRule, parse_gmail_body
 from services.bank_service import BankKey, BankService
 from services.gmail_rule_service import GmailRuleService
-from utilities.utils import KeyUtils
 
 logger = get_logger(__name__)
 
@@ -264,22 +261,6 @@ class GmailService:
 
         return notify_count
 
-    # async def handle_bank_email_sync(
-    #     self,
-    #     rule: GmailEmailRule,
-    #     message: GmailEmail
-    # ):
-    #     if self.bank_rule_mapping is None:
-    #         logger.info(f'Fetching bank rule mapping')
-    #         self.bank_rule_mapping = await self.__generate_bank_rule_mapping()
-
-    #     if rule.rule_id in self.bank_rule_mapping:
-    #         logger.info('Bank rule detected')
-
-    #         await self.handle_bank_email(
-    #             rule_id=rule.rule_id,
-    #             message=message)
-
     async def process_sms_rule(
         self,
         rule: GmailEmailRule
@@ -507,7 +488,8 @@ class GmailService:
                 bank_key=bank_key,
                 balance=float(balance),
                 tokens=total_tokens,
-                message_bk=message.message_id)
+                message_bk=message.message_id,
+                sync_type=SyncType.Email)
 
         except Exception as ex:
             logger.exception(f'Error parsing balance: {ex.message}')
@@ -664,144 +646,6 @@ class GmailService:
                 matches.append(key)
 
         return len(matches) >= match_threshold
-
-    # async def handle_balance_sync(
-    #     self,
-    #     rule_id: str,
-    #     message: GmailEmail
-    # ):
-
-    #     try:
-    #         logger.info(f'Parsing Gmail body')
-    #         email_body_segments = parse_gmail_body(
-    #             message=message)
-
-    #         if none_or_whitespace(email_body_segments):
-    #             email_body_segments = [message.snippet]
-    #             logger.info(f'Using snippet instead of email body')
-
-    #         else:
-    #             logger.info(f'Parsing email body')
-    #             email_body_segments = self.__get_email_body_text(
-    #                 segments=email_body_segments)
-
-    #         balance = 'UNDEFINED'
-    #         total_tokens = 0
-    #         for segment in email_body_segments:
-    #             # If the email text does not contain more than the
-    #             # threshold number of banking keywords it doesn't
-    #             # meet the criteria for a banking email
-    #             if not self.__is_banking_email(
-    #                     segment=segment,
-    #                     match_threshold=3):
-    #                 continue
-
-    #             # Reduce message length
-    #             logger.info(f'Cleaning message string')
-    #             segment = self.__clean_message_string(
-    #                 message=segment)
-
-    #             if len(segment) > 500:
-    #                 logger.info(
-    #                     f'Truncating segment from {len(segment)} to 500 chars')
-    #                 segment = segment[:500]
-
-    #             logger.info(f'Generating balance prompt')
-    #             balance_prompt = self.__get_chat_gpt_balance_prompt(
-    #                 message=segment)
-
-    #             logger.info(f'Balance prompt: {log_truncate(balance_prompt)}')
-
-    #             key = f'gpt-balance-prompt-{sha256(balance_prompt)}'
-    #             cached_response = await self.__cache_client.get_json(
-    #                 key=key)
-
-    #             if cached_response is not None:
-    #                 balance = cached_response.get('balance')
-    #                 usage = cached_response.get('usage')
-
-    #             else:
-
-    #                 # Max 5 attempts to parse balance from string
-    #                 for attempt in range(5):
-    #                     try:
-    #                         logger.info(
-    #                             f'Parse balance from string w/ GPT: Attempt {attempt + 1}')
-
-    #                         balance, usage = await self.__chat_gpt_client.get_chat_completion(
-    #                             prompt=balance_prompt)
-
-    #                         # Fire the cache task
-    #                         self.fire_cache_gpt_response(
-    #                             key=key,
-    #                             balance=balance,
-    #                             usage=usage)
-
-    #                         logger.info(f'Breaking from GPT loop')
-    #                         break
-
-    #                     except ChatGptException as ex:
-    #                         if ex.retry:
-    #                             logger.info(
-    #                                 f'GPT retryable error: {ex.message}')
-    #                         else:
-    #                             logger.info(
-    #                                 f'GPT non-retryable error: {ex.message}')
-    #                             balance = 'N/A'
-    #                             break
-
-    #             if usage > 0:
-    #                 total_tokens += usage
-
-    #             if balance != 'N/A':
-    #                 break
-    #             else:
-    #                 logger.info(
-    #                     f'GPT failed to find balance info in string: {log_truncate(balance_prompt)}')
-
-    #         # Strip currency formatting chars
-    #         num_results = re.findall("\d+\.\d+", balance)
-
-    #         if any(num_results):
-    #             balance = num_results[0]
-
-    #         balance = balance.replace('$', '').replace(',', '')
-
-    #         if balance == 'UNDEFINED':
-    #             logger.info(f'Balance not found in email')
-    #             return
-
-    #         # Strip any formatting chars
-    #         balance = float(balance)
-
-    #         logger.info(f'Balance: {balance}')
-
-    #         mapped_rule = self.__bank_rule_mapping.get(rule_id)
-
-    #         if mapped_rule is None:
-    #             raise Exception(
-    #                 f"No bank rule mapping found for rule ID '{rule_id}'")
-
-    #         bank_key = mapped_rule.bank_key
-
-    #         logger.info(f'Bank key: {bank_key}')
-
-    #         # For CapitalOne emails, we need to determine the card type
-    #         # to store the balance against
-    #         if bank_key == 'capital-one':
-    #             logger.info(f'Parsing CapitalOne card type')
-    #             bank_key = self.__get_capital_one_bank_key(
-    #                 body_segments=email_body_segments)
-
-    #         await self.__bank_service.capture_balance(
-    #             bank_key=bank_key,
-    #             balance=float(balance),
-    #             tokens=total_tokens,
-    #             message_bk=message.message_id)
-
-    #     except Exception as ex:
-    #         logger.exception(f'Error parsing balance: {ex.message}')
-    #         balance = 0.0
 
     def __get_capital_one_bank_key(
         self,

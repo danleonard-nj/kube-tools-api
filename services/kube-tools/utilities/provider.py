@@ -20,6 +20,7 @@ from clients.google_drive_client import GoogleDriveClient
 from clients.google_maps_client import GoogleMapsClient
 from clients.identity_client import IdentityClient
 from clients.nest_client import NestClient
+from clients.plaid_client import PlaidClient
 from clients.storage_client import StorageClient
 from clients.twilio_gateway import TwilioGatewayClient
 from data.api_event_repository import ApiEventRepository
@@ -146,6 +147,7 @@ def register_clients(
     descriptors.add_singleton(DeadManSwitchService)
     descriptors.add_singleton(NestClient)
     descriptors.add_singleton(ChatGptServiceClient)
+    descriptors.add_singleton(PlaidClient)
 
 
 def register_repositories(

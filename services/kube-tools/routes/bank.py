@@ -26,3 +26,10 @@ async def get_bank_balances(container):
     service: BankService = container.resolve(BankService)
 
     return await service.get_balances()
+
+
+@bank_bp.configure('/api/bank/sync', methods=['POST'], auth_scheme=AuthPolicy.Default)
+async def post_sync(container):
+    service: BankService = container.resolve(BankService)
+
+    return await service.run_sync()

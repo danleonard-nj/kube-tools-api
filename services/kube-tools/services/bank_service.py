@@ -2,7 +2,8 @@ import enum
 from typing import Dict, List
 import uuid
 from framework.configuration import Configuration
-from domain.bank import BankBalance, BankKey
+from clients.plaid_client import PlaidClient
+from domain.bank import BankBalance, BankKey, PlaidBalance, SyncType
 from services.event_service import EventService
 from clients.email_gateway_client import EmailGatewayClient
 from data.bank_repository import BankBalanceRepository
@@ -28,7 +29,8 @@ class BankService:
         email_client: EmailGatewayClient,
         event_service: EventService,
         cache_client: CacheClientAsync,
-        feature_client: FeatureClientAsync
+        feature_client: FeatureClientAsync,
+        plaid_client: PlaidClient
     ):
         self.__configuration = configuration
         self.__balance_repository = balance_repository
@@ -36,15 +38,72 @@ class BankService:
         self.__event_service = event_service
         self.__cache_client = cache_client
         self.__feature_client = feature_client
+        self.__plaid_client = plaid_client
+
+        self.__plaid_accounts = configuration.banking.get(
+            'plaid_accounts', list())
+
+    async def run_sync(
+        self
+    ):
+        return await self.sync_plaid_accounts()
+
+    async def sync_plaid_accounts(
+        self
+    ):
+        balances = list()
+
+        for account in self.__plaid_accounts:
+            logger.info(f'Syncing plaid account: {account}')
+
+            bank_key = account.get('bank_key')
+            access_token = account.get('access_token')
+            target_account_id = account.get('account_id')
+
+            plaid_response = await self.__plaid_client.get_balance(
+                access_token=access_token)
+
+            accounts = plaid_response.get('accounts', list())
+
+            for account in accounts:
+                account_id = account.get('account_id')
+                logger.info(f'Plaid response account: {account_id}')
+
+                if account_id == target_account_id:
+                    logger.info(f'Found target account balance: {account_id}')
+
+                    balance = PlaidBalance(
+                        data=account)
+
+                    balances.append(balance)
+
+                    logger.info(
+                        f'Captured balance from plaid: {balance.to_dict()}')
+
+                    formatted_key = balance.get_formatted_bank_key(
+                        bank_key=bank_key)
+
+                    logger.info(f'Formatted bank key: {formatted_key}')
+
+                    await self.capture_balance(
+                        bank_key=formatted_key,
+                        balance=balance.available_balance,
+                        sync_type=str(SyncType.Plaid))
+
+        return balances
 
     async def capture_balance(
         self,
         bank_key: str,
         balance: float,
         tokens: int = 0,
-        message_bk: str = None
+        message_bk: str = None,
+        sync_type=None
     ):
         logger.info(f'Capturing balance for bank {bank_key}')
+
+        if sync_type is None:
+            sync_type = str(SyncType.Email)
 
         balance = BankBalance(
             balance_id=str(uuid.uuid4()),
@@ -52,6 +111,7 @@ class BankService:
             balance=balance,
             gpt_tokens=tokens,
             message_bk=message_bk,
+            sync_type=sync_type,
             timestamp=DateTimeUtil.timestamp())
 
         result = await self.__balance_repository.insert(
