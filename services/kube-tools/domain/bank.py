@@ -34,13 +34,6 @@ class BankRuleConfig(Serializable):
             bank_key=data.get('bank_key'))
 
 
-BankRuleMapping = {
-    'e5bec174-12ad-40f1-9413-f8a1e69f2eed': BankKey.Chase,
-    '7062d7af-c920-4f2e-bdc5-e52314d69194': 'wells-fargo',
-    'bffcec15-f23f-4935-9e5e-50282c264325': 'capital-one'
-}
-
-
 class SyncType(enum.StrEnum):
     Email = 'email'
     Plaid = 'plaid'

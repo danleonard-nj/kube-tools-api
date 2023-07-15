@@ -516,7 +516,7 @@ class GmailService:
                 break
             # QuickSilver
             if 'quicksilver' in email_body:
-                logger.info(f'CapitalOne Quiksilver card detected')
+                logger.info(f'CapitalOne Quicksilver card detected')
                 bank_key = BankKey.CapitalOneQuickSilver
                 break
 
@@ -646,30 +646,6 @@ class GmailService:
                 matches.append(key)
 
         return len(matches) >= match_threshold
-
-    def __get_capital_one_bank_key(
-        self,
-        body_segments: List[str]
-    ):
-        bank_key = 'capital-one'
-
-        for email_body in body_segments:
-            email_body = email_body.lower()
-
-            if 'savorone' in email_body:
-                logger.info(f'CapitalOne SavorOne card detected')
-                bank_key = f'{bank_key}-savorone'
-                break
-            if 'venture' in email_body:
-                logger.info(f'CapitalOne Venture card detected')
-                bank_key = f'{bank_key}-venture'
-                break
-            if 'quicksilver' in email_body:
-                logger.info(f'CapitalOne Quiksilver card detected')
-                bank_key = f'{bank_key}-quiksilver'
-                break
-
-        return bank_key
 
     def fire_cache_gpt_response(
         self,
