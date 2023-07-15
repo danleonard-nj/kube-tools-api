@@ -42,6 +42,10 @@ class WeatherService:
         data = await self.__client.get_weather_by_zip(
             zip_code)
 
+        if 'dt' in data:
+            logger.info(f'Removing dt from data to create cardinality key')
+            del data['dt']
+
         key = KeyUtils.create_uuid(**data)
         logger.info(f'Cardinality key: {key}')
 
