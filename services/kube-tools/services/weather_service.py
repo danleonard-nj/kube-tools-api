@@ -1,3 +1,5 @@
+import asyncio
+from datetime import datetime
 from framework.configuration import Configuration
 
 from clients.open_weather_client import OpenWeatherClient
@@ -11,9 +13,34 @@ from domain.cache import CacheKey
 
 from domain.weather import TemperatureResult
 from utilities.utils import DateTimeUtil, KeyUtils
+import pandas as pd
 
 
 logger = get_logger(__name__)
+
+
+class ForecastRecord:
+    def __init__(
+        self,
+        date: str,
+        timestamp: int,
+        temperature: float,
+        feels_like: float,
+        temperature_min: float,
+        temperature_max: float,
+        pressure: int,
+        humidity: int,
+        weather_description: str
+    ):
+        self.date = date
+        self.temperature = temperature
+        self.feels_like = feels_like
+        self.temperature_min = temperature_min
+        self.temperature_max = temperature_max
+        self.pressure = pressure
+        self.humidity = humidity
+        self.weather_description = weather_description
+        self.timestamp = timestamp
 
 
 class WeatherService:
@@ -29,6 +56,31 @@ class WeatherService:
         self.__cache_client = cache_client
 
     async def get_weather_by_zip(
+        self,
+        zip_code: str
+    ):
+        cache_key = CacheKey.weather_by_zip(
+            zip_code=zip_code)
+
+        result = await self.__cache_client.get_json(
+            key=cache_key)
+
+        if result is not None:
+            logger.info(f'Cache hit for key: {cache_key}')
+            return result
+
+        result = await self.__fetch_weather_by_zip(
+            zip_code=zip_code)
+
+        asyncio.create_task(
+            self.__cache_client.set_json(
+                key=cache_key,
+                value=result,
+                ttl=10))
+
+        return result
+
+    async def fetch_weather_by_zip(
         self,
         zip_code: str
     ):
@@ -114,6 +166,97 @@ class WeatherService:
             'weather': record.to_dict(),
             'record_bk': record_bk
         }
+
+    async def get_forecast(
+        self,
+        zip_code: str
+    ):
+        cache_key = CacheKey.weather_forecast_by_zip(
+            zip_code=zip_code)
+
+        result = await self.__cache_client.get_json(
+            key=cache_key)
+
+        if result is not None:
+            logger.info(f'Cache hit for key: {cache_key}')
+            return result
+
+        result = await self.__generate_forecast(
+            zip_code=zip_code)
+
+        asyncio.create_task(
+            self.__cache_client.set_json(
+                key=cache_key,
+                value=result,
+                ttl=10))
+
+        return result
+
+    async def __generate_forecast(
+        self,
+        zip_code: str
+    ):
+        forecast_data = await self.__client.get_forecast(
+            zip_code=zip_code)
+
+        data = forecast_data.get('list')
+        source = pd.DataFrame(data)
+
+        forecast_data = []
+        for record in data:
+            main = record.get('main')
+
+            # Parse the record date from the timestamp
+            timestamp = record.get('dt')
+            parsed_date = datetime.fromtimestamp(timestamp)
+            parsed_date = parsed_date.strftime('%Y-%m-%d')
+
+            logger.info(f'Handling forecast segment for day: {parsed_date}')
+
+            forecast_data.append({
+                'date': parsed_date,
+                'timestamp': timestamp,
+                'temperature': main.get('temp'),
+                'feels_like': main.get('feels_like'),
+                'temperature_min': main.get('temp_min'),
+                'temperature_max': main.get('temp_max'),
+                'humidity': main.get('humidity'),
+            })
+
+        aggregate_definition = {
+            'temperature': 'mean',
+            'feels_like': 'mean',
+            'temperature_min': 'min',
+            'temperature_max': 'max',
+            'humidity': 'mean'
+        }
+
+        logger.info(f'Building dataframe')
+
+        df = pd.DataFrame(forecast_data)
+        df = df[[x for x in df.columns if x != 'timestamp']]
+
+        logger.info(
+            f'Grouping by aggregate definition: {aggregate_definition}')
+
+        aggregated_data = (df
+                           .groupby('date')
+                           .aggregate(aggregate_definition)
+                           .reset_index()
+                           .to_dict(orient='records'))
+
+        for day in aggregated_data:
+            details = []
+            for record in forecast_data:
+                if record['date'] == day['date']:
+                    record['date'] = datetime.fromtimestamp(
+                        record['timestamp']).isoformat()
+
+                    details.append(record)
+
+            day['details'] = details
+
+        return aggregated_data
 
     async def capture_weather_record(
         self,

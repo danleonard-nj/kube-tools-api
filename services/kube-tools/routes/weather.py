@@ -22,3 +22,13 @@ async def get_weather(container):
 
     return await service.get_weather_by_zip(
         zip_code=zip_code)
+
+
+@weather_bp.configure('/api/weather/forecast', methods=['GET'], auth_scheme=AuthPolicy.Default)
+async def get_forecast(container):
+    service: WeatherService = container.resolve(WeatherService)
+
+    zip_code = request.args.get('zip_code')
+
+    return await service.get_forecast(
+        zip_code=zip_code)

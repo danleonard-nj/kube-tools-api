@@ -84,3 +84,15 @@ class CacheKey:
         zip_code: str
     ) -> str:
         return f'kube-tools-weather-sync-zip-{zip_code}-cardinality-key'
+
+    @staticmethod
+    def weather_by_zip(
+        zip_code: str
+    ) -> str:
+        return f'kube-tools-weather-zip-{zip_code}'
+
+    @staticmethod
+    def weather_forecast_by_zip(
+        zip_code: str
+    ) -> str:
+        return f'kube-tools-weather-forecast-zip-{zip_code}'

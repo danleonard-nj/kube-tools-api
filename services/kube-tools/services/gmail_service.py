@@ -128,7 +128,7 @@ class GmailService:
             self.__cache_client.set_json(
                 key=cache_key,
                 value=cache_values,
-                ttl=3600))
+                ttl=5))
 
         return mapping
 
@@ -664,4 +664,4 @@ class GmailService:
             self.__cache_client.set_json(
                 key=key,
                 value=value,
-                ttl=60 * 60 * 24 * 7))
+                ttl=60 * 24))
