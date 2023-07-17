@@ -6,6 +6,19 @@ from framework.serialization import Serializable
 logger = get_logger(__name__)
 
 
+FORECAST_COLUMN_EXCLUSIONS = [
+    'timestamp'
+]
+
+FORECAST_AGGREGATE_MAPPING = {
+    'temperature': 'max',
+    'feels_like': 'max',
+    'temperature_min': 'min',
+    'temperature_max': 'max',
+    'humidity': 'max'
+}
+
+
 class TemperatureResult(Serializable):
     def __init__(
         self,

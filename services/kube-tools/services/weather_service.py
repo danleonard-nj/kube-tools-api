@@ -1,22 +1,25 @@
 import asyncio
 from datetime import datetime
+
+import pandas as pd
+import pytz
+from framework.clients.cache_client import CacheClientAsync
+from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration import Configuration
+from framework.logger import get_logger
+from framework.validators.nulls import none_or_whitespace
 
 from clients.open_weather_client import OpenWeatherClient
-from framework.logger import get_logger
 from data.weather_repository import WeatherRepository
-from framework.clients.feature_client import FeatureClientAsync
-from framework.crypto.hashing import sha256
-from framework.validators.nulls import none_or_whitespace
-from framework.clients.cache_client import CacheClientAsync
 from domain.cache import CacheKey
-
-from domain.weather import TemperatureResult
+from domain.weather import (FORECAST_AGGREGATE_MAPPING,
+                            FORECAST_COLUMN_EXCLUSIONS, TemperatureResult)
 from utilities.utils import DateTimeUtil, KeyUtils
-import pandas as pd
-
 
 logger = get_logger(__name__)
+
+FORECAST_AGGREGATE_KEY = 'date'
+DEAULT_TIMEZONE = 'America/Phoenix'
 
 
 class ForecastRecord:
@@ -46,6 +49,7 @@ class ForecastRecord:
 class WeatherService:
     def __init__(
         self,
+        configuration: Configuration,
         open_weather_client: OpenWeatherClient,
         weather_repository: WeatherRepository,
         feature_client: FeatureClientAsync,
@@ -55,7 +59,37 @@ class WeatherService:
         self.__repository = weather_repository
         self.__cache_client = cache_client
 
+        tz_name = configuration.weather.get(
+            'timezone', DEAULT_TIMEZONE)
+
+        self.__timezone = pytz.timezone(tz_name)
+
     async def get_weather_by_zip(
+        self,
+        zip_code: str
+    ):
+        cache_key = CacheKey.weather_by_zip(
+            zip_code=zip_code)
+
+        result = await self.__cache_client.get_json(
+            key=cache_key)
+
+        if result is not None:
+            logger.info(f'Cache hit for key: {cache_key}')
+            return result
+
+        result = await self.__fetch_weather_by_zip(
+            zip_code=zip_code)
+
+        asyncio.create_task(
+            self.__cache_client.set_json(
+                key=cache_key,
+                value=result,
+                ttl=10))
+
+        return result
+
+    async def fetch_weather_by_zip(
         self,
         zip_code: str
     ):
@@ -200,7 +234,6 @@ class WeatherService:
             zip_code=zip_code)
 
         data = forecast_data.get('list')
-        source = pd.DataFrame(data)
 
         forecast_data = []
         for record in data:
@@ -208,7 +241,11 @@ class WeatherService:
 
             # Parse the record date from the timestamp
             timestamp = record.get('dt')
-            parsed_date = datetime.fromtimestamp(timestamp)
+
+            parsed_date = datetime.fromtimestamp(
+                timestamp,
+                tz=self.__timezone)
+
             parsed_date = parsed_date.strftime('%Y-%m-%d')
 
             logger.info(f'Handling forecast segment for day: {parsed_date}')
@@ -223,37 +260,40 @@ class WeatherService:
                 'humidity': main.get('humidity'),
             })
 
-        aggregate_definition = {
-            'temperature': 'mean',
-            'feels_like': 'mean',
-            'temperature_min': 'min',
-            'temperature_max': 'max',
-            'humidity': 'mean'
-        }
-
         logger.info(f'Building dataframe')
-
         df = pd.DataFrame(forecast_data)
-        df = df[[x for x in df.columns if x != 'timestamp']]
+
+        df = df[[
+            x for x in df.columns
+            if x not in FORECAST_COLUMN_EXCLUSIONS
+        ]]
+
+        df = df.sort_values(by=['date'], ascending=True)
 
         logger.info(
-            f'Grouping by aggregate definition: {aggregate_definition}')
+            f'Grouping by aggregate definition: {FORECAST_AGGREGATE_MAPPING}')
 
         aggregated_data = (df
-                           .groupby('date')
-                           .aggregate(aggregate_definition)
+                           .groupby(FORECAST_AGGREGATE_KEY)
+                           .aggregate(FORECAST_AGGREGATE_MAPPING)
                            .reset_index()
                            .to_dict(orient='records'))
 
         for day in aggregated_data:
+
             details = []
             for record in forecast_data:
                 if record['date'] == day['date']:
-                    record['date'] = datetime.fromtimestamp(
-                        record['timestamp']).isoformat()
+
+                    parsed = datetime.fromtimestamp(
+                        record['timestamp'])
+                    # Include the full date in the date at the
+                    # detail level
+                    record['date'] = parsed.isoformat()
 
                     details.append(record)
 
+            # 3 hour interval updats
             day['details'] = details
 
         return aggregated_data
