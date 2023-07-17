@@ -89,32 +89,7 @@ class WeatherService:
 
         return result
 
-    async def fetch_weather_by_zip(
-        self,
-        zip_code: str
-    ):
-        cache_key = CacheKey.weather_by_zip(
-            zip_code=zip_code)
-
-        result = await self.__cache_client.get_json(
-            key=cache_key)
-
-        if result is not None:
-            logger.info(f'Cache hit for key: {cache_key}')
-            return result
-
-        result = await self.__fetch_weather_by_zip(
-            zip_code=zip_code)
-
-        asyncio.create_task(
-            self.__cache_client.set_json(
-                key=cache_key,
-                value=result,
-                ttl=10))
-
-        return result
-
-    async def fetch_weather_by_zip(
+    async def __fetch_weather_by_zip(
         self,
         zip_code: str
     ):
