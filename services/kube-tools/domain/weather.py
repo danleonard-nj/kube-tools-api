@@ -1,3 +1,4 @@
+from functools import reduce
 from typing import Dict
 
 from framework.logger import get_logger
@@ -10,12 +11,21 @@ FORECAST_COLUMN_EXCLUSIONS = [
     'timestamp'
 ]
 
+
+def str_concat(series):
+    def func(x, y): return f'{x}, {y}' if y not in x else x
+
+    return reduce(func, series)
+
+
 FORECAST_AGGREGATE_MAPPING = {
     'temperature': 'max',
     'feels_like': 'max',
     'temperature_min': 'min',
     'temperature_max': 'max',
-    'humidity': 'max'
+    'humidity': 'max',
+    'rain': 'max',
+    'description': str_concat
 }
 
 
@@ -74,7 +84,7 @@ class GetWeatherQueryParams(Serializable):
         self
     ) -> Dict:
         return {
-            "zip": f"{self.__zip_code},us",
-            "appid": self.__api_key,
-            "units": "imperial"
+            'zip': f'{self.__zip_code},us',
+            'appid': self.__api_key,
+            'units': 'imperial'
         }

@@ -213,6 +213,8 @@ class WeatherService:
         forecast_data = []
         for record in data:
             main = record.get('main')
+            rain = record.get('rain')
+            weather = record.get('weather', [])
 
             # Parse the record date from the timestamp
             timestamp = record.get('dt')
@@ -225,7 +227,7 @@ class WeatherService:
 
             logger.info(f'Handling forecast segment for day: {parsed_date}')
 
-            forecast_data.append({
+            record = {
                 'date': parsed_date,
                 'timestamp': timestamp,
                 'temperature': main.get('temp'),
@@ -233,7 +235,19 @@ class WeatherService:
                 'temperature_min': main.get('temp_min'),
                 'temperature_max': main.get('temp_max'),
                 'humidity': main.get('humidity'),
-            })
+            }
+
+            record['description'] = (
+                weather[0].get('description')
+                if any(weather) else 'N/A'
+            )
+
+            record['rain'] = (
+                (rain.get('3h') * 100)
+                if rain is not None else 0
+            )
+
+            forecast_data.append(record)
 
         logger.info(f'Building dataframe')
         df = pd.DataFrame(forecast_data)
@@ -255,6 +269,8 @@ class WeatherService:
                            .to_dict(orient='records'))
 
         for day in aggregated_data:
+
+            day['description'] = day['description'].split(', ')
 
             details = []
             for record in forecast_data:
