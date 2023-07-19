@@ -331,6 +331,8 @@ class GmailService:
         body += '\n'
         body += f'https://mail.google.com/mail/u/0/#inbox/{message.message_id}'
 
+        return body
+
     async def handle_balance_sync(
         self,
         rule: GmailEmailRule,
