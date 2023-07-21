@@ -467,6 +467,8 @@ class GmailBankSyncService:
                 bank_key = BankKey.SynchronySweetwater
                 break
 
+        return bank_key
+
     def __get_capital_one_bank_key(
         self,
         body_segments: List[str]

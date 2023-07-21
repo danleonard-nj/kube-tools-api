@@ -165,16 +165,10 @@ class BankService:
 
         # Parse the bank key, this will throw if an
         # invalid key is provided
-        key = BankKey(
-            value=bank_key)
+        key = BankKey(value=bank_key)
 
-        query_filter = {
-            'bank_key': key.value
-        }
-
-        entity = await self.__balance_repository.collection.find_one(
-            filter=query_filter,
-            sort=[('timestamp', -1)])
+        entity = await self.__balance_repository.get_balance_by_bank_key(
+            bank_key=str(key))
 
         if entity is None:
             logger.info(f'Could not find balance for bank {bank_key}')
