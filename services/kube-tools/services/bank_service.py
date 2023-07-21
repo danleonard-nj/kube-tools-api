@@ -1,17 +1,17 @@
-import enum
-from typing import Dict, List
 import uuid
+from typing import List
+
+from framework.clients.cache_client import CacheClientAsync
+from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration import Configuration
+from framework.logger import get_logger
+
+from clients.email_gateway_client import EmailGatewayClient
 from clients.plaid_client import PlaidClient
+from data.bank_repository import BankBalanceRepository
 from domain.bank import BankBalance, BankKey, PlaidBalance, SyncType
 from services.event_service import EventService
-from clients.email_gateway_client import EmailGatewayClient
-from data.bank_repository import BankBalanceRepository
-from framework.logger import get_logger
-from framework.clients.cache_client import CacheClientAsync
 from utilities.utils import DateTimeUtil
-from framework.serialization import Serializable
-from framework.clients.feature_client import FeatureClientAsync
 
 logger = get_logger(__name__)
 
@@ -19,6 +19,12 @@ BANK_KEY_WELLS_FARGO = 'wells-fargo'
 EMAIL_RECIPIENT = 'dcl525@gmail.com'
 EMAIL_SUBJECT = 'Bank Balance Captured'
 BALANCE_CAPTURE_EMAILS_FEATURE_KEY = 'banking-balance-capture-emails'
+
+BALANCE_BANK_KEY_EXCLUSIONS = [
+    BankKey.CapitalOne,
+    BankKey.Ally,
+    BankKey.Synchrony
+]
 
 
 class BankService:
@@ -190,7 +196,10 @@ class BankService:
         results = list()
         missing = list()
 
-        for key in BankKey:
+        keys = [key.value for key in BankKey
+                if key not in BALANCE_BANK_KEY_EXCLUSIONS]
+
+        for key in keys:
             logger.info(f'Getting balance for bank {key}')
             result = await self.get_balance(
                 bank_key=str(key))
