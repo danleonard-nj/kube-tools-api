@@ -39,4 +39,4 @@ class BankBalanceRepository(MongoRepositoryAsync):
 
         return await self.collection.find_one(
             filter=query.get_query(),
-            sort=[('timestamp', 1)])
+            sort=[('timestamp', -1)])
