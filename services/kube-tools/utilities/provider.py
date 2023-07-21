@@ -49,6 +49,7 @@ from services.bank_service import BankService
 from services.chat_gpt_proxy_service import ChatGptProxyService
 from services.dead_man_switch_service import DeadManSwitchService
 from services.event_service import EventService
+from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
 from services.location_history_service import LocationHistoryService
@@ -191,6 +192,7 @@ def register_services(
     descriptors.add_singleton(EventService)
     descriptors.add_singleton(GmailRuleService)
     descriptors.add_singleton(GmailService)
+    descriptors.add_singleton(GmailBankSyncService)
     descriptors.add_singleton(NestService)
     descriptors.add_singleton(NestCommandService)
     descriptors.add_singleton(ChatGptProxyService)

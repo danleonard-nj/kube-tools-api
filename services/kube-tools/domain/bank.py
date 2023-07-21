@@ -14,6 +14,10 @@ class BankKey(enum.StrEnum):
     Discover = 'discover'
     Ally = 'ally'
     AllySavingsAccount = 'ally-savings-account'
+    Synchrony = 'synchrony'
+    SynchronyAmazon = 'synchrony-amazon'
+    SynchronyGuitarCenter = 'synchrony-guitar-center'
+    SynchronySweetwater = 'synchrony-sweetwater'
 
 
 class BankRuleConfig(Serializable):
