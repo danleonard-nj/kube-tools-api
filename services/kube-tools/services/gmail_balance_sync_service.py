@@ -23,6 +23,7 @@ logger = get_logger(__name__)
 WELLS_FARGO_RULE_ID = '7062d7af-c920-4f2e-bdc5-e52314d69194'
 WELLS_FARGO_BALANCE_EMAIL_KEY = 'Balance summary'
 WELLS_FARGO_BANK_KEY = 'wells-fargo'
+WELLS_FARGO_CREDIT_CARD_EMAIL_SEGMENT = 'your credit card payment is due'
 
 PROMPT_PREFIX = 'Get the current available bank balance (if present) from this string'
 PROMPT_SUFFIX = 'Respond with only the balance or "N/A"'
@@ -115,6 +116,13 @@ class GmailBankSyncService:
                 if not self.__is_banking_email(
                         segment=segment,
                         match_threshold=3):
+                    continue
+
+                # Skip Wells Fargo credit card updates
+                if (rule.rule_id == WELLS_FARGO_RULE_ID 
+                    and WELLS_FARGO_CREDIT_CARD_EMAIL_SEGMENT in segment):
+
+                    logger.info('Excluding WF credit card balance email')
                     continue
 
                 # Reduce message length
