@@ -6,6 +6,9 @@ from framework.serialization import Serializable
 
 class BankKey(enum.StrEnum):
     WellsFargo = 'wells-fargo'
+    WellsFargoChecking = 'wells-fargo-checking'
+    WellsFargoActiveCash = 'wells-fargo-active-cash'
+    WellsFargoPlatinum = 'wells-fargo-platinum'
     Chase = 'chase'
     CapitalOne = 'capital-one'
     CapitalOneQuickSilver = 'capital-one-quicksilver'
@@ -87,12 +90,3 @@ class PlaidBalance(Serializable):
 
         self.current_balance = balances.get('current')
         self.available_balance = balances.get('available')
-
-    def get_formatted_bank_key(
-        self,
-        bank_key: str
-    ):
-        name = self.account_name.lower()
-        name = name.replace(' ', '-')
-
-        return f'{bank_key}-{name}'

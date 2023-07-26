@@ -12,6 +12,7 @@ from data.bank_repository import BankBalanceRepository
 from domain.bank import BankBalance, BankKey, PlaidBalance, SyncType
 from services.event_service import EventService
 from utilities.utils import DateTimeUtil
+from framework.utilities.iter_utils import first
 
 logger = get_logger(__name__)
 
@@ -25,6 +26,25 @@ BALANCE_BANK_KEY_EXCLUSIONS = [
     BankKey.Ally,
     BankKey.Synchrony
 ]
+
+
+class PlaidAccount:
+    def __init__(
+        self,
+        bank_key: str,
+        access_token: str,
+        account_id: str
+    ):
+        self.bank_key = bank_key
+        self.access_token = access_token
+        self.account_id = account_id
+
+    @staticmethod
+    def from_dict(data):
+        return PlaidAccount(
+            bank_key=data.get('bank_key'),
+            access_token=data.get('access_token'),
+            account_id=data.get('account_id'))
 
 
 class BankService:
@@ -62,39 +82,43 @@ class BankService:
         for account in self.__plaid_accounts:
             logger.info(f'Syncing plaid account: {account}')
 
-            bank_key = account.get('bank_key')
-            access_token = account.get('access_token')
-            target_account_id = account.get('account_id')
+            # bank_key = account.get('bank_key')
+            # access_token = account.get('access_token')
+            # target_account_id = account.get('account_id')
 
-            plaid_response = await self.__plaid_client.get_balance(
-                access_token=access_token)
+            config = PlaidAccount.from_dict(account)
 
-            accounts = plaid_response.get('accounts', list())
+            # Fetch the balance from Plaid
+            balance_response = await self.__plaid_client.get_balance(
+                access_token=config.access_token)
 
-            for account in accounts:
-                account_id = account.get('account_id')
-                logger.info(f'Plaid response account: {account_id}')
+            accounts = balance_response.get('accounts', list())
+            logger.info(
+                f'Accounts fetched for bank: {config.bank_key}: {len(accounts)}')
 
-                if account_id == target_account_id:
-                    logger.info(f'Found target account balance: {account_id}')
+            target_account = first(
+                accounts,
+                lambda x: x.get('account_id') == config.account_id)
 
-                    balance = PlaidBalance(
-                        data=account)
+            if target_account is None:
+                logger.info(
+                    f'Could not find target account: {config.bank_key}: {config.account_id}')
 
-                    balances.append(balance)
+                continue
 
-                    logger.info(
-                        f'Captured balance from plaid: {balance.to_dict()}')
+            balance = PlaidBalance(
+                data=target_account)
 
-                    formatted_key = balance.get_formatted_bank_key(
-                        bank_key=bank_key)
+            balances.append(balance)
 
-                    logger.info(f'Formatted bank key: {formatted_key}')
+            logger.info(
+                f'Captured balance from plaid: {balance.to_dict()}')
 
-                    await self.capture_balance(
-                        bank_key=formatted_key,
-                        balance=balance.available_balance,
-                        sync_type=str(SyncType.Plaid))
+            # Store the captured balance
+            await self.capture_balance(
+                bank_key=config.bank_key,
+                balance=balance.available_balance,
+                sync_type=str(SyncType.Plaid))
 
         return balances
 
