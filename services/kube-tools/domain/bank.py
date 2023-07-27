@@ -252,7 +252,8 @@ class BankRuleConfiguration(Serializable):
     ):
         return BankRuleConfiguration(
             rule_name=data.get('rule_name'),
-            bank_key=data.get('bank_key'))
+            bank_key=data.get('bank_key'),
+            alert_type=data.get('alert_type'))
 
 
 class SyncType(enum.StrEnum):
