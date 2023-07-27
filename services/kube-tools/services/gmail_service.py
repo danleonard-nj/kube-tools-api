@@ -8,6 +8,7 @@ from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
 from constants.google import (GmailRuleAction, GoogleEmailHeader,
                               GoogleEmailLabel)
+from domain.bank import BankRuleConfiguration
 from domain.google import GmailEmail, GmailEmailRule
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
@@ -141,7 +142,7 @@ class GmailService:
 
             logger.info(f'Message eligible for bank sync: {message_id}')
 
-            await self.__bank_sync_service.handle_balance_sync(
+            bank_rule_config = await self.__bank_sync_service.handle_balance_sync(
                 rule=rule,
                 message=message)
 
@@ -158,9 +159,59 @@ class GmailService:
 
             logger.info(f'Tags add/remove: {to_add}: {to_remove}')
 
+            try:
+                await self.send_balance_sync_alert(
+                    rule=rule,
+                    message=message,
+                    bank_rule_config=bank_rule_config)
+            except Exception as e:
+                logger.exception(
+                    f'Failed to send balance sync alert: {str(e)}')
+
             notify_count += 1
 
         return notify_count
+
+    async def send_balance_sync_alert(
+        self,
+        rule: GmailEmailRule,
+        message: GmailEmail,
+        bank_rule_config: BankRuleConfiguration,
+    ):
+        # Send a normal alert if configured in addition
+        # to syncing the balance
+        if (bank_rule_config is None
+                or bank_rule_config.alert_type is None):
+            logger.info(
+                f'No bank rule config found: {bank_rule_config.bank_key}')
+            return
+
+        if bank_rule_config.alert_type == GmailRuleAction.Undefined:
+            logger.info(
+                f'No alert type set for bank sync: {bank_rule_config.bank_key}')
+            return
+
+        body = await self.__get_message_body(
+            rule=rule,
+            message=message)
+
+        logger.info(f'Message body: {body}')
+
+        # Currently the only notifications supported are SMS
+        if bank_rule_config.alert_type == GmailRuleAction.SMS:
+            logger.info(f'Sending SMS alert for bank sync')
+
+            # Send the email snippet in the message body
+            await self.__twilio_gateway.send_sms(
+                recipient=self.__sms_recipient,
+                message=body)
+
+        else:
+            logger.info(
+                f'Unsupported alert type: {bank_rule_config.alert_type}')
+
+            raise Exception(
+                f"Alert type '{bank_rule_config.alert_type}' is not currently supported")
 
     async def process_sms_rule(
         self,

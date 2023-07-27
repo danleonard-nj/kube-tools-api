@@ -15,6 +15,10 @@ def generate_uuid(data: Any):
     return str(uuid.UUID(hashed.hexdigest()))
 
 
+def create_key(**kwargs):
+    return generate_uuid(kwargs)
+
+
 class CacheKey:
     @staticmethod
     def azure_gateway_usage_key(
@@ -96,3 +100,13 @@ class CacheKey:
         zip_code: str
     ) -> str:
         return f'kube-tools-weather-forecast-zip-{zip_code}'
+
+    @staticmethod
+    def chat_gpt_response_by_balance_prompt(
+        balance_prompt: str
+    ) -> str:
+
+        key = KeyUtils.create_uuid(
+            balance_prompt=balance_prompt)
+
+        return f'gpt-balance-prompt-{key}'

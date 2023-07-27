@@ -33,3 +33,20 @@ async def post_sync(container):
     service: BankService = container.resolve(BankService)
 
     return await service.run_sync()
+
+
+@bank_bp.configure('/api/bank/transactions/sync', methods=['POST'], auth_scheme=AuthPolicy.Default)
+async def post_transactions_sync(container):
+    service: BankService = container.resolve(BankService)
+
+    return await service.sync_transactions()
+
+
+@bank_bp.configure('/api/bank/webhook', methods=['POST'], auth_scheme=AuthPolicy.Default)
+async def post_bank_webhook(container):
+    service: BankService = container.resolve(BankService)
+
+    body = await request.get_json()
+
+    return await service.handle_webhook(
+        data=body)

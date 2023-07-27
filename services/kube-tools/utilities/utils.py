@@ -11,6 +11,15 @@ from framework.logger.providers import get_logger
 logger = get_logger(__name__)
 
 
+def parse(value, enum_type):
+    if isinstance(value, str):
+        try:
+            return enum_type(value)
+        except:
+            return None
+    return value
+
+
 class DateTimeUtil:
     IsoDateTimeFormat = '%Y-%m-%dT%H:%M:%S.%fZ'
     IsoDateFormat = '%Y-%m-%d'

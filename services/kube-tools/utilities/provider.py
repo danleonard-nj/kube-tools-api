@@ -25,7 +25,7 @@ from clients.plaid_client import PlaidClient
 from clients.storage_client import StorageClient
 from clients.twilio_gateway import TwilioGatewayClient
 from data.api_event_repository import ApiEventRepository
-from data.bank_repository import BankBalanceRepository
+from data.bank_repository import BankBalanceRepository, BankTransactionsRepository, BankWebhooksRepository
 from data.chat_gpt_repository import ChatGptRepository
 from data.dead_man_switch_repository import DeadManSwitchRepository
 from data.google.google_auth_repository import GoogleAuthRepository
@@ -174,6 +174,9 @@ def register_repositories(
     descriptors.add_singleton(ApiEventRepository)
     descriptors.add_singleton(GoogleEmailLogRepository)
     descriptors.add_singleton(BankBalanceRepository)
+    descriptors.add_singleton(BankTransactionsRepository)
+    descriptors.add_singleton(BankTransactionsRepository)
+    descriptors.add_singleton(BankWebhooksRepository)
     descriptors.add_singleton(WeatherRepository)
 
 

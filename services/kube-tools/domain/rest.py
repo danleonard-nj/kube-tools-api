@@ -1,5 +1,5 @@
 import json
-from typing import Dict, List
+from typing import Dict, List, Union
 
 from framework.serialization import Serializable
 from quart import Response
@@ -247,3 +247,52 @@ class ChatGptHistoryEndpointsResponse(Serializable):
             'endpoints': list(grouped.keys()),
             'data': grouped
         }
+
+
+class PlaidBalanceRequest(Serializable):
+    def __init__(
+        self,
+        client_id: str,
+        secret: str,
+        access_token: str
+    ):
+        self.client_id = client_id
+        self.secret = secret
+        self.access_token = access_token
+
+
+class PlaidTransactionRequestOptions(Serializable):
+    def __init__(
+        self,
+        count: int = 500,
+        include_personal_finance_category: bool = True,
+        account_ids: List[str] = None,
+    ):
+        self.count = count
+        self.include_personal_finance_category = include_personal_finance_category
+
+        if account_ids is not None:
+            self.account_ids = account_ids
+
+
+class PlaidTransactionsRequest(Serializable):
+    def __init__(
+        self,
+        client_id: str,
+        secret: str,
+        access_token: str,
+        start_date: str,
+        end_date: str,
+        options: Union[PlaidTransactionRequestOptions, Dict] = None
+    ):
+        self.client_id = client_id
+        self.secret = secret
+        self.access_token = access_token
+        self.start_date = start_date
+        self.end_date = end_date
+
+        if options is not None:
+            if isinstance(options, PlaidTransactionRequestOptions):
+                self.options = options.to_dict()
+            else:
+                self.options = options

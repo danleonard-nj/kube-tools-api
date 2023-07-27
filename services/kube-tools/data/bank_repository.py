@@ -40,3 +40,43 @@ class BankBalanceRepository(MongoRepositoryAsync):
         return await self.collection.find_one(
             filter=query.get_query(),
             sort=[('timestamp', -1)])
+
+
+class BankTransactionsRepository(MongoRepositoryAsync):
+    def __init__(
+        self,
+        client: AsyncIOMotorClient
+    ):
+        super().__init__(
+            client=client,
+            database='Bank',
+            collection='Transactions')
+
+    async def get_transactions(
+        self,
+        bank_key: str,
+        transaction_ids: str
+    ):
+        query_filter = {
+            'bank_key': bank_key,
+            'transaction_id': {
+                '$in': transaction_ids
+            }
+        }
+
+        return await (
+            self.collection
+            .find(filter=query_filter)
+            .to_list(length=None)
+        )
+
+
+class BankWebhooksRepository(MongoRepositoryAsync):
+    def __init__(
+        self,
+        client: AsyncIOMotorClient
+    ):
+        super().__init__(
+            client=client,
+            database='Bank',
+            collection='Webhooks')
