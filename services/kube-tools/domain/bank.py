@@ -1,6 +1,6 @@
-from datetime import datetime
 import enum
 import json
+from datetime import datetime
 from typing import Dict, List, Union
 
 from dateutil import parser
@@ -8,7 +8,7 @@ from framework.crypto.hashing import sha256
 from framework.logger import get_logger
 from framework.serialization import Serializable
 
-from utilities.utils import parse
+from utilities.utils import DateTimeUtil, parse
 
 logger = get_logger(__name__)
 
@@ -94,11 +94,11 @@ class PlaidTransaction(Serializable):
         self,
         transaction_id: str,
         transaction_type: str,
+        transaction_date: str,
         bank_key: str,
         account_id: str,
         amount: float,
         categories: List[str],
-        date: str,
         merchant: str,
         name: str,
         channel: str,
@@ -121,7 +121,8 @@ class PlaidTransaction(Serializable):
             self.categories = self.__parse_categories(
                 categories)
 
-        self.date = self.__parse_date(date)
+        self.transaction_date = self.__parse_date(
+            date=transaction_date)
 
         self.merchant = merchant
         self.name = name
@@ -136,16 +137,10 @@ class PlaidTransaction(Serializable):
         self.hash_key = (
             hash_key or self.__generate_hash_key()
         )
-        self.timestamp = (
-            timestamp or int(self.date.timestamp())
-        )
 
-    # def to_dict(self):
-    #     return super().to_dict() | {
-    #         'transaction_type': str(self.transaction_type),
-    #         'channel': str(self.channel),
-    #         'categories': [str(category) for category in self.categories],
-    #     }
+        self.timestamp = (
+            timestamp or DateTimeUtil.timestamp()
+        )
 
     def get_selector(
         self
@@ -164,13 +159,16 @@ class PlaidTransaction(Serializable):
 
     def __parse_date(
         self,
-        date: Union[str, datetime]
-    ) -> datetime:
+        date: Union[str, datetime, int]
+    ) -> int:
 
         if isinstance(date, datetime):
+            return int(date.timestamp())
+
+        if isinstance(date, int):
             return date
-        else:
-            return parser.parse(date)
+
+        return int(parser.parse(date).timestamp())
 
     def __parse_categories(
         self,
@@ -196,7 +194,7 @@ class PlaidTransaction(Serializable):
             account_id=data.get('account_id'),
             amount=data.get('amount'),
             categories=data.get('categories'),
-            date=data.get('date'),
+            transaction_date=data.get('transaction_date'),
             merchant=data.get('merchant'),
             name=data.get('name'),
             channel=data.get('channel'),
@@ -217,12 +215,13 @@ class PlaidTransaction(Serializable):
             account_id=data.get('account_id'),
             amount=data.get('amount'),
             categories=data.get('category'),
-            date=data.get('datetime') or data.get('date'),
+            transaction_date=data.get('datetime') or data.get('date'),
             merchant=data.get('merchant_name'),
             name=data.get('name'),
             channel=data.get('payment_channel'),
             pending=data.get('pending'),
-            pf_categories=data.get('personal_finance_category'))
+            pf_categories=data.get('personal_finance_category'),
+            timestamp=DateTimeUtil.timestamp())
 
 
 class SyncResult(Serializable):

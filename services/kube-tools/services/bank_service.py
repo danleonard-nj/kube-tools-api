@@ -6,18 +6,18 @@ from framework.clients.cache_client import CacheClientAsync
 from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration import Configuration
 from framework.logger import get_logger
+from framework.serialization import Serializable
 from framework.utilities.iter_utils import first
 
 from clients.email_gateway_client import EmailGatewayClient
 from clients.plaid_client import PlaidClient
 from data.bank_repository import (BankBalanceRepository,
-                                  BankTransactionsRepository, BankWebhooksRepository)
+                                  BankTransactionsRepository,
+                                  BankWebhooksRepository)
 from domain.bank import (BankBalance, BankKey, PlaidBalance, PlaidTransaction,
                          SyncActionType, SyncResult, SyncType)
 from services.event_service import EventService
-from framework.serialization import Serializable
 from utilities.utils import DateTimeUtil
-from quart import request
 
 logger = get_logger(__name__)
 
@@ -27,7 +27,7 @@ EMAIL_SUBJECT = 'Bank Balance Captured'
 BALANCE_CAPTURE_EMAILS_FEATURE_KEY = 'banking-balance-capture-emails'
 
 
-DEFAULT_TRANSACTION_LOOKBACK_DAYS = 3
+DEFAULT_LOOKBACK_DAYS = 3
 
 BALANCE_BANK_KEY_EXCLUSIONS = [
     BankKey.CapitalOne,
@@ -96,6 +96,36 @@ class BankService:
         self.__plaid_accounts = configuration.banking.get(
             'plaid_accounts', list())
 
+    async def get_transactions(
+        self,
+        start_timestamp: int,
+        end_timestamp: int,
+        bank_keys: List[str] = None
+    ):
+        end_timestamp = (
+            end_timestamp or DateTimeUtil.timestamp()
+        )
+
+        entities = await self.__transaction_repository.get_transactions(
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
+            bank_keys=bank_keys)
+
+        logger.info(f'Fetched {len(entities)} transactions')
+
+        transactions = [PlaidTransaction.from_entity(data=entity)
+                        for entity in entities]
+
+        results = dict()
+        for transaction in transactions:
+            if transaction.bank_key not in results:
+                results[transaction.bank_key] = list()
+
+            results[transaction.bank_key].append(
+                transaction.to_dict())
+
+        return results
+
     async def run_sync(
         self
     ):
@@ -121,14 +151,16 @@ class BankService:
         return dict()
 
     async def sync_transactions(
-        self
+        self,
+        days_back: int = None
     ):
         res = dict()
         for account in self.__plaid_accounts:
             plaid_account = PlaidAccount.from_dict(account)
 
             transactions = await self.sync_account_transactions(
-                account=plaid_account)
+                account=plaid_account,
+                days_back=days_back)
 
             key = f'{plaid_account.bank_key}-{plaid_account.account_id}'
             res[key] = transactions
@@ -137,14 +169,15 @@ class BankService:
 
     async def sync_account_transactions(
         self,
-        account: PlaidAccount
+        account: PlaidAccount,
+        days_back: int = None
     ):
         account_ids = [account.account_id]
 
         end_date = datetime.now()
 
         start_date = (
-            datetime.now() - timedelta(days=DEFAULT_TRANSACTION_LOOKBACK_DAYS)
+            end_date - timedelta(days=days_back or DEFAULT_LOOKBACK_DAYS)
         )
 
         results = await self.__plaid_client.get_transactions(
@@ -161,9 +194,14 @@ class BankService:
             for item in results.get('transactions', list())
         ]
 
+        if not any(transactions):
+            logger.info(
+                f'No transactions found to sync for account: {account.bank_key}')
+            return list()
+
         transaction_ids = [x.transaction_id for x in transactions]
 
-        existing_transaction_entities = await self.__transaction_repository.get_transactions(
+        existing_transaction_entities = await self.__transaction_repository.get_transactions_by_transaction_ids(
             bank_key=account.bank_key,
             transaction_ids=transaction_ids)
 

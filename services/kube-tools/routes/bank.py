@@ -1,16 +1,28 @@
-from framework.clients.feature_client import FeatureClientAsync
+from typing import Dict
+
 from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
 
 from domain.auth import AuthPolicy
-from domain.features import Feature
-from services.acr_purge_service import AcrPurgeService
 from services.bank_service import BankService
 
 logger = get_logger(__name__)
 
 bank_bp = MetaBlueprint('bank_bp', __name__)
+
+
+def get_transactions_query_params() -> Dict:
+    start_timestamp = request.args.get('start_timestamp')
+    end_timestamp = request.args.get('end_timestamp')
+
+    bank_keys = request.args.to_dict(flat=False).get('bank_key')
+
+    return {
+        'start_timestamp': int(start_timestamp) if start_timestamp is not None else None,
+        'end_timestamp': int(end_timestamp) if end_timestamp is not None else None,
+        'bank_keys': bank_keys if bank_keys is not None else list()
+    }
 
 
 @bank_bp.configure('/api/bank/balances/<key>', methods=['GET'], auth_scheme=AuthPolicy.Default)
@@ -39,7 +51,20 @@ async def post_sync(container):
 async def post_transactions_sync(container):
     service: BankService = container.resolve(BankService)
 
-    return await service.sync_transactions()
+    days_back = request.args.get('days_back')
+
+    return await service.sync_transactions(
+        days_back=int(days_back) if days_back is not None else None)
+
+
+@bank_bp.configure('/api/bank/transactions', methods=['GET'], auth_scheme=AuthPolicy.Default)
+async def get_transactions(container):
+    service: BankService = container.resolve(BankService)
+
+    params = get_transactions_query_params()
+
+    return await service.get_transactions(
+        **params)
 
 
 @bank_bp.configure('/api/bank/webhook', methods=['POST'], auth_scheme=AuthPolicy.Default)
