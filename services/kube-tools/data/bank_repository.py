@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List
 
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -53,6 +53,30 @@ class BankTransactionsRepository(MongoRepositoryAsync):
             collection='Transactions')
 
     async def get_transactions(
+        self,
+        start_timestamp: int,
+        end_timestamp: int,
+        bank_keys: List[str] = None
+    ):
+        query_filter = {
+            'transaction_date': {
+                '$gte': start_timestamp,
+                '$lte': end_timestamp
+            }
+        }
+
+        if bank_keys is not None:
+            query_filter['bank_key'] = {
+                '$in': bank_keys
+            }
+
+        return await (
+            self.collection
+            .find(filter=query_filter)
+            .to_list(length=None)
+        )
+
+    async def get_transactions_by_transaction_ids(
         self,
         bank_key: str,
         transaction_ids: str
