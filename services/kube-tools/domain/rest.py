@@ -296,3 +296,13 @@ class PlaidTransactionsRequest(Serializable):
                 self.options = options.to_dict()
             else:
                 self.options = options
+
+
+class GetBalancesResponse(Serializable):
+    def __init__(
+        self,
+        balances: List[Dict],
+        missing: List[str]
+    ):
+        self.balances = balances
+        self.no_data = missing

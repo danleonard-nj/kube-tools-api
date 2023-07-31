@@ -4,7 +4,14 @@ from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
 
 
-class GetBalanceByBankKeyQuery:
+class MongoQuery:
+    def get_query(
+        self
+    ) -> Dict:
+        raise NotImplementedError()
+
+
+class GetBalanceByBankKeyQuery(MongoQuery):
     def __init__(
         self,
         bank_key: str
@@ -17,6 +24,37 @@ class GetBalanceByBankKeyQuery:
         return {
             'bank_key': self.bank_key
         }
+
+
+class GetBalanceHistoryQuery(MongoQuery):
+    def __init__(
+        self,
+        start_timestamp: int,
+        end_timestamp: int,
+        bank_keys: List[str] = None
+    ):
+        self.start_timestamp = start_timestamp
+        self.end_timestamp = end_timestamp
+        self.bank_keys = bank_keys
+
+    def get_query(
+        self
+    ):
+        query_filter = {
+            'timestamp': {
+                '$gte': self.start_timestamp,
+                '$lte': self.end_timestamp
+            }
+        }
+
+        if (self.bank_keys is not None
+                and any(self.bank_keys)):
+
+            query_filter['bank_key'] = {
+                '$in': self.bank_keys
+            }
+
+        return query_filter
 
 
 class BankBalanceRepository(MongoRepositoryAsync):
@@ -40,6 +78,24 @@ class BankBalanceRepository(MongoRepositoryAsync):
         return await self.collection.find_one(
             filter=query.get_query(),
             sort=[('timestamp', -1)])
+
+    async def get_balance_history(
+        self,
+        start_timestamp: int,
+        end_timestamp: int,
+        bank_keys: List[str] = None
+    ):
+        query = GetBalanceHistoryQuery(
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
+            bank_keys=bank_keys
+        )
+
+        return await (
+            self.collection
+            .find(filter=query.get_query())
+            .to_list(length=None)
+        )
 
 
 class BankTransactionsRepository(MongoRepositoryAsync):

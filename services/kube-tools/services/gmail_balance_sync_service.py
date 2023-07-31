@@ -50,6 +50,9 @@ BALANCE_EMAIL_INCLUSION_KEYWORDS = [
     'card'
 ]
 
+BALANCE_EMAIL_EXCLUSION_KEYWORDS = [
+]
+
 
 class ChatGptBalanceCompletion(Serializable):
     def __init__(
@@ -223,30 +226,21 @@ class GmailBankSyncService:
         bank_key,
         email_body_segments: List[str]
     ):
-        # For CapitalOne emails, we need to determine the card type
-        # to store the balance against
-        if bank_key == 'capital-one':
-            logger.info(f'Parsing CapitalOne card type')
-            bank_key = self.__get_capital_one_bank_key(
-                body_segments=email_body_segments)
+        match bank_key:
+            case BankKey.CapitalOne:
+                # For CapitalOne emails, we need to determine the card type
+                # to store the balance against
+                return self.__get_capital_one_bank_key(
+                    body_segments=email_body_segments)
 
-            # If the bank key is unchanged then we were unable to
-            # determine the card type
-            if bank_key == BankKey.CapitalOne:
-                logger.info(f'No CapitalOne card type detected')
+            case BankKey.Synchrony:
+                # Same case for Synchrony bank email alerts
+                return self.__get_synchrony_bank_key(
+                    body_segments=email_body_segments)
 
-        # Same case for Synchrony bank email alerts
-        if bank_key == BankKey.Synchrony:
-            logger.info(f'Parsing Synchrony card type')
-            bank_key = self.__get_synchrony_bank_key(
-                body_segments=email_body_segments)
-
-            # If the bank key is unchanged then we were unable to
-            # determine the card type
-            if bank_key == BankKey.Synchrony:
-                logger.info(f'No Synchrony card type detected')
-
-        return bank_key
+            case _:
+                # Unchanged bank key
+                return bank_key
 
     def __format_balance_result(
         self,
@@ -344,23 +338,14 @@ class GmailBankSyncService:
             return mapping
 
         rules = self.__bank_rules
-        logger.info(f'Banking rule configs: {rules}')
 
         # Parse the rule configurations
         rule_configs = [BankRuleConfiguration.from_json_object(data=rule)
                         for rule in rules]
 
-        logger.info(f'Rule configs: {rule_configs}')
-
-        # Names of all the configured rules
-        rule_names = [x.rule_name
-                      for x in rule_configs]
-
-        logger.info(f'Rule names: {rule_names}')
-
         # Fetch given rules by rule name
         rules = await self.__rule_service.get_rules_by_name(
-            rules=rule_names)
+            rule_names=[x.rule_name for x in rule_configs])
 
         # Mapping to get the rule config from the name
         rule_lookup = {
@@ -368,24 +353,22 @@ class GmailBankSyncService:
         }
 
         mapping = dict()
-        cache_values = dict()
 
         # Generate the rule ID to rule config mapping
         for rule_config in rule_configs:
-            logger.info(
-                f'Rule: {rule_config.rule_name}: {rule_config.bank_key}')
-
             mapped_rule = rule_lookup.get(rule_config.rule_name)
 
             # Map the rule ID to the rule config which contains
             # the bank key and the rule name
             mapping[mapped_rule.rule_id] = rule_config
 
-            # Set the cache value for this rule config (serialize
-            # the bank rule config)
-            cache_values[mapped_rule.rule_id] = rule_config.to_dict()
-
         logger.info(f'Caching rule mapping: {cache_key}: {cache_values}')
+
+        cache_values = {
+            key: value.to_dict()
+            for key, value in mapping.items()
+        }
+
         asyncio.create_task(
             self.__cache_client.set_json(
                 key=cache_key,
@@ -402,11 +385,10 @@ class GmailBankSyncService:
 
         results = []
         for segment in segments:
-            if none_or_whitespace(segment):
-                logger.info(f'Segment is empty')
-                continue
 
-            logger.info(f'Parsing segment: {log_truncate(segment)}')
+            if none_or_whitespace(segment):
+                logger.info(f'Email body segment is empty: {segment}')
+                continue
 
             # Parse the segment as HTML
             soup = BeautifulSoup(segment)
@@ -416,19 +398,23 @@ class GmailBankSyncService:
 
             # If there is no body in this HTML segment
             # then skip it and move on to the next one
-            if body is None:
-                logger.info(f'No body found in segment')
+            if none_or_whitespace(body):
+                logger.info(f'No text found in body segment: {body}')
                 continue
+
+            def strip_special_chars(value: str) -> str:
+                return (
+                    value
+                    .strip()
+                    .replace('\n', ' ')
+                    .replace('\t', ' ')
+                    .replace('\r', ' ')
+                )
 
             # Get the text content of the body and strip
             # any newlines, tabs, or carriage returns
-            content = (
-                body
-                .get_text()
-                .strip()
-                .replace('\n', ' ')
-                .replace('\t', '')
-                .replace('\r', '')
+            content = strip_special_chars(
+                value=body.get_text()
             )
 
             results.append(content)
@@ -441,11 +427,7 @@ class GmailBankSyncService:
     ) -> str:
 
         # Generate the prompt to get the balance from the email string
-        prompt = f"{PROMPT_PREFIX}: '{message}'. {PROMPT_SUFFIX}"
-
-        logger.info(f'Prompt: {prompt}')
-
-        return prompt
+        return f"{PROMPT_PREFIX}: '{message}'. {PROMPT_SUFFIX}"
 
     def __is_banking_email(
         self,
@@ -454,8 +436,12 @@ class GmailBankSyncService:
     ) -> bool:
 
         matches = []
-
         text = segment.lower()
+
+        # If the email contains any exclsuion keywords
+        for key in BALANCE_EMAIL_EXCLUSION_KEYWORDS:
+            if key in text:
+                return False
 
         # If the email contains the balance email key
         # add it to the match list
@@ -463,12 +449,10 @@ class GmailBankSyncService:
             if key in text:
                 matches.append(key)
 
-        is_match = (
+        return (
             len(matches) >= match_threshold
             and 'balance' in matches
         )
-
-        return is_match
 
     def __clean_message_string(
         self,
@@ -494,14 +478,15 @@ class GmailBankSyncService:
         if len(value) > 500:
             logger.info(
                 f'Truncating segment from {len(value)} to 500 chars')
-            value = value[:500]
+            return value[:500]
 
         return value
 
     def __get_synchrony_bank_key(
         self,
         body_segments: List[str]
-    ):
+    ) -> str:
+
         logger.info('Parsing Synchrony card type')
 
         bank_key = BankKey.Synchrony
@@ -509,27 +494,28 @@ class GmailBankSyncService:
         for email_body in body_segments:
             email_body = email_body.lower()
 
+            # Amazon Prime Store Card
             if SYNCHRONY_AMAZON in email_body:
                 logger.info(f'Synchrony Amazon card detected')
-                bank_key = BankKey.SynchronyAmazon
-                break
+                return BankKey.SynchronyAmazon
 
+            # Guitar Center Card
             if SYNCHRONY_GUITAR_CENTER in email_body:
                 logger.info(f'Synchrony Guitar Center card detected')
-                bank_key = BankKey.SynchronyGuitarCenter
-                break
+                return BankKey.SynchronyGuitarCenter
 
+            # Sweetwater Card
             if SYNCHRONY_SWEETWATER in email_body:
                 logger.info(f'Synchrony Sweetwater card detected')
-                bank_key = BankKey.SynchronySweetwater
-                break
+                return BankKey.SynchronySweetwater
 
         return bank_key
 
     def __get_capital_one_bank_key(
         self,
         body_segments: List[str]
-    ):
+    ) -> str:
+
         logger.info(f'Parsing CapitalOne card type')
 
         bank_key = BankKey.CapitalOne
@@ -540,18 +526,15 @@ class GmailBankSyncService:
             # SavorOne
             if CAPITAL_ONE_SAVOR in email_body:
                 logger.info(f'CapitalOne SavorOne card detected')
-                bank_key = BankKey.CapitalOneSavor
-                break
+                return BankKey.CapitalOneSavor
             # VentureOne
             if CAPITAL_ONE_VENTURE in email_body:
                 logger.info(f'CapitalOne Venture card detected')
-                bank_key = BankKey.CapitalOneVenture
-                break
+                return BankKey.CapitalOneVenture
             # QuickSilver
             if CAPITAL_ONE_QUICKSILVER in email_body:
                 logger.info(f'CapitalOne Quicksilver card detected')
-                bank_key = BankKey.CapitalOneQuickSilver
-                break
+                return BankKey.CapitalOneQuickSilver
 
         logger.info(f'CapitalOne bank key: {bank_key}')
 

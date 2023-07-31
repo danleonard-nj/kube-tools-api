@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 from hashlib import md5
 from typing import Union
+from dateutil import parser
 
 from framework.logger.providers import get_logger
 
@@ -29,12 +30,31 @@ class DateTimeUtil:
         return int(time.time())
 
     @classmethod
+    def date_to_timestamp(
+        cls,
+        date_str: str
+    ):
+        parsed = parser.parse(date_str)
+        return int(parsed.timestamp())
+
+    @classmethod
     def get_iso_date(
         cls
     ) -> str:
         return (
             datetime
             .now()
+            .strftime(cls.IsoDateFormat)
+        )
+
+    @classmethod
+    def timestamp_to_iso_date(
+        cls,
+        timestamp: int
+    ) -> str:
+        return (
+            datetime
+            .fromtimestamp(timestamp)
             .strftime(cls.IsoDateFormat)
         )
 

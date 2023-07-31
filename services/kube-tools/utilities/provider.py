@@ -15,7 +15,7 @@ from clients.azure_gateway_client import AzureGatewayClient
 from clients.chat_gpt_service_client import ChatGptServiceClient
 from clients.email_gateway_client import EmailGatewayClient
 from clients.event_client import EventClient
-from clients.gmail_client import GmailClient, GmailRuleService
+from clients.gmail_client import GmailClient
 from clients.google_drive_client import GoogleDriveClient
 from clients.google_maps_client import GoogleMapsClient
 from clients.identity_client import IdentityClient
@@ -50,6 +50,7 @@ from services.chat_gpt_proxy_service import ChatGptProxyService
 from services.dead_man_switch_service import DeadManSwitchService
 from services.event_service import EventService
 from services.gmail_balance_sync_service import GmailBankSyncService
+from services.gmail_rule_service import GmailRuleService
 from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
 from services.location_history_service import LocationHistoryService

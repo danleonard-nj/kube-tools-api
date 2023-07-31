@@ -31,6 +31,12 @@ class BankKey(enum.StrEnum):
     SynchronyGuitarCenter = 'synchrony-guitar-center'
     SynchronySweetwater = 'synchrony-sweetwater'
 
+    @classmethod
+    def values(
+        cls
+    ):
+        return [x.value for x in cls]
+
 
 class PlaidTransactionCategory(enum.StrEnum):
     Debit = 'Debit'
@@ -63,6 +69,7 @@ class PlaidTransactionCategory(enum.StrEnum):
     Deposit = 'Deposit'
     Check = 'Check'
     Undefined = 'Undefined'
+    BankFees = 'Bank Fees'
 
 
 def parse_category(value):
@@ -87,6 +94,7 @@ class PlaidTransactionType(enum.StrEnum):
 class SyncActionType(enum.StrEnum):
     Insert = 'insert'
     Update = 'update'
+    NoAction = 'no-action'
 
 
 class PlaidTransaction(Serializable):
@@ -118,8 +126,7 @@ class PlaidTransaction(Serializable):
         self.amount = float(amount)
 
         if any(categories):
-            self.categories = self.__parse_categories(
-                categories)
+            self.categories = categories
 
         self.transaction_date = self.__parse_date(
             date=transaction_date)
@@ -304,3 +311,34 @@ class PlaidBalance(Serializable):
 
         self.current_balance = balances.get('current')
         self.available_balance = balances.get('available')
+
+
+class PlaidAccount:
+    def __init__(
+        self,
+        bank_key: str,
+        access_token: str,
+        account_id: str
+    ):
+        self.bank_key = bank_key
+        self.access_token = access_token
+        self.account_id = account_id
+
+    @staticmethod
+    def from_dict(data):
+        return PlaidAccount(
+            bank_key=data.get('bank_key'),
+            access_token=data.get('access_token'),
+            account_id=data.get('account_id'))
+
+
+class PlaidWebhookData(Serializable):
+    def __init__(
+        self,
+        request_id: str,
+        data: Dict,
+        timestamp: int
+    ):
+        self.request_id = request_id
+        self.data = data
+        self.timestamp = timestamp

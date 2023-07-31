@@ -14,9 +14,11 @@ from clients.plaid_client import PlaidClient
 from data.bank_repository import (BankBalanceRepository,
                                   BankTransactionsRepository,
                                   BankWebhooksRepository)
-from domain.bank import (BankBalance, BankKey, PlaidBalance, PlaidTransaction,
+from domain.bank import (BankBalance, BankKey, PlaidAccount, PlaidBalance, PlaidTransaction, PlaidWebhookData,
                          SyncActionType, SyncResult, SyncType)
+from domain.rest import GetBalancesResponse
 from services.event_service import EventService
+from framework.exceptions.nulls import ArgumentNullException
 from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
@@ -29,46 +31,23 @@ BALANCE_CAPTURE_EMAILS_FEATURE_KEY = 'banking-balance-capture-emails'
 
 DEFAULT_LOOKBACK_DAYS = 3
 
+# Unsupported bank keys for balance captures
 BALANCE_BANK_KEY_EXCLUSIONS = [
     BankKey.CapitalOne,
     BankKey.Ally,
-    BankKey.Synchrony
+    BankKey.Synchrony,
+    BankKey.WellsFargoActiveCash,
+    BankKey.WellsFargoChecking,
+    BankKey.WellsFargoPlatinum,
+    BankKey.Discover
 ]
+# testagain
+# anothertestdfdfd
 
 
 def format_datetime(dt):
+    logger.info(f'Formatting datetime: {dt}')
     return dt.strftime('%Y-%m-%d')
-
-
-class PlaidAccount:
-    def __init__(
-        self,
-        bank_key: str,
-        access_token: str,
-        account_id: str
-    ):
-        self.bank_key = bank_key
-        self.access_token = access_token
-        self.account_id = account_id
-
-    @staticmethod
-    def from_dict(data):
-        return PlaidAccount(
-            bank_key=data.get('bank_key'),
-            access_token=data.get('access_token'),
-            account_id=data.get('account_id'))
-
-
-class PlaidWebhookData(Serializable):
-    def __init__(
-        self,
-        request_id: str,
-        data: Dict,
-        timestamp: int
-    ):
-        self.request_id = request_id
-        self.data = data
-        self.timestamp = timestamp
 
 
 class BankService:
@@ -99,9 +78,11 @@ class BankService:
     async def get_transactions(
         self,
         start_timestamp: int,
-        end_timestamp: int,
+        end_timestamp: int = None,
         bank_keys: List[str] = None
     ):
+        ArgumentNullException.if_none(start_timestamp, 'start_timestamp')
+
         end_timestamp = (
             end_timestamp or DateTimeUtil.timestamp()
         )
@@ -152,9 +133,10 @@ class BankService:
 
     async def sync_transactions(
         self,
-        days_back: int = None
+        days_back: int = None,
+        include_transactions: bool = False
     ):
-        res = dict()
+        sync_results = dict()
         for account in self.__plaid_accounts:
             plaid_account = PlaidAccount.from_dict(account)
 
@@ -163,22 +145,63 @@ class BankService:
                 days_back=days_back)
 
             key = f'{plaid_account.bank_key}-{plaid_account.account_id}'
-            res[key] = transactions
 
-        return res
+            inserts = [x for x in transactions if x.action ==
+                       SyncActionType.Insert]
+            updates = [x for x in transactions if x.action ==
+                       SyncActionType.Update]
+
+            result = {
+                'updates': len(updates),
+                'inserts': len(inserts),
+            }
+
+            if include_transactions:
+                result['transactions'] = transactions
+
+            sync_results[key] = result
+
+        return sync_results
+
+    async def __get_transaction_lookup(
+        self,
+        transactions: List[PlaidTransaction],
+        account: PlaidAccount
+    ):
+        ArgumentNullException.if_none(transactions, 'transactions')
+        ArgumentNullException.if_none(account, 'account')
+
+        transaction_ids = [x.transaction_id for x in transactions]
+
+        # Fetch existing transactions that have already been synced
+        existing_transaction_entities = await self.__transaction_repository.get_transactions_by_transaction_ids(
+            bank_key=account.bank_key,
+            transaction_ids=transaction_ids)
+
+        existing_transactions = [PlaidTransaction.from_entity(data=entity)
+                                 for entity in existing_transaction_entities]
+
+        return {
+            x.transaction_id: x for x in existing_transactions
+        }
 
     async def sync_account_transactions(
         self,
         account: PlaidAccount,
         days_back: int = None
     ):
-        account_ids = [account.account_id]
+        ArgumentNullException.if_none(account, 'account')
 
+        logger.info(f'Syncing transactions for account: {account.bank_key}')
+
+        account_ids = [account.account_id]
         end_date = datetime.now()
 
         start_date = (
             end_date - timedelta(days=days_back or DEFAULT_LOOKBACK_DAYS)
         )
+
+        logger.info(f'Date range: {start_date} - {end_date}')
 
         results = await self.__plaid_client.get_transactions(
             access_token=account.access_token,
@@ -187,30 +210,19 @@ class BankService:
             account_ids=account_ids)
 
         # Parse transaction domain models
-        transactions = [
-            PlaidTransaction.from_plaid_transaction_item(
-                data=item,
-                bank_key=account.bank_key)
-            for item in results.get('transactions', list())
-        ]
+        transactions = [PlaidTransaction.from_plaid_transaction_item(
+            data=item,
+            bank_key=account.bank_key)
+            for item in results.get('transactions', list())]
 
         if not any(transactions):
             logger.info(
                 f'No transactions found to sync for account: {account.bank_key}')
             return list()
 
-        transaction_ids = [x.transaction_id for x in transactions]
-
-        existing_transaction_entities = await self.__transaction_repository.get_transactions_by_transaction_ids(
-            bank_key=account.bank_key,
-            transaction_ids=transaction_ids)
-
-        existing_transactions = [PlaidTransaction.from_entity(data=entity)
-                                 for entity in existing_transaction_entities]
-
-        transaction_lookup = {
-            x.transaction_id: x for x in existing_transactions
-        }
+        transaction_lookup = await self.__get_transaction_lookup(
+            transactions=transactions,
+            account=account)
 
         sync_results = []
         sync_result = None
@@ -246,9 +258,17 @@ class BankService:
                         transaction=transaction,
                         action=SyncActionType.Update)
 
+                else:
+                    logger.info(
+                        f'Transaction already synced: {transaction.transaction_id}')
+
+                    sync_result = SyncResult(
+                        transaction=transaction,
+                        action=SyncActionType.NoAction)
+
             sync_results.append(sync_result)
 
-        return transactions
+        return sync_results
 
     async def sync_plaid_accounts(
         self
@@ -302,6 +322,9 @@ class BankService:
         message_bk: str = None,
         sync_type=None
     ):
+        ArgumentNullException.if_none_or_whitespace(bank_key, 'bank_key')
+        ArgumentNullException.if_none(balance, 'balance')
+
         logger.info(f'Capturing balance for bank {bank_key}')
 
         if sync_type is None:
@@ -330,6 +353,8 @@ class BankService:
         self,
         balance: BankBalance
     ):
+        ArgumentNullException.if_none(balance, 'balance')
+
         is_enabled = await self.__feature_client.is_enabled(
             feature_key=BALANCE_CAPTURE_EMAILS_FEATURE_KEY)
 
@@ -356,6 +381,8 @@ class BankService:
         self,
         bank_key: str
     ) -> BankBalance:
+
+        ArgumentNullException.if_none_or_whitespace(bank_key, 'bank_key')
 
         logger.info(f'Getting balance for bank {bank_key}')
 
@@ -399,7 +426,35 @@ class BankService:
             else:
                 results.append(result)
 
-        return {
-            'balances': results,
-            'no_data': missing
-        }
+        return GetBalancesResponse(
+            balances=result,
+            missing=missing)
+
+    async def get_balance_history(
+        self,
+        start_timestamp: int,
+        end_timestamp: int,
+        bank_keys: List[str]
+    ):
+        ArgumentNullException.if_none_or_whitespace(bank_keys, 'bank_keys')
+        ArgumentNullException.if_none(start_timestamp, 'start_timestamp')
+        ArgumentNullException.if_none(end_timestamp, 'end_timestamp')
+
+        logger.info(f'Getting balance history for bank {bank_keys}')
+
+        # Validate provided bank keys
+        for bank_key in bank_keys:
+            if bank_key not in BankKey.values():
+                raise Exception(f"'{bank_key}' is not a valid bank key")
+
+        entities = await self.__balance_repository.get_balance_history(
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
+            bank_keys=bank_keys)
+
+        logger.info(f'Fetched {len(entities)} balance history records')
+
+        balances = [BankBalance.from_entity(data=entity)
+                    for entity in entities]
+
+        return balances

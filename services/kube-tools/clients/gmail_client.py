@@ -8,12 +8,11 @@ from framework.uri import build_url
 from framework.validators.nulls import none_or_whitespace
 from google.auth.transport.requests import Request
 from httpx import AsyncClient
-from constants.google import GoogleEmailLabel
 
+from constants.google import GoogleEmailLabel
 from domain.cache import CacheKey
 from domain.google import GmailEmail, GmailQueryResult, GoogleClientScope
 from domain.rest import GmailModifyEmailRequest
-from services.gmail_rule_service import GmailRuleService
 from services.google_auth_service import GoogleAuthService
 
 logger = get_logger(__name__)
@@ -24,12 +23,10 @@ class GmailClient:
         self,
         configuration: Configuration,
         auth_service: GoogleAuthService,
-        rule_service: GmailRuleService,
         http_client: AsyncClient
     ):
         self.__auth_service = auth_service
         self.__http_client = http_client
-        self.__rule_service = rule_service
         self.__memory_cache = MemoryCache()
 
         self.__base_url = configuration.gmail.get(
@@ -81,16 +78,16 @@ class GmailClient:
 
         # Build endpoint with message
         endpoint = f'{self.__base_url}/v1/users/me/messages/{message_id}'
-        logger.debug(f'Endpoint: {endpoint}')
 
         auth_headers = await self.__get_auth_headers()
         message_response = await self.__http_client.get(
             url=endpoint,
             headers=auth_headers)
 
+        logger.debug(f'{endpoint}: {message_response.status_code}')
+
         content = message_response.json()
-        return GmailEmail(
-            data=content)
+        return GmailEmail(data=content)
 
     async def get_messages(
         self,
