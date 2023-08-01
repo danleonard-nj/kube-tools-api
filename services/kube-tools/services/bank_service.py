@@ -9,7 +9,6 @@ from domain.bank import BankBalance, PlaidWebhookData
 from services.bank_balance_service import BalanceSyncService
 from services.bank_transaction_service import BankTransactionService
 from utilities.utils import DateTimeUtil
-from framework.utilities.pinq import where
 
 logger = get_logger(__name__)
 
