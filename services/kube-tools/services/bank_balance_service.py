@@ -6,12 +6,14 @@ from framework.logger import get_logger
 from framework.utilities.iter_utils import first
 
 from clients.email_gateway_client import EmailGatewayClient
+from framework.configuration import Configuration
 from data.bank_repository import BankBalanceRepository
 from domain.bank import BankBalance, PlaidAccount, PlaidBalance
 from domain.enums import BankKey, SyncType
 from domain.rest import GetBalancesResponse
 from services.event_service import EventService
 from utilities.utils import DateTimeUtil
+from framework.clients.feature_client import FeatureClientAsync
 
 logger = get_logger(__name__)
 
@@ -40,13 +42,19 @@ def format_datetime(dt):
 class BalanceSyncService:
     def __init__(
         self,
+        configuration: Configuration,
         balance_repository: BankBalanceRepository,
         email_client: EmailGatewayClient,
         event_service: EventService,
+        feature_client: FeatureClientAsync
     ):
         self.__balance_repository = balance_repository
         self.__email_client = email_client
         self.__event_service = event_service
+        self.__feature_client = feature_client
+
+        self.__plaid_accounts = configuration.banking.get(
+            'plaid_accounts', list())
 
     async def run_sync(
         self

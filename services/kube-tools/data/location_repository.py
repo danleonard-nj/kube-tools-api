@@ -1,3 +1,5 @@
+from typing import Dict
+
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -14,7 +16,11 @@ class WeatherStationRepository(MongoRepositoryAsync):
             database=MongoDatabase.WeatherStation,
             collection=MongoCollection.WeatherStationCoordinate)
 
-    async def query(self, filter, top=None):
+    async def query(
+        self,
+        filter: Dict,
+        top: int = None
+    ):
         result = self.collection.find(filter)
         return await result.to_list(length=top)
 
@@ -29,6 +35,10 @@ class ZipLatLongRepository(MongoRepositoryAsync):
             database=MongoDatabase.WeatherStation,
             collection=MongoCollection.WeatherStationZipLatLong)
 
-    async def query(self, filter, top=None):
+    async def query(
+        self,
+        filter: Dict,
+        top: int = None
+    ):
         result = self.collection.find(filter)
         return await result.to_list(length=top)
