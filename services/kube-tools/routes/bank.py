@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Dict
 
 from framework.logger.providers import get_logger
@@ -7,7 +6,7 @@ from quart import request
 
 from domain.auth import AuthPolicy
 from services.bank_service import BankService
-from utilities.utils import DateTimeUtil
+from utilities.utils import parse_timestamp
 
 logger = get_logger(__name__)
 
@@ -21,26 +20,20 @@ def get_transactions_query_params() -> Dict:
     bank_keys = request.args.to_dict(flat=False).get('bank_key')
 
     return {
-        'start_timestamp': int(start_timestamp) if start_timestamp is not None else None,
-        'end_timestamp': int(end_timestamp) if end_timestamp is not None else None,
+        'start_timestamp': parse_timestamp(start_timestamp) if start_timestamp is not None else None,
+        'end_timestamp': parse_timestamp(end_timestamp) if end_timestamp is not None else None,
         'bank_keys': bank_keys if bank_keys is not None else list()
     }
 
 
 def get_balance_history_query_params() -> Dict:
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
+    start_timestamp = request.args.get('start_timestamp')
+    end_timestamp = request.args.get('end_timestamp')
     bank_keys = request.args.to_dict(flat=False).get('bank_key')
 
-    if isinstance(start_date, str):
-        start_date = DateTimeUtil.date_to_timestamp(start_date)
-
-    if isinstance(end_date, str):
-        end_date = DateTimeUtil.date_to_timestamp(end_date)
-
     return {
-        'start_timestamp': start_date,
-        'end_timestamp': end_date,
+        'start_timestamp': parse_timestamp(start_timestamp) if start_timestamp is not None else None,
+        'end_timestamp': parse_timestamp(end_timestamp) if end_timestamp is not None else None,
         'bank_keys': bank_keys if bank_keys is not None else list()
     }
 

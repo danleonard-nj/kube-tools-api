@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Dict, List, Union
 
 from dateutil import parser
+from utilities.utils import parse_timestamp
 from framework.crypto.hashing import sha256
 from framework.logger import get_logger
 from framework.serialization import Serializable
@@ -128,8 +129,12 @@ class PlaidTransaction(Serializable):
         if any(categories):
             self.categories = categories
 
-        self.transaction_date = self.__parse_date(
-            date=transaction_date)
+        transaction_timestamp = parse_timestamp(
+            value=transaction_date)
+
+        self.transaction_date = transaction_timestamp
+        self.transaction_iso = datetime.fromtimestamp(
+            transaction_timestamp).isoformat()
 
         self.merchant = merchant
         self.name = name
