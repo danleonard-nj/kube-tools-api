@@ -34,21 +34,21 @@ class GmailRuleService:
 
     async def get_rules_by_name(
         self,
-        rules: List[str]
+        rule_names: List[str]
     ):
-        logger.info(f'Fetching rules by name: {rules}')
+        logger.info(f'Fetching rules by name: {rule_names}')
 
         entities = await self.__email_rule_repository.get_email_rules_by_names(
-            names=rules)
+            names=rule_names)
 
-        rules = [
+        rule_names = [
             GmailEmailRule.from_entity(data=entity)
             for entity in entities
         ]
 
-        logger.info(f'Rules retrieved: {len(rules)}')
+        logger.info(f'Rules retrieved: {len(rule_names)}')
 
-        return rules
+        return rule_names
 
     async def get_rules(
         self

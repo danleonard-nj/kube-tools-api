@@ -6,9 +6,31 @@ from datetime import datetime
 from hashlib import md5
 from typing import Union
 
+from dateutil import parser
 from framework.logger.providers import get_logger
 
 logger = get_logger(__name__)
+
+
+def parse_timestamp(
+    value: Union[str, int, datetime]
+) -> Union[int, None]:
+    '''
+    Converts a string, int or datetime to a timestamp
+    '''
+
+    if isinstance(value, str):
+        return (
+            int(value) if value.isnumeric()
+            else int(parser.parse(value).timestamp())
+        )
+
+    elif isinstance(value, int):
+        return value
+    elif isinstance(value, datetime):
+        return int(value.timestamp())
+
+    raise Exception(f'Unsupported type: {type(value)}')
 
 
 def parse(value, enum_type):
@@ -29,12 +51,31 @@ class DateTimeUtil:
         return int(time.time())
 
     @classmethod
+    def date_to_timestamp(
+        cls,
+        date_str: str
+    ):
+        parsed = parser.parse(date_str)
+        return int(parsed.timestamp())
+
+    @classmethod
     def get_iso_date(
         cls
     ) -> str:
         return (
             datetime
             .now()
+            .strftime(cls.IsoDateFormat)
+        )
+
+    @classmethod
+    def timestamp_to_iso_date(
+        cls,
+        timestamp: int
+    ) -> str:
+        return (
+            datetime
+            .fromtimestamp(timestamp)
             .strftime(cls.IsoDateFormat)
         )
 

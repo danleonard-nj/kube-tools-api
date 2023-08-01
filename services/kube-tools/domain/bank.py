@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Dict, List, Union
 
 from dateutil import parser
+from utilities.utils import parse_timestamp
 from framework.crypto.hashing import sha256
 from framework.logger import get_logger
 from framework.serialization import Serializable
@@ -30,6 +31,12 @@ class BankKey(enum.StrEnum):
     SynchronyAmazon = 'synchrony-amazon'
     SynchronyGuitarCenter = 'synchrony-guitar-center'
     SynchronySweetwater = 'synchrony-sweetwater'
+
+    @classmethod
+    def values(
+        cls
+    ):
+        return [x.value for x in cls]
 
 
 class PlaidTransactionCategory(enum.StrEnum):
@@ -63,6 +70,7 @@ class PlaidTransactionCategory(enum.StrEnum):
     Deposit = 'Deposit'
     Check = 'Check'
     Undefined = 'Undefined'
+    BankFees = 'Bank Fees'
 
 
 def parse_category(value):
@@ -87,6 +95,7 @@ class PlaidTransactionType(enum.StrEnum):
 class SyncActionType(enum.StrEnum):
     Insert = 'insert'
     Update = 'update'
+    NoAction = 'no-action'
 
 
 class PlaidTransaction(Serializable):
@@ -118,11 +127,14 @@ class PlaidTransaction(Serializable):
         self.amount = float(amount)
 
         if any(categories):
-            self.categories = self.__parse_categories(
-                categories)
+            self.categories = categories
 
-        self.transaction_date = self.__parse_date(
-            date=transaction_date)
+        transaction_timestamp = parse_timestamp(
+            value=transaction_date)
+
+        self.transaction_date = transaction_timestamp
+        self.transaction_iso = datetime.fromtimestamp(
+            transaction_timestamp).isoformat()
 
         self.merchant = merchant
         self.name = name
@@ -154,34 +166,13 @@ class PlaidTransaction(Serializable):
     def __generate_hash_key(
         self
     ):
-        data = json.dumps(self.to_dict(), default=str)
+        values = {
+            k: v for k, v in self.to_dict().items()
+            if k not in ['hash_key', 'timestamp']
+        }
+
+        data = json.dumps(values, default=str)
         return sha256(data)
-
-    def __parse_date(
-        self,
-        date: Union[str, datetime, int]
-    ) -> int:
-
-        if isinstance(date, datetime):
-            return int(date.timestamp())
-
-        if isinstance(date, int):
-            return date
-
-        return int(parser.parse(date).timestamp())
-
-    def __parse_categories(
-        self,
-        categories: List[str]
-    ):
-        parsed = []
-        for category in categories:
-            result = parse_category(
-                value=category)
-
-            parsed.append(result)
-
-        return parsed
 
     @staticmethod
     def from_entity(
@@ -228,10 +219,12 @@ class SyncResult(Serializable):
     def __init__(
         self,
         transaction: PlaidTransaction,
-        action: SyncActionType
+        action: SyncActionType,
+        original_transaction: PlaidTransaction = None
     ):
-        self.transaction = transaction
         self.action = action
+        self.original_transaction = original_transaction
+        self.transaction = transaction
 
 
 class BankRuleConfiguration(Serializable):
@@ -304,3 +297,34 @@ class PlaidBalance(Serializable):
 
         self.current_balance = balances.get('current')
         self.available_balance = balances.get('available')
+
+
+class PlaidAccount:
+    def __init__(
+        self,
+        bank_key: str,
+        access_token: str,
+        account_id: str
+    ):
+        self.bank_key = bank_key
+        self.access_token = access_token
+        self.account_id = account_id
+
+    @staticmethod
+    def from_dict(data):
+        return PlaidAccount(
+            bank_key=data.get('bank_key'),
+            access_token=data.get('access_token'),
+            account_id=data.get('account_id'))
+
+
+class PlaidWebhookData(Serializable):
+    def __init__(
+        self,
+        request_id: str,
+        data: Dict,
+        timestamp: int
+    ):
+        self.request_id = request_id
+        self.data = data
+        self.timestamp = timestamp
