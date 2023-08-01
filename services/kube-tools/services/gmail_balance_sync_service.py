@@ -362,12 +362,12 @@ class GmailBankSyncService:
             # the bank key and the rule name
             mapping[mapped_rule.rule_id] = rule_config
 
-        logger.info(f'Caching rule mapping: {cache_key}: {cache_values}')
-
         cache_values = {
             key: value.to_dict()
             for key, value in mapping.items()
         }
+
+        logger.info(f'Caching rule mapping: {cache_key}: {cache_values}')
 
         asyncio.create_task(
             self.__cache_client.set_json(
