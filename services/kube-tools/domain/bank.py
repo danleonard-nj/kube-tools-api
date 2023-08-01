@@ -1,107 +1,34 @@
-import enum
 import json
+import uuid
 from datetime import datetime
-from typing import Dict, List, Union
+from typing import Dict, List
 
-from dateutil import parser
-from utilities.utils import parse_timestamp
 from framework.crypto.hashing import sha256
 from framework.logger import get_logger
 from framework.serialization import Serializable
 
-from utilities.utils import DateTimeUtil, parse
+from domain.enums import (PlaidPaymentChannel, PlaidTransactionCategory,
+                          PlaidTransactionType, SyncActionType)
+from utilities.utils import DateTimeUtil, parse, parse_timestamp
 
 logger = get_logger(__name__)
 
 
-class BankKey(enum.StrEnum):
-    WellsFargo = 'wells-fargo'
-    WellsFargoChecking = 'wells-fargo-checking'
-    WellsFargoActiveCash = 'wells-fargo-active-cash'
-    WellsFargoPlatinum = 'wells-fargo-platinum'
-    Chase = 'chase'
-    CapitalOne = 'capital-one'
-    CapitalOneQuickSilver = 'capital-one-quicksilver'
-    CapitalOneVenture = 'capital-one-venture'
-    CapitalOneSavor = 'capital-one-savorone'
-    Discover = 'discover'
-    Ally = 'ally'
-    AllySavingsAccount = 'ally-savings-account'
-    Synchrony = 'synchrony'
-    SynchronyAmazon = 'synchrony-amazon'
-    SynchronyGuitarCenter = 'synchrony-guitar-center'
-    SynchronySweetwater = 'synchrony-sweetwater'
-
-    @classmethod
-    def values(
-        cls
-    ):
-        return [x.value for x in cls]
-
-
-class PlaidTransactionCategory(enum.StrEnum):
-    Debit = 'Debit'
-    Payroll = 'Payroll'
-    Service = 'Service'
-    Payment = 'Payment'
-    Electric = 'Electric'
-    CarDealersAndLeasing = 'Car Dealers and Leasing'
-    Hardware_Store = 'Hardware Store'
-    Subscription = 'Subscription'
-    Shops = 'Shops'
-    Withdrawal = 'Withdrawal'
-    Credit = 'Credit'
-    Credit_Card = 'Credit Card'
-    Insurance = 'Insurance'
-    TelecommunicationServices = 'Telecommunication Services'
-    FoodAndDrink = 'Food and Drink'
-    ThirdParty = 'Third Party'
-    Restaurants = 'Restaurants'
-    Utilities = 'Utilities'
-    Rent = 'Rent'
-    ATM = 'ATM'
-    Transfer = 'Transfer'
-    Cable = 'Cable'
-    Automotive = 'Automotive'
-    Venmo = 'Venmo'
-    Financial = 'Financial'
-    Interest = 'Interest'
-    InterestEarned = 'Interest Earned'
-    Deposit = 'Deposit'
-    Check = 'Check'
-    Undefined = 'Undefined'
-    BankFees = 'Bank Fees'
-
-
-def parse_category(value):
-    try:
-        return PlaidTransactionCategory(value)
-    except:
-        logger.info(f'Failed to parse plaid transaction category: {value}')
-        return PlaidTransactionCategory.Undefined
-
-
-class PlaidPaymentChannel(enum.StrEnum):
-    InStore = 'in store'
-    Online = 'online'
-    Other = 'other'
-
-
-class PlaidTransactionType(enum.StrEnum):
-    Special = 'special'
-    Place = 'place'
-
-
-class SyncActionType(enum.StrEnum):
-    Insert = 'insert'
-    Update = 'update'
-    NoAction = 'no-action'
-
-
 class PlaidTransaction(Serializable):
+    @property
+    def equality_comparison_exclusions(
+        self
+    ):
+        return [
+            'hash_key',
+            'timestamp',
+            'transaction_id',
+            'data'
+        ]
+
     def __init__(
         self,
-        transaction_id: str,
+        transaction_bk: str,
         transaction_type: str,
         transaction_date: str,
         bank_key: str,
@@ -113,10 +40,13 @@ class PlaidTransaction(Serializable):
         channel: str,
         pending: bool,
         pf_categories: List[str],
+        transaction_id: str = None,
         hash_key: str = None,
-        timestamp: int = None
+        timestamp: int = None,
+        data: Dict = None
     ):
         self.transaction_id = transaction_id
+        self.transaction_bk = transaction_bk
 
         self.transaction_type = parse(
             transaction_type,
@@ -150,6 +80,8 @@ class PlaidTransaction(Serializable):
             hash_key or self.__generate_hash_key()
         )
 
+        self.data = data or dict()
+
         self.timestamp = (
             timestamp or DateTimeUtil.timestamp()
         )
@@ -160,15 +92,23 @@ class PlaidTransaction(Serializable):
 
         return {
             'bank_key': self.bank_key,
-            'transaction_id': self.transaction_id
+            'transaction_bk': self.transaction_bk
         }
+
+    def set_transaction_id(
+        self,
+        transaction_id: str = None
+    ):
+        self.transaction_id = (
+            transaction_id or str(uuid.uuid4())
+        )
 
     def __generate_hash_key(
         self
     ):
         values = {
             k: v for k, v in self.to_dict().items()
-            if k not in ['hash_key', 'timestamp']
+            if k not in self.equality_comparison_exclusions
         }
 
         data = json.dumps(values, default=str)
@@ -180,6 +120,7 @@ class PlaidTransaction(Serializable):
     ):
         return PlaidTransaction(
             transaction_id=data.get('transaction_id'),
+            transaction_bk=data.get('transaction_bk'),
             transaction_type=data.get('transaction_type'),
             bank_key=data.get('bank_key'),
             account_id=data.get('account_id'),
@@ -192,15 +133,16 @@ class PlaidTransaction(Serializable):
             pending=data.get('pending'),
             pf_categories=data.get('pf_categories'),
             hash_key=data.get('hash_key'),
+            data=data.get('data'),
             timestamp=data.get('timestamp'))
 
     @staticmethod
     def from_plaid_transaction_item(
         data: Dict,
-        bank_key: str
+        bank_key: str,
     ):
         return PlaidTransaction(
-            transaction_id=data.get('transaction_id'),
+            transaction_bk=data.get('transaction_id'),
             transaction_type=data.get('transaction_type'),
             bank_key=bank_key,
             account_id=data.get('account_id'),
@@ -212,6 +154,7 @@ class PlaidTransaction(Serializable):
             channel=data.get('payment_channel'),
             pending=data.get('pending'),
             pf_categories=data.get('personal_finance_category'),
+            data=data,
             timestamp=DateTimeUtil.timestamp())
 
 
@@ -246,11 +189,6 @@ class BankRuleConfiguration(Serializable):
             rule_name=data.get('rule_name'),
             bank_key=data.get('bank_key'),
             alert_type=data.get('alert_type'))
-
-
-class SyncType(enum.StrEnum):
-    Email = 'email'
-    Plaid = 'plaid'
 
 
 class BankBalance(Serializable):

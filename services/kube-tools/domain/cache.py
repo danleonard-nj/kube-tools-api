@@ -2,10 +2,7 @@ import hashlib
 import json
 import uuid
 from typing import Any
-
-from framework.crypto.hashing import md5
 from framework.validators.nulls import none_or_whitespace
-
 from utilities.utils import KeyUtils
 
 

@@ -12,10 +12,11 @@ from sympy import Q
 
 from clients.chat_gpt_service_client import (ChatGptException,
                                              ChatGptServiceClient)
-from domain.bank import BankRuleConfiguration, SyncType
+from domain.bank import BankRuleConfiguration
 from domain.cache import CacheKey
+from domain.enums import BankKey, SyncType
 from domain.google import GmailEmail, GmailEmailRule, parse_gmail_body
-from services.bank_service import BankKey, BankService
+from services.bank_service import BankService
 from framework.serialization import Serializable
 from services.gmail_rule_service import GmailRuleService
 

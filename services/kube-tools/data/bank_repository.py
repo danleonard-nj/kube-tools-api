@@ -143,15 +143,15 @@ class BankTransactionsRepository(MongoRepositoryAsync):
             .to_list(length=None)
         )
 
-    async def get_transactions_by_transaction_ids(
+    async def get_transactions_by_transaction_bks(
         self,
         bank_key: str,
-        transaction_ids: str
+        transaction_bks: str
     ):
         query_filter = {
             'bank_key': bank_key,
-            'transaction_id': {
-                '$in': transaction_ids
+            'transaction_bk': {
+                '$in': transaction_bks
             }
         }
 

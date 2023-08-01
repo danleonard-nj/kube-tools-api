@@ -45,7 +45,9 @@ from domain.auth import AdRole, AuthPolicy
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
 from services.api_event_service import ApiEventHistoryService
+from services.bank_balance_service import BalanceSyncService
 from services.bank_service import BankService
+from services.bank_transaction_service import BankTransactionService
 from services.chat_gpt_proxy_service import ChatGptProxyService
 from services.dead_man_switch_service import DeadManSwitchService
 from services.event_service import EventService
@@ -202,6 +204,8 @@ def register_services(
     descriptors.add_singleton(ApiEventHistoryService)
     descriptors.add_singleton(BankService)
     descriptors.add_singleton(WeatherService)
+    descriptors.add_singleton(BankTransactionService)
+    descriptors.add_singleton(BalanceSyncService)
 
 
 class ContainerProvider(ProviderBase):
