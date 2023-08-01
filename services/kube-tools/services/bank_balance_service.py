@@ -7,6 +7,7 @@ from framework.utilities.iter_utils import first
 
 from clients.email_gateway_client import EmailGatewayClient
 from framework.configuration import Configuration
+from clients.plaid_client import PlaidClient
 from data.bank_repository import BankBalanceRepository
 from domain.bank import BankBalance, PlaidAccount, PlaidBalance
 from domain.enums import BankKey, SyncType
@@ -46,12 +47,14 @@ class BalanceSyncService:
         balance_repository: BankBalanceRepository,
         email_client: EmailGatewayClient,
         event_service: EventService,
+        plaid_client: PlaidClient,
         feature_client: FeatureClientAsync
     ):
         self.__balance_repository = balance_repository
         self.__email_client = email_client
         self.__event_service = event_service
         self.__feature_client = feature_client
+        self.__plaid_client = plaid_client
 
         self.__plaid_accounts = configuration.banking.get(
             'plaid_accounts', list())

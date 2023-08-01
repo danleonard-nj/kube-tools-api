@@ -205,6 +205,9 @@ class BankTransactionService:
             transaction.set_transaction_id(
                 transaction_id=transaction_id)
 
+            # Update the timestamp to the last modified date
+            transaction.timestamp = DateTimeUtil.timestamp()
+
             replace_result = await self.__transaction_repository.replace(
                 selector=transaction.get_selector(),
                 document=transaction.to_dict())
