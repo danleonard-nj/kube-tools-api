@@ -60,6 +60,7 @@ from services.nest_command_service import NestCommandService
 from services.nest_service import NestService
 from services.podcast_service import PodcastService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
+from services.torrent_service import TorrentService
 from services.usage_service import UsageService
 from services.weather_service import WeatherService
 
@@ -206,6 +207,7 @@ def register_services(
     descriptors.add_singleton(WeatherService)
     descriptors.add_singleton(BankTransactionService)
     descriptors.add_singleton(BalanceSyncService)
+    descriptors.add_singleton(TorrentService)
 
 
 class ContainerProvider(ProviderBase):

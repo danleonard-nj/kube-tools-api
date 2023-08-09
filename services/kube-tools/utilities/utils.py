@@ -118,6 +118,51 @@ class ValueConverter:
             else result
         )
 
+    @classmethod
+    def megabytes_to_bytes(
+        cls,
+        megabytes,
+        round_result=True
+    ) -> Union[int, float]:
+
+        if bytes == 0:
+            return 0
+
+        result = cls.MegabyteInBytes * megabytes
+
+        return (
+            round(result) if round_result
+            else result
+        )
+
+    @classmethod
+    def gigabytes_to_megabytes(
+        cls,
+        megabytes,
+        round_result=True
+    ) -> Union[int, float]:
+
+        result = megabytes * 1024
+
+        return (
+            round(result) if round_result
+            else result
+        )
+
+    @classmethod
+    def terabytes_to_gigabytes(
+        cls,
+        gigabytes,
+        round_result=True
+    ) -> Union[int, float]:
+
+        result = gigabytes * 1024
+
+        return (
+            round(result) if round_result
+            else result
+        )
+
 
 def parse_bool(value):
     return value == 'true'
