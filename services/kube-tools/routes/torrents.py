@@ -3,6 +3,7 @@ from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
 
 from domain.auth import AuthPolicy
+from domain.torrents import TorrentSource
 from services.torrent_service import TorrentService
 
 logger = get_logger(__name__)
@@ -16,10 +17,12 @@ async def post_search(container):
 
     query = request.args.get('q')
     page = request.args.get('page', 1)
+    target = request.args.get('target', TorrentSource.L337X)
 
     return await service.search(
         search_term=query,
-        page=int(page))
+        page=int(page),
+        target=target)
 
 
 @torrent_bp.configure('/api/torrents/magnet', methods=['POST'], auth_scheme=AuthPolicy.Default)
@@ -28,7 +31,10 @@ async def post_magnet(container):
 
     body = await request.get_json()
 
-    stub = body.get('stub')
+    target = body.get('target')
+    data = body.get('data')
 
     return await service.get_magnet_link(
-        link_stub=stub)
+        target=target,
+        data=data
+    )

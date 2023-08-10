@@ -23,6 +23,7 @@ from clients.nest_client import NestClient
 from clients.open_weather_client import OpenWeatherClient
 from clients.plaid_client import PlaidClient
 from clients.storage_client import StorageClient
+from clients.torrent_client import TorrentClient
 from clients.twilio_gateway import TwilioGatewayClient
 from data.api_event_repository import ApiEventRepository
 from data.bank_repository import BankBalanceRepository, BankTransactionsRepository, BankWebhooksRepository
@@ -156,6 +157,7 @@ def register_clients(
     descriptors.add_singleton(ChatGptServiceClient)
     descriptors.add_singleton(PlaidClient)
     descriptors.add_singleton(OpenWeatherClient)
+    descriptors.add_singleton(TorrentClient)
 
 
 def register_repositories(
