@@ -44,6 +44,7 @@ class TorrentDetail(Serializable):
             'info_hash': data.get('info_hash'),
             'imdb': data.get('imdb'),
             'id': data.get('id'),
+            'name': data.get('name')
         }
 
         return TorrentDetail(

@@ -291,10 +291,18 @@ class TorrentService:
         data: Dict
     ):
         if target == TorrentSource.L337X:
+            if 'stub' not in data:
+                raise Exception('No stub provided')
             return await self.get_1337x_magnet_link(
                 link_stub=data.get('stub'))
+
         if target == TorrentSource.PirateBay:
+            if 'info_hash' not in data:
+                raise Exception('No info hash provided')
+            if 'name' not in data:
+                raise Exception('No name provided')
+
             magnet_link = TorrentHelper.parse_pirate_bay_magnet_link(
                 name=data.get('name'),
                 info_hash=data.get('info_hash'))
-            return magnet_link
+            return dict(magnet=magnet_link)
