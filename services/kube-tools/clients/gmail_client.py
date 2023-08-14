@@ -56,7 +56,7 @@ class GmailClient:
         self.__memory_cache.set(
             key=cache_key,
             value=client.token,
-            ttl=60 * 60)
+            ttl=60 * 45)
 
         logger.info(f'Client token: {client.token}')
 
