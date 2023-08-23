@@ -4,8 +4,6 @@ from typing import Dict, List
 
 from framework.serialization import Serializable
 
-from utilities.utils import create_uuid
-
 
 class CoordinateKey:
     @property
