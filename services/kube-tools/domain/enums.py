@@ -80,3 +80,8 @@ class SyncActionType(enum.StrEnum):
 class SyncType(enum.StrEnum):
     Email = 'email'
     Plaid = 'plaid'
+
+
+class ProcessGmailRuleResultType(enum.StrEnum):
+    Success = 'success'
+    Failure = 'failure'

@@ -1,11 +1,11 @@
+from framework.exceptions.nulls import ArgumentNullException
 from framework.rest.blueprints.meta import MetaBlueprint
-from quart import Response, jsonify, request
-from domain.rest import CreateEmailRuleRequest, UpdateEmailRuleRequest
+from quart import Response, request
 
+from domain.rest import (CreateEmailRuleRequest, ProcessGmailRuleRequest,
+                         UpdateEmailRuleRequest)
 from services.gmail_rule_service import GmailRuleService
 from services.gmail_service import GmailService
-from framework.exceptions.nulls import ArgumentNullException
-
 from services.google_auth_service import GoogleAuthService
 
 google_bp = MetaBlueprint('google_bp', __name__)
@@ -54,6 +54,23 @@ async def get_gmail_rule(container, rule_id: str):
 
     return await service.get_rule(
         rule_id=rule_id)
+
+
+@ google_bp.configure('/api/google/gmail/rule/process', methods=['POST'], auth_scheme='execute')
+async def post_gmail_rule_process(container):
+    service: GmailService = container.resolve(
+        GmailService)
+
+    body = await request.get_json()
+
+    ArgumentNullException.if_none_or_whitespace(
+        body, 'body')
+
+    process_request = ProcessGmailRuleRequest(
+        data=body)
+
+    return await service.process_rule(
+        process_request=process_request)
 
 
 @ google_bp.configure('/api/google/gmail/rule/<rule_id>', methods=['DELETE'], auth_scheme='default')

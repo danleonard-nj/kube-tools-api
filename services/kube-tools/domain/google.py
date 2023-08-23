@@ -188,6 +188,20 @@ class GmailEmailRule(Serializable):
             created_date=data.get('created_date')
         )
 
+    @staticmethod
+    def from_request_body(data):
+        return GmailEmailRule(
+            rule_id=data.get('rule_id'),
+            name=data.get('name'),
+            description=data.get('description'),
+            max_results=data.get('max_results'),
+            query=data.get('query'),
+            action=data.get('action'),
+            data=data.get('data'),
+            count_processed=data.get('count_processed'),
+            created_date=data.get('created_date')
+        )
+
 
 # class GmailRuleHistory:
 #     def __init__(

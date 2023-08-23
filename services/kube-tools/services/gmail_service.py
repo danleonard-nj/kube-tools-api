@@ -1,4 +1,5 @@
 import asyncio
+import enum
 from typing import Dict, List
 
 from framework.configuration import Configuration
@@ -9,7 +10,9 @@ from clients.twilio_gateway import TwilioGatewayClient
 from constants.google import (GmailRuleAction, GoogleEmailHeader,
                               GoogleEmailLabel)
 from domain.bank import BankRuleConfiguration
+from domain.enums import ProcessGmailRuleResultType
 from domain.google import GmailEmail, GmailEmailRule
+from domain.rest import ProcessGmailRuleRequest, ProcessGmailRuleResponse
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
 
@@ -90,6 +93,61 @@ class GmailService:
             results=run_results))
 
         return run_results
+
+    async def process_rule(
+        self,
+        process_request: ProcessGmailRuleRequest
+    ):
+        try:
+            logger.info(
+                f'Parsing rule to process: {process_request.to_dict()}')
+
+            if process_request.rule is None:
+                raise Exception('No rule provided to process')
+
+            rule = GmailEmailRule.from_request_body(
+                data=process_request.rule)
+
+            logger.info(f'Processing rule: {rule.rule_id}: {rule.name}')
+
+            # Default affected count
+            affected_count = 0
+
+            # Process an archival rule
+            if rule.action == GmailRuleAction.Archive:
+                logger.info(f'Rule type: {GmailRuleAction.Archive}')
+
+                affected_count = await self.process_archive_rule(
+                    rule=rule)
+
+            # Process an SMS rule
+            if rule.action == GmailRuleAction.SMS:
+                logger.info(f'Rule type: {GmailRuleAction.SMS}')
+
+                affected_count = await self.process_sms_rule(
+                    rule=rule)
+
+            if rule.action == GmailRuleAction.BankSync:
+                logger.info(f'Rule type: {GmailRuleAction.BankSync}')
+
+                affected_count = await self.process_bank_sync_rule(
+                    rule=rule)
+
+            logger.info(
+                f'Rule: {rule.name}: Emails affected: {affected_count}')
+
+            return ProcessGmailRuleResponse(
+                status=ProcessGmailRuleResultType.Success,
+                rule=rule,
+                affected_count=affected_count)
+
+        except Exception as ex:
+            logger.exception(
+                f'Failed to process rule: {rule.rule_id}: {rule.name}: {str(ex)}')
+
+            return ProcessGmailRuleResponse(
+                status=ProcessGmailRuleResultType.Failure,
+                rule=rule)
 
     async def process_archive_rule(
         self,

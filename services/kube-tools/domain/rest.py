@@ -1,4 +1,3 @@
-import json
 from typing import Dict, List, Union
 
 from framework.serialization import Serializable
@@ -306,3 +305,26 @@ class GetBalancesResponse(Serializable):
     ):
         self.balances = balances
         self.no_data = missing
+
+
+class ProcessGmailRuleRequest(Serializable):
+    def __init__(
+        self,
+        data: Dict
+    ):
+        self.rule = data.get('rule')
+
+
+class ProcessGmailRuleResponse(Serializable):
+    def __init__(
+        self,
+        status: str,
+        rule,
+        affected_count: int = None
+    ):
+        self.status = status
+        self.rule = rule
+
+        self.affected_count = (
+            affected_count or 0
+        )
