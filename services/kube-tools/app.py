@@ -24,6 +24,10 @@ from routes.podcasts import podcasts_bp
 from routes.usage import usage_bp
 from utilities.provider import ContainerProvider
 
+from utilities.utils import deprecate_logger
+
+deprecate_logger.info('testing deprected logger')
+
 logger = get_logger(__name__)
 app = Quart(__name__)
 

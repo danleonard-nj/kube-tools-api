@@ -24,29 +24,28 @@ class OpenWeatherClient:
         zip_code: str
     ):
         logger.info(f'Getting weather for {zip_code}')
-        # API request parameters
+
+        # Weather request parameters
         query_params = GetWeatherQueryParams(
             zip_code=zip_code,
             api_key=self.__api_key)
 
         logger.info(f'Request: {query_params.to_dict()}')
 
+        # Build the weather forecast endpoint
         endpoint = build_url(
             base=f'{self.__base_url}/data/2.5/weather',
             **query_params.to_dict())
 
         logger.info(f'Endpoint: {endpoint}')
 
+        # Fetch daily forecast from weather service
         response = await self.__http_client.get(
             url=endpoint)
 
         logger.info(f'Response status: {response.status_code}')
 
-        data = response.json()
-
-        logger.info(f'Weather for {zip_code}: {data}')
-
-        return data
+        return response.json()
 
     async def get_forecast(
         self,
@@ -56,19 +55,17 @@ class OpenWeatherClient:
             zip_code=zip_code,
             api_key=self.__api_key)
 
+        # Build endpoint for weather request
         endpoint = build_url(
             base=f'{self.__base_url}/data/2.5/forecast',
             **query_params.to_dict())
 
         logger.info(f'Getting forecast: {endpoint}: {query_params.to_dict()}')
 
+        # Fetch forecast data from weather service
         response = await self.__http_client.get(
             url=endpoint)
 
         logger.info(f'Response status: {response.status_code}')
 
-        data = response.json()
-
-        logger.info(f'Weather for {zip_code}: {data}')
-
-        return data
+        return response.json()

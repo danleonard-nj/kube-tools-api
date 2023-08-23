@@ -7,11 +7,13 @@ from domain.rest import (CreateDeadManConfigurationRequest,
                          CreateSwitchRequest, DisarmSwitchRequest,
                          UpdateDeadManConfigurationRequest)
 from services.dead_man_switch_service import DeadManSwitchService
-from utilities.utils import parse_bool
 
 health_bp = MetaBlueprint('health_bp', __name__)
 
 logger = get_logger(__name__)
+
+
+def parse_bool(x): return x == 'true'
 
 
 @health_bp.configure('/api/health/dms/configuration', methods=['POST'], auth_scheme=AuthPolicy.Default)

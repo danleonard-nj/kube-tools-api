@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import time
 import uuid
 from datetime import datetime
@@ -10,6 +11,23 @@ from dateutil import parser
 from framework.logger.providers import get_logger
 
 logger = get_logger(__name__)
+
+DEPRECATE_LOGGER_FORMAT = '[%(asctime)-8s] [%(thread)-4s] [%(name)-12s]: [%(levelname)-4s]: %(message)s'
+
+
+def build_deprecate_logger():
+    deprecate_logger = logging.getLogger('deprecated')
+    deprecate_logger.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter(DEPRECATE_LOGGER_FORMAT)
+
+    file_handler = logging.FileHandler('deprecated.log')
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+
+    deprecate_logger.addHandler(file_handler)
+
+    return deprecate_logger
 
 
 def parse_timestamp(
@@ -51,31 +69,12 @@ class DateTimeUtil:
         return int(time.time())
 
     @classmethod
-    def date_to_timestamp(
-        cls,
-        date_str: str
-    ):
-        parsed = parser.parse(date_str)
-        return int(parsed.timestamp())
-
-    @classmethod
     def get_iso_date(
         cls
     ) -> str:
         return (
             datetime
             .now()
-            .strftime(cls.IsoDateFormat)
-        )
-
-    @classmethod
-    def timestamp_to_iso_date(
-        cls,
-        timestamp: int
-    ) -> str:
-        return (
-            datetime
-            .fromtimestamp(timestamp)
             .strftime(cls.IsoDateFormat)
         )
 
@@ -164,50 +163,21 @@ class ValueConverter:
         )
 
 
-def parse_bool(value):
-    return value == 'true'
+def sort_by(items, key):
+    if any(items):
+        logger.info(f'Sort type: {type(items[0]).__name__}: Key: {key}')
+        return sorted(items, key=lambda x: __get_sort_key(x, key))
 
 
-def contains(source_list, substring_list):
-    for source_string in source_list:
-        for substring in substring_list:
-            if substring in source_string:
-                return True
-    return False
-
-
-def create_uuid(data):
-    text = json.dumps(data, default=str)
-    hash_value = md5(text.encode()).hexdigest()
-    return str(uuid.UUID(hash_value))
-
-
-def get_sort_key(obj, key):
+def __get_sort_key(obj, key):
     if isinstance(obj, dict):
         return obj[key]
     return getattr(obj, key)
 
 
-def sort_by(items, key):
-    if any(items):
-        logger.info(f'Sort type: {type(items[0]).__name__}: Key: {key}')
-        return sorted(items, key=lambda x: get_sort_key(x, key))
-
-
-# def build_url(base, **kwargs):
-#     url = base
-#     if kwargs:
-#         url += '?'
-#     args = list(kwargs.items())
-#     for arg in args:
-#         url += str(arg[0])
-#         url += '='
-#         url += urllib.parse.quote_plus(str(arg[1]))
-#         if arg[0] != args[-1][0]:
-#             url += '&'
-#     return url
-
-
 def to_celsius(degrees_fahrenheit, round_digits=2):
     value = (degrees_fahrenheit - 32) * (5/9)
     return round(value, round_digits)
+
+
+deprecate_logger = build_deprecate_logger()

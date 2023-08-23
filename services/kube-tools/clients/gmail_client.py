@@ -39,20 +39,25 @@ class GmailClient:
 
         cache_key = CacheKey.gmail_token()
 
+        # Try to fetch the Gmail auth token from mem cache
         token = self.__memory_cache.get(cache_key)
 
         if token is not None:
             return token
 
         logger.info(f'Fetching token from auth client')
+
+        # Fetch an auth token w/ Gmail scope
         client = await self.__auth_service.get_auth_client(
             scopes=GoogleClientScope.Gmail)
 
         logger.info(f'Client granted scopes: {client.granted_scopes}')
         logger.info(f'Client scopes: {client.scopes}')
 
+        # Fetch the token w/ refresh creds
         client.refresh(Request())
 
+        # Cache the fetched token
         self.__memory_cache.set(
             key=cache_key,
             value=client.token,
@@ -152,6 +157,7 @@ class GmailClient:
         page_token: str = None
     ) -> GmailQueryResult:
 
+        # Build the inbox query endpoint
         endpoint = build_url(
             base=f'{self.__base_url}/v1/users/me/messages',
             q=query)
@@ -160,10 +166,11 @@ class GmailClient:
         if not none_or_whitespace(page_token):
             endpoint = f'{endpoint}&pageToken={page_token}'
 
-        # Add max resultsif provided
+        # Add max results if provided
         if not none_or_whitespace(max_results):
             endpoint = f'{endpoint}&maxResults={max_results}'
 
+        # Query the inbox
         auth_headers = await self.__get_auth_headers()
         query_result = await self.__http_client.get(
             url=endpoint,
