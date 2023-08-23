@@ -4,7 +4,7 @@ from typing import Dict, List
 
 from framework.serialization import Serializable
 
-from utilities.utils import contains, create_uuid
+from utilities.utils import create_uuid
 
 
 class CoordinateKey:
