@@ -21,6 +21,7 @@ from routes.torrents import torrent_bp
 from routes.api_event_history import api_event_history_bp
 from routes.nest import nest_bp
 from routes.podcasts import podcasts_bp
+from routes.dead_man import dead_man_bp
 from routes.usage import usage_bp
 from utilities.provider import ContainerProvider
 
@@ -55,6 +56,7 @@ app.register_blueprint(api_event_history_bp)
 app.register_blueprint(bank_bp)
 app.register_blueprint(weather_bp)
 app.register_blueprint(torrent_bp)
+app.register_blueprint(dead_man_bp)
 
 ContainerProvider.initialize_provider()
 InternalProvider.bind(ContainerProvider.get_service_provider())

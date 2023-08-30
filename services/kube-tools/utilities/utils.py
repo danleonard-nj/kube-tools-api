@@ -175,9 +175,27 @@ def __get_sort_key(obj, key):
     return getattr(obj, key)
 
 
+def parse_bool(value):
+    return value == 'true'
+
+
+def contains(source_list, substring_list):
+    for source_string in source_list:
+        for substring in substring_list:
+            if substring in source_string:
+                return True
+    return False
+
+
 def to_celsius(degrees_fahrenheit, round_digits=2):
     value = (degrees_fahrenheit - 32) * (5/9)
     return round(value, round_digits)
+
+
+def create_uuid(data):
+    text = json.dumps(data, default=str)
+    hash_value = md5(text.encode()).hexdigest()
+    return str(uuid.UUID(hash_value))
 
 
 deprecate_logger = build_deprecate_logger()

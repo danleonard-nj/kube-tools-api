@@ -1,56 +1,68 @@
 import base64
 import json
-from typing import Dict, List
-
+from typing import List
 from framework.serialization import Serializable
+from framework.logger import get_logger
+from utilities.utils import KeyUtils, contains, create_uuid
+
+logger = get_logger(__name__)
 
 
 class CoordinateKey:
     @property
-    def key_data(
-        self
-    ) -> Dict[str, float]:
-        return
+    def key_data(self):
+        return {
+            'latitude': self.latitude,
+            'longitude': self.longitude
+        }
 
     @property
     def key_json(self):
-        return json.dumps(
-            self.__get_key_data())
+        return json.dumps(self.key_data)
 
     def __init__(self, latitude, longitude):
         self.latitude = latitude
         self.longitude = longitude
 
     def get_uuid(self):
-        return create_uuid(self.key_data)
+        legacy = create_uuid(self.key_data)
+        key = KeyUtils.create_uuid(**self.key_data)
 
-    def get_uuid(
-        self
-    ) -> str:
-        return KeyUtils.create_uuid()
+        logger.info(
+            f'Reverse geo key valiation: {legacy}: {key}: {legacy == key}')
+        return key
+
+    def get_compound_key(self):
+        return base64.b64encode(self.key_json.encode()).decode()
+
+    @staticmethod
+    def from_compound_key(key):
+        data = json.loads(
+            base64.b64decode(key.encode()).decode())
+        return CoordinateKey(**data)
+
+
+class LocationHistoryReverseGeocodingModel(Serializable):
+    def __init__(self, data):
+        self.key = data.get('key')
+        results_list = data.get('response').get('results', [])
+
+        self.locations = self.get_reverse_geo_list(
+            results_list=results_list)
 
 
 class ReducedGeocodingModel(Serializable):
-    def __init__(
-        self,
-        key: str,
-        locations: List
-    ):
+    def __init__(self, key, locations):
         self.key = key
         self.locations = locations
 
 
 class ReverseGeocodingModel(Serializable):
     @property
-    def results(
-        self
-    ):
+    def results(self):
         return self.response.get('results')
 
-    def __init__(
-        self,
-        data: Dict
-    ):
+    def __init__(self, data):
         self.key = data.get('key')
         self.latitude = data.get('latitude')
         self.longitude = data.get('longitude')
@@ -59,9 +71,9 @@ class ReverseGeocodingModel(Serializable):
     @classmethod
     def create_reverse_geocoding_model(
         cls,
-        response: Dict,
-        latitude: float,
-        longitude: float
+        response,
+        latitude,
+        longitude
     ):
         key = CoordinateKey(
             latitude=latitude,
@@ -73,6 +85,55 @@ class ReverseGeocodingModel(Serializable):
             'longitude': longitude,
             'response': response
         })
+
+    def __truncate_reverse_geo_item(self, item):
+        return {
+            'address': item.get('formatted_address'),
+            'place_id': item.get('place_id'),
+            'types': item.get('types')
+        }
+
+    def get_truncated_data(self) -> List[ReducedGeocodingModel]:
+        allowed_types = [
+            'formatted_address',
+            'premise',
+            'neighborhood'
+        ]
+
+        filtered_results = filter(
+            lambda x: contains(x.get('types', []), allowed_types),
+            self.results)
+
+        truncated_locations = [
+            self.__truncate_reverse_geo_item(result)
+            for result in filtered_results
+        ]
+
+        return ReducedGeocodingModel(
+            key=self.key,
+            locations=truncated_locations
+        )
+
+
+class LocationHistoryModel(Serializable):
+    def __init__(self, data):
+        self.key = data.get('key')
+        self.longitude, self.latitude = data.get(
+            'location').get('coordinates')
+
+        self.coordinate_key = self.get_coordinate_key(
+            latitude=self.latitude,
+            longitude=self.longitude)
+
+        self.device_tag = data.get('deviceTag')
+        self.source = data.get('source')
+        self.accuracy = data.get('accuracy')
+        self.timestamp = data.get('timestamp')
+
+    def get_coordinate_key(self, latitude, longitude):
+        return CoordinateKey(
+            latitude=latitude,
+            longitude=longitude).get_uuid()
 
 
 class LocationAggregatePipeline:
@@ -140,18 +201,12 @@ class LocationAggregatePipeline:
 
 
 class LocationHistoryAggregateModel(Serializable):
-    def __init__(
-        self,
-        data: Dict,
-        include_timestamps: bool
-    ):
-
+    def __init__(self, data, include_timestamps):
         group_key = data.get('_id')
         distance = data.get('distance')
 
         self.longitude = group_key.get('longitude')
         self.latitude = group_key.get('latitude')
-
         self.coordinate_key = self.get_coordinate_key(
             latitude=self.latitude,
             longitude=self.longitude)
@@ -166,44 +221,26 @@ class LocationHistoryAggregateModel(Serializable):
         if include_timestamps:
             self.timestamps = data.get('timestamps')
 
-    def meters_to_miles(
-        self,
-        value: float
-    ):
+    def meters_to_miles(self, value):
         return round(value * 0.000621371, 2)
 
-    def meters_to_feet(
-        self,
-        value: float
-    ):
+    def meters_to_feet(self, value):
         return round(value * 3.28084, 2)
 
-    def get_distance_details(
-        self,
-        meters: float
-    ) -> Dict:
-
+    def get_distance_details(self, meters):
         return {
             'miles': self.meters_to_miles(meters),
             'feet': self.meters_to_feet(meters)
         }
 
-    def get_coordinate_key(
-        self,
-        latitude: float,
-        longitude: float
-    ) -> CoordinateKey:
-
+    def get_coordinate_key(self, latitude, longitude):
         return CoordinateKey(
             latitude=latitude,
             longitude=longitude).get_uuid()
 
 
 class GeocodedDataCoordinateKeyQuery:
-    def __init__(
-        self,
-        coordinate_keys: List
-    ):
+    def __init__(self, coordinate_keys):
         self.coordinate_keys = coordinate_keys
 
     def get_query(self):
