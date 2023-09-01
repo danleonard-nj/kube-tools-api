@@ -53,44 +53,17 @@ class GmailService:
         logger.info(f'Rules gathered: {len(rules)}')
 
         for rule in rules:
-            try:
-                logger.info(f'Processing rule: {rule.rule_id}: {rule.name}')
+            process_request = ProcessGmailRuleRequest({
+                'rule': rule.to_dict()
+            })
 
-                # Default affected count
-                affected_count = 0
+            await self.process_rule(
+                process_request=process_request)
 
-                # Process an archival rule
-                if rule.action == GmailRuleAction.Archive:
-                    logger.info(f'Rule type: {GmailRuleAction.Archive}')
-
-                    affected_count = await self.process_archive_rule(
-                        rule=rule)
-
-                # Process an SMS rule
-                if rule.action == GmailRuleAction.SMS:
-                    logger.info(f'Rule type: {GmailRuleAction.SMS}')
-
-                    affected_count = await self.process_sms_rule(
-                        rule=rule)
-
-                if rule.action == GmailRuleAction.BankSync:
-                    logger.info(f'Rule type: {GmailRuleAction.BankSync}')
-
-                    affected_count = await self.process_bank_sync_rule(
-                        rule=rule)
-
-                run_results[rule.name] = affected_count
-                logger.info(
-                    f'Rule: {rule.name}: Emails affected: {affected_count}')
-
-            except Exception as ex:
-                logger.exception(
-                    f'Failed to process rule: {rule.rule_id}: {rule.name}: {str(ex)}')
-
-        # Fire and forget the log task to store the results
-        # of the run
-        asyncio.create_task(self.__rule_service.log_results(
-            results=run_results))
+        # # Fire and forget the log task to store the results
+        # # of the run
+        # asyncio.create_task(self.__rule_service.log_results(
+        #     results=run_results))
 
         return run_results
 

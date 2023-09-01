@@ -218,7 +218,7 @@ class GmailBankSyncService:
 
         except Exception as ex:
             logger.exception(f'Error parsing balance: {ex.message}')
-            balance = 0.0
+            # balance = 0.0
 
         return mapped_rule
 
@@ -231,6 +231,7 @@ class GmailBankSyncService:
             case BankKey.CapitalOne:
                 # For CapitalOne emails, we need to determine the card type
                 # to store the balance against
+                logger.info(f'Parsing CapitalOne card type')
                 return self.__get_capital_one_bank_key(
                     body_segments=email_body_segments)
 
