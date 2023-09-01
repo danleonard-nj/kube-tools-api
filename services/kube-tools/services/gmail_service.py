@@ -246,7 +246,7 @@ class GmailService:
         if (bank_rule_config is None
                 or bank_rule_config.alert_type is None):
             logger.info(
-                f'No bank rule config found: {bank_rule_config.bank_key}')
+                f'No bank rule config found: {rule.name}')
             return
 
         if bank_rule_config.alert_type == GmailRuleAction.Undefined:

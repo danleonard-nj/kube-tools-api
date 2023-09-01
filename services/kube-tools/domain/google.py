@@ -409,8 +409,6 @@ def parse_gmail_body(
         logger.info(f'Handling parts')
         parts = payload.get('parts')
         if any(parts):
-            logger.info(f'Parts found: {parts}')
-
             for part in parts:
                 if 'body' in part:
                     logger.info(f'Found body in part')

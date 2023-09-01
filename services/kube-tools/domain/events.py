@@ -90,3 +90,31 @@ class SendEmailEvent(ApiMessage):
         base_url: str
     ) -> str:
         return self.endpoint
+
+
+class ProcessEmailRuleEvent(ApiMessage):
+    def __init__(
+        self,
+        body: dict,
+        endpoint: str,
+        token: str
+    ):
+        self.body = body
+        self.endpoint = endpoint
+        self.token = token
+
+        super().__init__(
+            None,
+            'POST',
+            token)
+
+    def get_body(
+        self
+    ) -> dict:
+        return self.body
+
+    def get_endpoint(
+        self,
+        base_url: str
+    ) -> str:
+        return self.endpoint

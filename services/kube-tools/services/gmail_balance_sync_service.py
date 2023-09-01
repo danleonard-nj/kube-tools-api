@@ -184,7 +184,7 @@ class GmailBankSyncService:
             # segment at this point so bail out
             if balance == DEFAULT_BALANCE:
                 logger.info(
-                    f'Balance not found in email: {gpt_result.to_dict()}')
+                    f'Balance not found in email for rule: {mapped_rule.rule_name}')
                 return
 
             balance = self.__format_balance_result(balance)
