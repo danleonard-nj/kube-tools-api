@@ -2,16 +2,24 @@ from datetime import datetime, timedelta
 
 from framework.configuration import Configuration
 from framework.logger import get_logger
-from clients.email_gateway_client import EmailGatewayClient
+from framework.validators.nulls import none_or_whitespace
 
+from clients.email_gateway_client import EmailGatewayClient
 from clients.twilio_gateway import TwilioGatewayClient
 from data.dead_man_switch_repository import DeadManSwitchRepository
 from domain.dms import (DEFAULT_EXPIRATION_MINUTES, Switch,
                         SwitchNotFoundException)
-from domain.rest import DeadManSwitchPollDisabledResponse, DeadManSwitchPollResponse
+from domain.rest import (DeadManSwitchPollDisabledResponse,
+                         DeadManSwitchPollResponse)
 from utilities.utils import DateTimeUtil
 
 RECIPIENT_PHONE_NUMBER = '+18563323608'
+RECIPIENT_EMAIL = 'dcl525@gmail.com'
+
+REMINDER_ONE_HOUR = 60
+REMINDER_TWELVE_HOURS = 720
+REMINDER_ONE_DAY_MINUTES = 1440
+
 RECIPIENT_EMAIL = 'dcl525@gmail.com'
 
 REMINDER_ONE_HOUR = 60
@@ -160,6 +168,11 @@ class DeadManSwitchService:
                 interval='1 Hour')
 
             switch.last_notification = 'REMINDER_ONE_HOUR'
+
+        if none_or_whitespace(switch.last_notification):
+            switch.last_notification = 'NONE'
+        else:
+            switch.last_notification = DateTimeUtil.timestamp()
 
         return switch
 
