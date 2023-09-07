@@ -41,13 +41,15 @@ class Switch(Serializable):
         last_disarm: int,
         last_touched: int,
         expiration_minutes: int = DEFAULT_EXPIRATION_MINUTES,
-        is_enabled: bool = True
+        is_enabled: bool = True,
+        last_notification: str = None
     ):
         self.switch_id = switch_id
         self.last_disarm = last_disarm
         self.last_touched = last_touched
         self.expiration_minutes = expiration_minutes
         self.is_enabled = is_enabled
+        self.last_notification = None
 
     def get_selector(
         self
@@ -68,4 +70,5 @@ class Switch(Serializable):
             last_disarm=data.get('last_disarm'),
             last_touched=data.get('last_touched'),
             expiration_minutes=data.get('expiration_minutes'),
-            is_enabled=data.get('is_enabled'))
+            is_enabled=data.get('is_enabled'),
+            last_notification=data.get('last_notification'))

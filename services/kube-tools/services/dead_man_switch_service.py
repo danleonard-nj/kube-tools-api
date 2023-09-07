@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 from framework.configuration import Configuration
 from framework.logger import get_logger
+from clients.email_gateway_client import EmailGatewayClient
 
 from clients.twilio_gateway import TwilioGatewayClient
 from data.dead_man_switch_repository import DeadManSwitchRepository
@@ -11,6 +12,12 @@ from domain.rest import DeadManSwitchPollDisabledResponse, DeadManSwitchPollResp
 from utilities.utils import DateTimeUtil
 
 RECIPIENT_PHONE_NUMBER = '+18563323608'
+RECIPIENT_EMAIL = 'dcl525@gmail.com'
+
+REMINDER_ONE_HOUR = 60
+REMINDER_TWELVE_HOURS = 720
+REMINDER_ONE_DAY_MINUTES = 1440
+
 
 logger = get_logger(__name__)
 
@@ -20,9 +27,11 @@ class DeadManSwitchService:
         self,
         configuration: Configuration,
         repository: DeadManSwitchRepository,
-        twilio_gateway: TwilioGatewayClient
+        twilio_gateway: TwilioGatewayClient,
+        email_gateway: EmailGatewayClient
     ):
         self.__twilio_gateway = twilio_gateway
+        self.__email_gateway = email_gateway
         self.__repository = repository
 
         self.__expiration_minutes = configuration.dms.get(
@@ -81,6 +90,10 @@ class DeadManSwitchService:
             switch.last_disarm = DateTimeUtil.timestamp()
             switch.is_enabled = False
 
+        else:
+            logger.info(f'Switch not triggered - handling reminders')
+            switch = await self.__handle_reminders(switch)
+
         logger.info(f'Updating switch document: {switch.switch_id}')
 
         switch.last_touched = DateTimeUtil.timestamp()
@@ -97,6 +110,58 @@ class DeadManSwitchService:
             notified=notified,
             expiration_date=expiration_date,
             switch=switch)
+
+    async def send_reminder(
+        self,
+        switch: Switch,
+        interval: str
+    ):
+        subject = f'Disarm Reminder: {interval}'
+
+        await self.__email_gateway.send_json_email(
+            recipient=RECIPIENT_EMAIL,
+            subject=subject,
+            data=switch.to_dict())
+
+    async def __handle_reminders(
+        self,
+        switch: Switch
+    ):
+        minutes_remaining = switch.expiration_minutes
+
+        if (minutes_remaining < REMINDER_ONE_DAY_MINUTES
+            and minutes_remaining > REMINDER_TWELVE_HOURS
+                and switch.last_notification != 'REMINDER_ONE_DAY'):
+            logger.info(f'Sending reminder one day notification')
+
+            await self.send_reminder(
+                switch=switch,
+                interval='24 Hours')
+
+            switch.last_notification = 'REMINDER_ONE_DAY'
+
+        elif (minutes_remaining < REMINDER_TWELVE_HOURS
+                and minutes_remaining > REMINDER_ONE_HOUR
+                and switch.last_notification != 'REMINDER_TWELVE_HOURS'):
+            logger.info(f'Sending reminder twelve hour notification')
+
+            await self.send_reminder(
+                switch=switch,
+                interval='12 Hours')
+
+            switch.last_notification = 'REMINDER_TWELVE_HOURS'
+
+        elif (minutes_remaining < REMINDER_ONE_HOUR
+                and switch.last_notification != 'REMINDER_ONE_HOUR'):
+            logger.info(f'Sending reminder one hour notification')
+
+            await self.send_reminder(
+                switch=switch,
+                interval='1 Hour')
+
+            switch.last_notification = 'REMINDER_ONE_HOUR'
+
+        return switch
 
     async def __get_switch(
         self
