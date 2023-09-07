@@ -1,97 +1,18 @@
-from datetime import datetime
-import time
-from flask import Config
+from datetime import datetime, timedelta
 
-from framework.clients.feature_client import FeatureClientAsync
-from framework.concurrency import TaskCollection
-from framework.exceptions.nulls import ArgumentNullException
-from framework.logger import get_logger
 from framework.configuration import Configuration
-from httpx import get
+from framework.logger import get_logger
+
 from clients.twilio_gateway import TwilioGatewayClient
-from framework.serialization import Serializable
 from data.dead_man_switch_repository import DeadManSwitchRepository
+from domain.dms import (DEFAULT_EXPIRATION_MINUTES, Switch,
+                        SwitchNotFoundException)
+from domain.rest import DeadManSwitchPollDisabledResponse, DeadManSwitchPollResponse
+from utilities.utils import DateTimeUtil
 
-DEFAULT_EXPIRATION_MINUTES = 60 * 24
-
-
-def get_timestamp() -> int:
-    return int(time.time())
-
+RECIPIENT_PHONE_NUMBER = '+18563323608'
 
 logger = get_logger(__name__)
-
-
-class SwitchNotFoundException(Exception):
-    def __init__(self, *args: object) -> None:
-        super().__init__('No dead man switch configuration is defined')
-
-
-class SwitchPollResult:
-    def __init__(
-        self,
-        seconds_remaining: int,
-        is_triggered: bool
-    ):
-        self.seconds_remaining = seconds_remaining
-        self.is_triggered = is_triggered
-
-
-class Switch(Serializable):
-    def __init__(
-        self,
-        switch_id: str,
-        last_disarm: int,
-        last_touched: int,
-        expiration_minutes: int = DEFAULT_EXPIRATION_MINUTES
-    ):
-        self.switch_id = switch_id
-        self.last_disarm = last_disarm
-        self.last_touched = last_touched
-        self.expiration_minutes = expiration_minutes
-
-    def get_selector(
-        self
-    ):
-        return {
-            'switch_id': self.switch_id
-        }
-
-    def get_seconds_remaining(
-        self
-    ):
-        expiration = (
-            get_timestamp() + (self.expiration_minutes * 60)
-        )
-
-        return round(expiration - self.last_disarm)
-
-    @staticmethod
-    def from_entity(data):
-        return Switch(
-            switch_id=data.get('switch_id'),
-            last_disarm=data.get('last_disarm'),
-            last_touched=data.get('last_touched'),
-            expiration_minutes=data.get('expiration_minutes'))
-
-
-class SwitchEmergencyContact:
-    def __init__(
-        self,
-        name: str,
-        phone_number: str,
-        address: str
-    ):
-        self.name = name
-        self.phone_number = phone_number
-        self.address = address
-
-    @staticmethod
-    def from_config(data):
-        return SwitchEmergencyContact(
-            name=data.get('name'),
-            phone_number=data.get('phone_number'),
-            address=data.get('address'))
 
 
 class DeadManSwitchService:
@@ -101,23 +22,83 @@ class DeadManSwitchService:
         repository: DeadManSwitchRepository,
         twilio_gateway: TwilioGatewayClient
     ):
+        self.__twilio_gateway = twilio_gateway
+        self.__repository = repository
+
         self.__expiration_minutes = configuration.dms.get(
             'expiration_minutes',
             DEFAULT_EXPIRATION_MINUTES)
 
-        self.__notification_recipients = configuration.dms.get(
-            'configuration_recipients')
+    async def disarm_switch(
+        self
+    ):
+        logger.info(f'Disarming switch')
+        switch = await self.__get_switch()
 
-        contacts = configuration.dms.get('contact', [])
-        self.__contacts = [
-            SwitchEmergencyContact.from_config(
-                data=contact
-            ) for contact in contacts]
+        switch = await self.__ensure_switch(
+            switch=switch,
+            enable_switch=True)
 
-        self.__repository = repository
-        self.__twilio_gateway = twilio_gateway
+        switch.last_disarm = DateTimeUtil.timestamp()
 
-    async def get_switch(
+        update = await self.__repository.replace(
+            selector=switch.get_selector(),
+            document=switch.to_dict())
+
+        logger.info(f'Update result: {update.modified_count}')
+
+        return switch
+
+    async def poll(
+        self,
+        enable_switch: bool = False
+    ):
+        notified = False
+
+        switch = await self.__get_switch()
+
+        if not switch.is_enabled and not enable_switch:
+            logger.info(f'Switch is disabled')
+            return DeadManSwitchPollDisabledResponse()
+
+        switch = await self.__ensure_switch(
+            switch=switch,
+            enable_switch=enable_switch)
+
+        seconds_remaining = switch.get_seconds_remaining()
+        minutes_remaining = seconds_remaining / 60
+
+        expiration_date = datetime.fromtimestamp(switch.expiration)
+        logger.info(f'Expiration: {expiration_date.isoformat()}')
+
+        if seconds_remaining < 0:
+            logger.info('Switch triggered - notifying emergency contact')
+
+            await self.__notify_recipient()
+            notified = True
+
+            # Disable the switch, one and done
+            switch.last_disarm = DateTimeUtil.timestamp()
+            switch.is_enabled = False
+
+        logger.info(f'Updating switch document: {switch.switch_id}')
+
+        switch.last_touched = DateTimeUtil.timestamp()
+
+        update_result = await self.__repository.replace(
+            selector=switch.get_selector(),
+            document=switch.to_dict())
+
+        logger.info(f'Update result: {update_result.modified_count}')
+
+        return DeadManSwitchPollResponse(
+            seconds_remaining=seconds_remaining,
+            minutes_remaining=minutes_remaining,
+            notified=notified,
+            expiration_date=expiration_date,
+            switch=switch)
+
+    async def __get_switch(
         self
     ):
         entity = await self.__repository.get(dict())
@@ -133,42 +114,29 @@ class DeadManSwitchService:
 
         return switch
 
-    async def disarm_switch(
+    async def __notify_recipient(
         self
     ):
-        logger.info(f'Disarming switch')
-        switch = await self.get_switch()
+        logger.info(f'Notifying emergency contact for elapsed switch')
 
-        switch.last_disarm = get_timestamp()
+        await self.__twilio_gateway.send_sms(
+            recipient=RECIPIENT_PHONE_NUMBER,
+            message=self.__get_first_message())
 
-        update = await self.__repository.replace(
-            selector=switch.get_selector(),
-            document=switch.to_dict())
-
-        logger.info(f'Update result: {update.modified_count}')
-
-        return switch
-
-    def __get_message(
-        self
+    async def __ensure_switch(
+        self,
+        switch: Switch,
+        enable_switch: bool
     ):
-        message = "Activity Switch Alarm"
-        message += ""
-        message += f"There is a service operating a 'dead mans switch' which"
-        message += f"must be disarmed at a regular cadence by the operator"
-        message += f"(Dan Leonard).  If you are recieving this message then"
-        message += f"the operator has not disarmed the switch in the allowed"
-        message += f"timeframe (exceeding {self.__expiration_minutes} minutes)"
-        message += f"which could indicate the operator is in distress.  Please"
-        message += f"reach out to the operator immediately.  If the operator"
-        message += f"doesn't respond, reach out to the following contacts in"
-        message += f"the order presented:"
-        message += ""
+        if enable_switch:
+            logger.info(f'Enabling switch')
+            switch.is_enabled = True
 
-    async def poll(
-        self
-    ):
-        switch = await self.get_switch()
+        if switch.expiration_minutes != self.__expiration_minutes:
+            logger.info(
+                f'Updating expiration minutes: {switch.expiration_minutes} -> {self.__expiration_minutes}')
+
+            switch.expiration_minutes = self.__expiration_minutes
 
         if (switch.last_disarm is None
                 or switch.last_disarm == 0):
@@ -176,7 +144,7 @@ class DeadManSwitchService:
             logger.info(
                 f'Setting initial log disarm time: {switch.last_disarm}')
 
-            switch.last_disarm = get_timestamp()
+            switch.last_disarm = DateTimeUtil.timestamp()
 
         if (switch.last_touched is None
                 or switch.last_touched == 0):
@@ -184,35 +152,28 @@ class DeadManSwitchService:
             logger.info(
                 f'Setting initial log touch time: {switch.last_touched}')
 
-            switch.last_touched = get_timestamp()
+            switch.last_touched = DateTimeUtil.timestamp()
 
-        seconds_remaining = switch.get_seconds_remaining()
-        minutes_remaining = seconds_remaining / 60
+        return switch
 
-        expiration_date = datetime.fromtimestamp(
-            get_timestamp() + seconds_remaining)
+    def __get_first_message(
+        self
+    ):
+        timeframe = timedelta(minutes=self.__expiration_minutes)
 
-        logger.info(f'Expiration: {expiration_date.isoformat()}')
+        message = "Activity Switch Alarm - Dan Leonard \n"
+        message += "\n"
+        message += f"This is your first alert notifying you that an "
+        message += f"activity switch has been triggered.  The switch "
+        message += f"a safety mechanism that notifies a recipient if "
+        message += f"the switch operator hasn't disarmed the switch within "
+        message += f"the allowed timeframe (current timeframe configuration {timeframe}). "
+        message += f"If you're recieving this message then it might be a good "
+        message += f"time to check in on the switch operator."
+        message += '\n\n'
+        message += f'A follow up alert will be triggered if the switch is not '
+        message += f'disarmed within an additional 24 hour timeframe'
+        message += f'\n\n'
+        message += f"Regards, Kube-Tools DMS API"
 
-        if minutes_remaining < switch.expiration_minutes:
-            logger.info('Switch triggered :(')
-
-            pass
-
-        logger.info(f'Updating switch document: {switch.switch_id}')
-
-        switch.last_touched = get_timestamp()
-
-        update_result = await self.__repository.replace(
-            selector=switch.get_selector(),
-            document=switch.to_dict())
-
-        logger.info(f'Update result: {update_result.modified_count}')
-
-        return {
-            'seconds_remaining': seconds_remaining,
-            'minutes_remaining': minutes_remaining,
-            'is_triggered': minutes_remaining > switch.expiration_minutes,
-            'expiration_date': expiration_date.isoformat(),
-            'switch': switch.to_dict()
-        }
+        return message

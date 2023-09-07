@@ -1,7 +1,10 @@
+from datetime import datetime, timedelta
 from typing import Dict, List, Union
 
 from framework.serialization import Serializable
 from quart import Response
+
+from domain.dms import Switch
 
 
 class GmailModifyEmailRequest(Serializable):
@@ -315,3 +318,42 @@ class ProcessGmailRuleResponse(Serializable):
         self.affected_count = (
             affected_count or 0
         )
+
+
+class DeadManSwitchPollResponse(Serializable):
+    @property
+    def time_remaining(
+        self
+    ):
+        return self.expiration_date - datetime.now()
+
+    def __init__(
+        self,
+        seconds_remaining: int,
+        minutes_remaining: int,
+        notified: bool,
+        expiration_date: datetime,
+        switch: Switch
+    ):
+        self.seconds_remaining = seconds_remaining
+        self.minutes_remaining = minutes_remaining
+        self.notified = notified
+        self.expiration_date = expiration_date
+        self.switch = switch
+
+    def to_dict(
+        self
+    ) -> Dict:
+        return super().to_dict() | {
+            'expiration_date': self.expiration_date.isoformat(),
+            'minutes_remaining': round(self.minutes_remaining),
+            'time_remaining': self.time_remaining if self.seconds_remaining > 0 else timedelta(seconds=0),
+            'switch': self.switch.to_dict()
+        }
+
+
+class DeadManSwitchPollDisabledResponse(Serializable):
+    def __init__(
+        self
+    ):
+        self.is_enabled = False
