@@ -6,11 +6,14 @@ from framework.configuration import Configuration
 from framework.logger import get_logger
 
 from clients.gmail_client import GmailClient
+from clients.identity_client import IdentityClient
 from clients.twilio_gateway import TwilioGatewayClient
 from constants.google import (GmailRuleAction, GoogleEmailHeader,
                               GoogleEmailLabel)
+from domain.auth import ClientScope
 from domain.bank import BankRuleConfiguration
 from domain.enums import ProcessGmailRuleResultType
+from domain.events import ProcessEmailRuleEvent
 from domain.google import GmailEmail, GmailEmailRule
 from domain.rest import ProcessGmailRuleRequest, ProcessGmailRuleResponse
 from services.gmail_balance_sync_service import GmailBankSyncService
@@ -29,12 +32,14 @@ class GmailService:
         gmail_client: GmailClient,
         rule_service: GmailRuleService,
         bank_sync_service: GmailBankSyncService,
-        twilio_gateway: TwilioGatewayClient
+        twilio_gateway: TwilioGatewayClient,
+        identity_client: IdentityClient
     ):
         self.__gmail_client = gmail_client
         self.__rule_service = rule_service
         self.__twilio_gateway = twilio_gateway
         self.__bank_sync_service = bank_sync_service
+        self.__identity_client = identity_client
 
         self.__sms_recipient = configuration.gmail.get(
             'sms_recipient')
@@ -52,10 +57,20 @@ class GmailService:
 
         logger.info(f'Rules gathered: {len(rules)}')
 
+        # logger.info(f'Fetching event token')
+        # token = await self.__identity_client.get_token(
+        #     client_name='kube-tools-api',
+        #     scope=ClientScope.KubeToolsApi)
+
         for rule in rules:
             process_request = ProcessGmailRuleRequest({
                 'rule': rule.to_dict()
             })
+
+            # process_event = ProcessEmailRuleEvent(
+            #     body=process_request.to_dict(),
+            #     endpoint='/api/gmail/process',
+            #     token=token)
 
             await self.process_rule(
                 process_request=process_request)

@@ -4,7 +4,7 @@ from framework.logger import get_logger
 from clients.event_client import EventClient
 from clients.identity_client import IdentityClient
 from domain.auth import ClientScope
-from domain.events import SendEmailEvent
+from domain.events import ApiMessage, SendEmailEvent
 
 logger = get_logger(__name__)
 
@@ -17,6 +17,17 @@ class EventService:
     ):
         self.__event_client = event_client
         self.__identity_client = identity_client
+
+    async def dispatch_event(
+        self,
+        event: ApiMessage,
+    ):
+        ArgumentNullException.if_none(event, 'event')
+
+        logger.info(f'Emit event: {event.endpoint}')
+
+        self.__event_client.send_message(
+            event.to_service_bus_message())
 
     async def dispatch_email_event(
         self,
