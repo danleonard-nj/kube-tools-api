@@ -42,11 +42,13 @@ class PlaidTransaction(Serializable):
         pf_categories: List[str],
         transaction_id: str = None,
         hash_key: str = None,
+        last_operation: str = None,
         timestamp: int = None,
         data: Dict = None
     ):
         self.transaction_id = transaction_id
         self.transaction_bk = transaction_bk
+        self.last_operation = last_operation
 
         self.transaction_type = parse(
             transaction_type,
@@ -133,6 +135,7 @@ class PlaidTransaction(Serializable):
             pending=data.get('pending'),
             pf_categories=data.get('pf_categories'),
             hash_key=data.get('hash_key'),
+            last_operation=data.get('last_operation'),
             data=data.get('data'),
             timestamp=data.get('timestamp'))
 
@@ -154,6 +157,7 @@ class PlaidTransaction(Serializable):
             channel=data.get('payment_channel'),
             pending=data.get('pending'),
             pf_categories=data.get('personal_finance_category'),
+            last_operation='sync',
             data=data,
             timestamp=DateTimeUtil.timestamp())
 

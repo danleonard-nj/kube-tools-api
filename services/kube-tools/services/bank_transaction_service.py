@@ -11,7 +11,7 @@ from clients.plaid_client import PlaidClient
 from data.bank_repository import BankTransactionsRepository
 from domain.bank import (PlaidAccount, PlaidTransaction, SyncActionType,
                          SyncResult)
-from domain.enums import BankKey
+from domain.enums import BankKey, SyncType
 from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
@@ -186,6 +186,8 @@ class BankTransactionService:
             logger.info(f'Insert: {transaction.transaction_bk}')
 
             transaction.set_transaction_id()
+            transaction.last_operation = SyncActionType.Insert
+
             await self.__transaction_repository.insert(
                 document=transaction.to_dict())
 
@@ -207,6 +209,7 @@ class BankTransactionService:
 
             # Update the timestamp to the last modified date
             transaction.timestamp = DateTimeUtil.timestamp()
+            transaction.last_operation = SyncActionType.Update
 
             replace_result = await self.__transaction_repository.replace(
                 selector=transaction.get_selector(),
@@ -221,6 +224,11 @@ class BankTransactionService:
 
         logger.info(
             f'Transaction already synced: {transaction.transaction_id}')
+
+        transaction.last_operation = SyncActionType.NoAction
+        replace_result = await self.__transaction_repository.replace(
+            selector=transaction.get_selector(),
+            document=transaction.to_dict())
 
         return SyncResult(
             transaction=transaction,
