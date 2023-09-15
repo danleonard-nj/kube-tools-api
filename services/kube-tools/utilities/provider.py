@@ -3,6 +3,7 @@ from framework.abstractions.abstract_request import RequestContextProvider
 from framework.auth.azure import AzureAd
 from framework.auth.configuration import AzureAdConfiguration
 from framework.caching.memory_cache import MemoryCache
+from framework.caching.memory_cache import MemoryCache
 from framework.clients.cache_client import CacheClientAsync
 from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration.configuration import Configuration
