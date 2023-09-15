@@ -2,6 +2,7 @@ import openai
 from framework.abstractions.abstract_request import RequestContextProvider
 from framework.auth.azure import AzureAd
 from framework.auth.configuration import AzureAdConfiguration
+from framework.caching.memory_cache import MemoryCache
 from framework.clients.cache_client import CacheClientAsync
 from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration.configuration import Configuration
@@ -25,8 +26,10 @@ from clients.plaid_client import PlaidClient
 from clients.storage_client import StorageClient
 from clients.torrent_client import TorrentClient
 from clients.twilio_gateway import TwilioGatewayClient
-from data.api_event_repository import ApiEventRepository
-from data.bank_repository import BankBalanceRepository, BankTransactionsRepository, BankWebhooksRepository
+from data.api_event_repository import ApiEventAlertRepository, ApiEventRepository
+from data.bank_repository import (BankBalanceRepository,
+                                  BankTransactionsRepository,
+                                  BankWebhooksRepository)
 from data.chat_gpt_repository import ChatGptRepository
 from data.dead_man_switch_repository import DeadManSwitchRepository
 from data.google.google_auth_repository import GoogleAuthRepository
@@ -39,8 +42,10 @@ from data.google.google_reverse_geocode_repository import \
 from data.location_repository import (WeatherStationRepository,
                                       ZipLatLongRepository)
 from data.mongo_export_repository import MongoExportRepository
-from data.nest_repository import NestDeviceRepository, NestLogRepository, NestSensorRepository
+from data.nest_repository import (NestDeviceRepository, NestLogRepository,
+                                  NestSensorRepository)
 from data.podcast_repository import PodcastRepository
+from data.vesting_schedule_repository import VestingScheduleRepository
 from data.weather_repository import WeatherRepository
 from domain.auth import AdRole, AuthPolicy
 from services.acr_purge_service import AcrPurgeService
@@ -63,6 +68,7 @@ from services.podcast_service import PodcastService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
 from services.torrent_service import TorrentService
 from services.usage_service import UsageService
+from services.vesting_schedule_service import VestingScheduleService
 from services.weather_service import WeatherService
 
 
@@ -142,6 +148,7 @@ def register_clients(
     descriptors: ServiceCollection
 ):
     descriptors.add_singleton(IdentityClient)
+    descriptors.add_singleton(MemoryCache)
     descriptors.add_singleton(CacheClientAsync)
     descriptors.add_singleton(TwilioGatewayClient)
     descriptors.add_transient(GoogleDriveClient)
@@ -183,6 +190,8 @@ def register_repositories(
     descriptors.add_singleton(BankTransactionsRepository)
     descriptors.add_singleton(BankWebhooksRepository)
     descriptors.add_singleton(WeatherRepository)
+    descriptors.add_singleton(VestingScheduleRepository)
+    descriptors.add_singleton(ApiEventAlertRepository)
 
 
 def register_services(
@@ -210,6 +219,7 @@ def register_services(
     descriptors.add_singleton(BankTransactionService)
     descriptors.add_singleton(BalanceSyncService)
     descriptors.add_singleton(TorrentService)
+    descriptors.add_singleton(VestingScheduleService)
 
 
 class ContainerProvider(ProviderBase):

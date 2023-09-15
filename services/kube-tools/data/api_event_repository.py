@@ -11,3 +11,14 @@ class ApiEventRepository(MongoRepositoryAsync):
             client=client,
             database='Invoker',
             collection='ApiEvent')
+
+
+class ApiEventAlertRepository(MongoRepositoryAsync):
+    def __init__(
+        self,
+        client: AsyncIOMotorClient
+    ):
+        super().__init__(
+            client=client,
+            database='Invoker',
+            collection='ApiEventAlert')

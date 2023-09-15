@@ -99,6 +99,17 @@ class CacheKey:
         return f'kube-tools-weather-forecast-zip-{zip_code}'
 
     @staticmethod
+    def vesting_shedule(
+        date: str
+    ) -> str:
+        key = str(date) or 'no-filter'
+        return f'kube-tools-vesting-schedule-{key}'
+
+    @staticmethod
+    def vesting_shedule_stock_price() -> str:
+        return 'kube-tools-vesting-schedule-stock-price'
+
+    @staticmethod
     def chat_gpt_response_by_balance_prompt(
         balance_prompt: str
     ) -> str:
