@@ -28,12 +28,13 @@ class Switch(Serializable):
     def expiration(
         self
     ):
+        secs = self.expiration_minutes * 60
+
         result = (
-            datetime.fromtimestamp(self.last_disarm) +
-            timedelta(minutes=self.expiration_minutes)
+            self.last_disarm + secs
         )
 
-        return int(result.timestamp())
+        return result
 
     def __init__(
         self,
@@ -42,8 +43,7 @@ class Switch(Serializable):
         last_touched: int,
         expiration_minutes: int = DEFAULT_EXPIRATION_MINUTES,
         is_enabled: bool = True,
-        last_notification: str = None,
-        notification_date: str = None
+        last_notification: int | None = None
     ):
         self.switch_id = switch_id
         self.last_disarm = last_disarm
@@ -51,7 +51,6 @@ class Switch(Serializable):
         self.expiration_minutes = expiration_minutes
         self.is_enabled = is_enabled
         self.last_notification = last_notification
-        self.notification_date = notification_date
 
     def get_selector(
         self
@@ -72,6 +71,32 @@ class Switch(Serializable):
             last_disarm=data.get('last_disarm'),
             last_touched=data.get('last_touched'),
             expiration_minutes=data.get('expiration_minutes'),
-            is_enabled=data.get('is_enabled'),
-            last_notification=data.get('last_notification'),
-            notification_date=data.get('notification_date'))
+            is_enabled=data.get('is_enabled'))
+
+
+class DeadManSwitchHistory(Serializable):
+    def __init__(
+        self,
+        history_id: str,
+        switch_id: str,
+        operation: str,
+        parameters: dict | None,
+        username: str,
+        timestamp: int
+    ):
+        self.history_id = history_id
+        self.switch_id = switch_id
+        self.operation = operation
+        self.parameters = parameters or dict()
+        self.username = username
+        self.timestamp = timestamp
+
+    @staticmethod
+    def from_entity(data):
+        return DeadManSwitchHistory(
+            history_id=data.get('history_id'),
+            switch_id=data.get('switch_id'),
+            operation=data.get('operation'),
+            parameters=data.get('parameters'),
+            username=data.get('username'),
+            timestamp=data.get('timestamp'))

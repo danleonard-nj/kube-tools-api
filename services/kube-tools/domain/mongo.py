@@ -2,6 +2,9 @@ from datetime import datetime, timedelta
 from typing import Dict, List
 
 from framework.serialization import Serializable
+from data.bank_repository import MongoQuery
+
+from utilities.utils import DateTimeUtil
 
 
 class MongoBackupConstants:
@@ -34,6 +37,7 @@ class MongoCollection:
     GptUserRequest = 'UserRequest'
     GptJob = 'GptJob'
     DeadManSwitch = 'DeadManSwitch'
+    DeadManSwitchHistory = 'DeadManSwitchHistory'
     DeadManSwitchConfiguration = 'DeadManSwitchConfiguration'
     MongoExportHistory = 'MongoExportHistory'
     History = 'History'
@@ -118,3 +122,39 @@ class MongoExportHistoryRecord(Serializable):
         self.stdout = stdout
         self.stderr = stderr
         self.created_date = datetime.utcnow()
+
+
+class MongoQuery:
+    def get_query(
+        self
+    ) -> Dict:
+        raise NotImplementedError()
+
+
+class MongoTimestampRangeQuery(MongoQuery):
+    def __init__(
+        self,
+        start_timestamp: int | None,
+        end_timestamp: int | None = None,
+        field_name: str | None = 'timestamp',
+        left_inclusive: bool = True,
+        right_inclusive: bool = True
+    ):
+        self.start_timestamp = start_timestamp
+        self.end_timestamp = end_timestamp or DateTimeUtil.timestamp()
+        self.field_name = field_name
+        self.left_inclusive = left_inclusive
+        self.right_inclusive = right_inclusive
+
+    def get_query(
+        self
+    ):
+        left_operator = '$gte' if self.left_inclusive else '$gt'
+        right_operator = '$lte' if self.right_inclusive else '$lt'
+
+        return {
+            self.field_name: {
+                left_operator: self.start_timestamp,
+                right_operator: self.end_timestamp
+            }
+        }

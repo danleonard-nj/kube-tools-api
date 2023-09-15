@@ -7,6 +7,17 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from domain.mongo import MongoCollection, MongoDatabase
 
 
+class DeadManSwitcHistoryhRepository(MongoRepositoryAsync):
+    def __init__(
+        self,
+        client: AsyncIOMotorClient
+    ):
+        super().__init__(
+            client=client,
+            database=MongoDatabase.Health,
+            collection=MongoCollection.DeadManSwitchHistory)
+
+
 class DeadManSwitchRepository(MongoRepositoryAsync):
     def __init__(
         self,

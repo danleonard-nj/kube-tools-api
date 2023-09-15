@@ -31,7 +31,7 @@ from data.bank_repository import (BankBalanceRepository,
                                   BankTransactionsRepository,
                                   BankWebhooksRepository)
 from data.chat_gpt_repository import ChatGptRepository
-from data.dead_man_switch_repository import DeadManSwitchRepository
+from data.dead_man_switch_repository import DeadManSwitcHistoryhRepository, DeadManSwitchRepository
 from data.google.google_auth_repository import GoogleAuthRepository
 from data.google.google_email_log_repository import GoogleEmailLogRepository
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
@@ -192,6 +192,7 @@ def register_repositories(
     descriptors.add_singleton(WeatherRepository)
     descriptors.add_singleton(VestingScheduleRepository)
     descriptors.add_singleton(ApiEventAlertRepository)
+    descriptors.add_singleton(DeadManSwitcHistoryhRepository)
 
 
 def register_services(

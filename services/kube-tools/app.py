@@ -13,7 +13,6 @@ from routes.chatgpt import chatgpt_bp
 from routes.bank import bank_bp
 from routes.google import google_bp
 from routes.weather import weather_bp
-from routes.health import health_bp
 from routes.kubernetes import kubernetes_bp
 from routes.location_history import location_history_bp
 from routes.mongo_backup import mongo_backup_bp
@@ -51,7 +50,6 @@ app.register_blueprint(usage_bp)
 app.register_blueprint(mongo_backup_bp)
 app.register_blueprint(google_bp)
 app.register_blueprint(location_history_bp)
-app.register_blueprint(health_bp)
 app.register_blueprint(nest_bp)
 app.register_blueprint(chatgpt_bp)
 app.register_blueprint(api_event_history_bp)

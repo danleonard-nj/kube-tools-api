@@ -83,12 +83,12 @@ class CreateSwitchRequest(Serializable):
         self.configuration_id = data.get('configuration_id')
 
 
-class DisarmSwitchRequest(Serializable):
+class DisarmRequest(Serializable):
     def __init__(
         self,
         data: Dict
     ):
-        self.switch_id = data.get('switch_id')
+        self.username = data.get('username')
 
 
 class DeleteGmailEmailRuleResponse(Serializable):
@@ -332,28 +332,32 @@ class DeadManSwitchPollResponse(Serializable):
         seconds_remaining: int,
         minutes_remaining: int,
         notified: bool,
-        expiration_date: datetime,
-        switch: Switch
+        expiration_date: int,
+        switch: Switch,
+        countdown: str | None = None
     ):
         self.seconds_remaining = seconds_remaining
         self.minutes_remaining = minutes_remaining
-        self.notified = notified
         self.expiration_date = expiration_date
+        self.notified = notified
+        self.countdown = countdown
         self.switch = switch
 
     def to_dict(
         self
     ) -> Dict:
         return super().to_dict() | {
-            'expiration_date': self.expiration_date.isoformat(),
+            'expiration_date': self.expiration_date,
             'minutes_remaining': round(self.minutes_remaining),
-            'time_remaining': self.time_remaining if self.seconds_remaining > 0 else timedelta(seconds=0),
+            'seconds_remaining': round(self.seconds_remaining),
             'switch': self.switch.to_dict()
         }
 
 
 class DeadManSwitchPollDisabledResponse(Serializable):
     def __init__(
-        self
+        self,
+        reason: str | None = None
     ):
         self.is_enabled = False
+        self.reason = reason or 'unspecified'

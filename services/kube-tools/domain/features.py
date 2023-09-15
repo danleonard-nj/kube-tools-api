@@ -7,3 +7,5 @@ class Feature:
     DeadManSwitch = 'dead-man-switch'
     EmailRuleLogIngestion = 'email-rule-log-ingestion'
     NestSensorDataIngestion = 'nest-sensor-data-ingestion'
+    DeadManSwitch = 'dead-man-switch'
+    DeadManSwitchReminders = 'dead-man-switch-reminders'
