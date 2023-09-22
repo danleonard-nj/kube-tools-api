@@ -34,6 +34,7 @@ from data.chat_gpt_repository import ChatGptRepository
 from data.dead_man_switch_repository import DeadManSwitcHistoryhRepository, DeadManSwitchRepository
 from data.google.google_auth_repository import GoogleAuthRepository
 from data.google.google_email_log_repository import GoogleEmailLogRepository
+from data.google.google_email_repository import GooleCalendarEventRepository
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from data.google.google_location_history_repository import \
     GoogleLocationHistoryRepository
@@ -54,6 +55,7 @@ from services.api_event_service import ApiEventHistoryService
 from services.bank_balance_service import BalanceSyncService
 from services.bank_service import BankService
 from services.bank_transaction_service import BankTransactionService
+from services.calendar_service import CalendarService
 from services.chat_gpt_proxy_service import ChatGptProxyService
 from services.dead_man_switch_service import DeadManSwitchService
 from services.event_service import EventService
@@ -193,6 +195,7 @@ def register_repositories(
     descriptors.add_singleton(VestingScheduleRepository)
     descriptors.add_singleton(ApiEventAlertRepository)
     descriptors.add_singleton(DeadManSwitcHistoryhRepository)
+    descriptors.add_singleton(GooleCalendarEventRepository)
 
 
 def register_services(
@@ -221,6 +224,7 @@ def register_services(
     descriptors.add_singleton(BalanceSyncService)
     descriptors.add_singleton(TorrentService)
     descriptors.add_singleton(VestingScheduleService)
+    descriptors.add_singleton(CalendarService)
 
 
 class ContainerProvider(ProviderBase):

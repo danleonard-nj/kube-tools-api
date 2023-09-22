@@ -13,3 +13,14 @@ class GoogleEmailRuleRepository(MongoRepositoryAsync):
             client=client,
             database=MongoDatabase.Google,
             collection=MongoCollection.EmailRule)
+
+
+class GooleCalendarEventRepository(MongoRepositoryAsync):
+    def __init__(
+        self,
+        client: AsyncIOMotorClient
+    ):
+        super().__init__(
+            client=client,
+            database=MongoDatabase.Google,
+            collection='CalendarEvent')

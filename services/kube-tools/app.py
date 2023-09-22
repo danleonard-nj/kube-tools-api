@@ -19,6 +19,7 @@ from routes.mongo_backup import mongo_backup_bp
 from routes.torrents import torrent_bp
 from routes.api_event_history import api_event_history_bp
 # from routes.nest import nest_bp
+from routes.calendar import calendar_bp
 from routes.podcasts import podcasts_bp
 from routes.vesting import vesting_bp
 from routes.dead_man import dead_man_bp
@@ -52,6 +53,7 @@ app.register_blueprint(google_bp)
 app.register_blueprint(location_history_bp)
 # app.register_blueprint(nest_bp)
 app.register_blueprint(chatgpt_bp)
+app.register_blueprint(calendar_bp)
 app.register_blueprint(api_event_history_bp)
 app.register_blueprint(bank_bp)
 app.register_blueprint(weather_bp)
