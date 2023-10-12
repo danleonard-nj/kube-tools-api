@@ -1,28 +1,17 @@
 import asyncio
-from email import header
+
+from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from framework.logger import get_logger
-from framework.clients.cache_client import CacheClientAsync
-from clients.identity_client import IdentityClient
 from httpx import AsyncClient
-from domain.auth import ClientScope
 
+from clients.identity_client import IdentityClient
+from domain.auth import ClientScope
 from domain.cache import CacheKey
+from domain.exceptions import ChatGptException
+from domain.rest import ChatGptCompletionRequest
 
 logger = get_logger(__name__)
-
-
-class ChatGptException(Exception):
-    def __init__(self, message, status_code, gpt_error, *args: object) -> None:
-        self.status_code = status_code
-        self.gpt_error = gpt_error
-
-        self.retry = (
-            status_code == 429
-            or status_code == 503
-        )
-
-        super().__init__(message)
 
 
 class ChatGptServiceClient:
@@ -75,19 +64,17 @@ class ChatGptServiceClient:
 
         headers = await self.get_headers()
 
-        req = {
-            'prompt': prompt
-        }
+        req = ChatGptCompletionRequest(prompt=prompt)
 
         response = await self.__http_client.post(
-            url=f'https://api.dan-leonard.com/api/tools/chatgpt/internal/chat/completions',
+            url=f'{self.__base_url}/api/tools/chatgpt/internal/chat/completions',
             headers=headers,
-            json=req)
+            json=req.to_dict())
 
         logger.info(f'Response: {response.status_code}')
 
         if not response.is_success:
-            raise Exception(
+            raise ChatGptException(
                 f'Failed to fetch internal chat completion: {response.status_code}')
 
         parsed = response.json()

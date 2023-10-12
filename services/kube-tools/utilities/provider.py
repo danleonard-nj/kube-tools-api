@@ -20,18 +20,19 @@ from clients.gmail_client import GmailClient, GmailRuleService
 from clients.google_drive_client import GoogleDriveClient
 from clients.google_maps_client import GoogleMapsClient
 from clients.identity_client import IdentityClient
-from clients.nest_client import NestClient
 from clients.open_weather_client import OpenWeatherClient
 from clients.plaid_client import PlaidClient
 from clients.storage_client import StorageClient
 from clients.torrent_client import TorrentClient
 from clients.twilio_gateway import TwilioGatewayClient
-from data.api_event_repository import ApiEventAlertRepository, ApiEventRepository
+from data.api_event_repository import (ApiEventAlertRepository,
+                                       ApiEventRepository)
 from data.bank_repository import (BankBalanceRepository,
                                   BankTransactionsRepository,
                                   BankWebhooksRepository)
 from data.chat_gpt_repository import ChatGptRepository
-from data.dead_man_switch_repository import DeadManSwitcHistoryhRepository, DeadManSwitchRepository
+from data.dead_man_switch_repository import (DeadManSwitcHistoryhRepository,
+                                             DeadManSwitchRepository)
 from data.google.google_auth_repository import GoogleAuthRepository
 from data.google.google_email_log_repository import GoogleEmailLogRepository
 from data.google.google_email_repository import GooleCalendarEventRepository
@@ -56,7 +57,6 @@ from services.bank_balance_service import BalanceSyncService
 from services.bank_service import BankService
 from services.bank_transaction_service import BankTransactionService
 from services.calendar_service import CalendarService
-from services.chat_gpt_proxy_service import ChatGptProxyService
 from services.dead_man_switch_service import DeadManSwitchService
 from services.event_service import EventService
 from services.gmail_balance_sync_service import GmailBankSyncService
@@ -64,8 +64,6 @@ from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
 from services.location_history_service import LocationHistoryService
 from services.mongo_backup_service import MongoBackupService
-from services.nest_command_service import NestCommandService
-from services.nest_service import NestService
 from services.podcast_service import PodcastService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
 from services.torrent_service import TorrentService
@@ -162,7 +160,6 @@ def register_clients(
     descriptors.add_singleton(EventClient)
     descriptors.add_singleton(GmailClient)
     descriptors.add_singleton(DeadManSwitchService)
-    descriptors.add_singleton(NestClient)
     descriptors.add_singleton(ChatGptServiceClient)
     descriptors.add_singleton(PlaidClient)
     descriptors.add_singleton(OpenWeatherClient)
@@ -214,9 +211,6 @@ def register_services(
     descriptors.add_singleton(GmailRuleService)
     descriptors.add_singleton(GmailService)
     descriptors.add_singleton(GmailBankSyncService)
-    descriptors.add_singleton(NestService)
-    descriptors.add_singleton(NestCommandService)
-    descriptors.add_singleton(ChatGptProxyService)
     descriptors.add_singleton(ApiEventHistoryService)
     descriptors.add_singleton(BankService)
     descriptors.add_singleton(WeatherService)

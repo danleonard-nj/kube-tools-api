@@ -92,3 +92,16 @@ class EmailRuleNotFoundException(Exception):
         super().__init__(
             f"No rule with the '{rule_id}' exists"
         )
+
+
+class ChatGptException(Exception):
+    def __init__(self, message, status_code, gpt_error, *args: object) -> None:
+        self.status_code = status_code
+        self.gpt_error = gpt_error
+
+        self.retry = (
+            status_code == 429
+            or status_code == 503
+        )
+
+        super().__init__(message)

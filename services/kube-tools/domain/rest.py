@@ -361,3 +361,11 @@ class DeadManSwitchPollDisabledResponse(Serializable):
     ):
         self.is_enabled = False
         self.reason = reason or 'unspecified'
+
+
+class ChatGptCompletionRequest(Serializable):
+    def __init__(
+        self,
+        prompt: str
+    ):
+        self.prompt = prompt
