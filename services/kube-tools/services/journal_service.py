@@ -1,17 +1,18 @@
-
-
 import uuid
 from datetime import datetime
 
 from dateutil import parser
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
-from framework.serialization.serializer import Serializable
 
 from data.journal_repository import (JournalCategoryRepository,
                                      JournalEntryRepository,
                                      JournalUnitRepository)
 from domain.journal import JournalCategory, JournalEntry, JournalUnit
+from domain.rest import (CreateJournalCategoryRequest,
+                         CreateJournalEntryRequest, CreateJournalUnitRequest,
+                         JournalDeleteResponse, UpdateJournalCategoryRequest,
+                         UpdateJournalEntryRequest, UpdateJournalUnitRequest)
 from utilities.utils import DateTimeUtil
 
 
@@ -24,76 +25,6 @@ def parse_date(
 
 
 logger = get_logger(__name__)
-
-
-# TODO: Move to rest domain
-class CreateJournalEntryRequest(Serializable):
-    def __init__(
-        self,
-        data: dict
-    ):
-        self.unit_id = data.get('unit_id')
-        self.quantity = data.get('quantity')
-        self.note = data.get('note')
-
-
-class UpdateJournalEntryRequest(Serializable):
-    def __init__(
-        self,
-        data: dict
-    ):
-        self.category_id = data.get('category_id')
-        self.unit_id = data.get('unit_id')
-        self.quantity = data.get('quantity')
-        self.note = data.get('note')
-
-
-class CreateJournalUnitRequest(Serializable):
-    def __init__(
-        self,
-        data: dict
-    ):
-        self.unit_name = data.get('unit_name')
-        self.symbol_name = data.get('symbol_name')
-
-
-class UpdateJournalUnitRequest(Serializable):
-    def __init__(
-        self,
-        data: dict
-    ):
-        self.unit_id = data.get('unit_id')
-        self.unit_name = data.get('unit_name')
-        self.symbol_name = data.get('symbol_name')
-
-
-class CreateJournalCategoryRequest(Serializable):
-    def __init__(
-        self,
-        data: dict
-    ):
-        self.category_name = data.get('category_name')
-        self.symbol_name = data.get('symbol_name')
-
-
-class UpdateJournalCategoryRequest(Serializable):
-    def __init__(
-        self,
-        data: dict
-    ):
-        self.category_id = data.get('category_id')
-        self.category_name = data.get('category_name')
-        self.symbol_name = data.get('symbol_name')
-
-
-class DeleteResponse(Serializable):
-    def __init__(
-        self,
-        success: bool,
-        count: int
-    ):
-        self.success = success
-        self.count = count
 
 
 class JournalService:
@@ -110,14 +41,16 @@ class JournalService:
     async def get_entries(
         self,
         start_date: str | int,
-        end_date: str | int,
+        end_date: str | int = None
     ) -> list[JournalEntry]:
 
         ArgumentNullException.if_none(start_date, 'start_date')
-        ArgumentNullException.if_none(end_date, 'end_date')
 
         start_date = parse_date(start_date)
-        end_date = parse_date(end_date)
+        end_date = (
+            parse_date(end_date) if end_date is not None
+            else datetime.now()
+        )
 
         entities = await self.__entry_repository.get_entries(
             start_timestamp=int(start_date.timestamp()),
@@ -188,6 +121,22 @@ class JournalService:
 
         logger.info(f'Creating entry: {create_request.to_dict()}')
 
+        unit = await self.__unit_repository.get({
+            'unit_id': create_request.unit_id
+        })
+
+        if unit is None:
+            raise Exception(
+                f"No unit with the ID '{create_request.unit_id}' exists")
+
+        category = await self.__category_repository.get({
+            'category_id': create_request.category_id
+        })
+
+        if category is None:
+            raise Exception(
+                f"No category with the ID '{create_request.category_id}' exists")
+
         entry = JournalEntry(
             entry_id=str(uuid.uuid4()),
             entry_date=datetime.now(),
@@ -195,13 +144,15 @@ class JournalService:
             unit_id=create_request.unit_id,
             quantity=create_request.quantity,
             note=create_request.note,
-            timestamp=DateTimeUtil.now()
+            timestamp=DateTimeUtil.timestamp()
         )
 
         insert_result = await self.__entry_repository.insert(
             document=entry.to_dict())
 
         logger.info(f'Insert result: {insert_result.inserted_id}')
+
+        return entry
 
     async def create_category(
         self,
@@ -210,6 +161,14 @@ class JournalService:
         ArgumentNullException.if_none(create_request, 'create_request')
         ArgumentNullException.if_none_or_whitespace(
             create_request.category_name, 'category_name')
+
+        existing_category = await self.__category_repository.get({
+            'category_name': create_request.category_name
+        })
+
+        if existing_category is not None:
+            raise Exception(
+                f"Category with the name '{create_request.category_name}' already exists")
 
         category = JournalCategory(
             category_id=str(uuid.uuid4()),
@@ -221,6 +180,8 @@ class JournalService:
         await self.__category_repository.insert(
             document=category.to_dict())
 
+        return category
+
     async def create_unit(
         self,
         create_request: CreateJournalUnitRequest
@@ -229,6 +190,14 @@ class JournalService:
         ArgumentNullException.if_none(create_request, 'create_request')
         ArgumentNullException.if_none_or_whitespace(
             create_request.unit_name, 'unit_name')
+
+        existing_unit = await self.__unit_repository.get({
+            'unit_name': create_request.unit_name
+        })
+
+        if existing_unit is not None:
+            raise Exception(
+                f"Unit with the name '{create_request.unit_name}' already exists")
 
         unit = JournalUnit(
             unit_id=str(uuid.uuid4()),
@@ -240,10 +209,15 @@ class JournalService:
         await self.__unit_repository.insert(
             document=unit.to_dict())
 
+        return unit
+
     async def update_entry(
         self,
         update_request: UpdateJournalEntryRequest
     ):
+        ArgumentNullException.if_none(update_request, 'update_request')
+        ArgumentNullException.if_none_or_whitespace(
+            update_request.entry_id, 'entry_id')
 
         existing_record = await self.__entry_repository.get({
             'entry_id': update_request.entry_id
@@ -251,6 +225,22 @@ class JournalService:
 
         if existing_record is None:
             raise Exception(f'Entry not found: {update_request.entry_id}')
+
+        unit = await self.__unit_repository.get({
+            'unit_id': update_request.unit_id
+        })
+
+        if unit is None:
+            raise Exception(
+                f"No unit with the ID '{update_request.unit_id}' exists")
+
+        category = await self.__category_repository.get({
+            'category_id': update_request.category_id
+        })
+
+        if category is None:
+            raise Exception(
+                f"No category with the ID '{update_request.category_id}' exists")
 
         updated = JournalEntry.from_entity(
             data=existing_record | update_request.to_dict())
@@ -313,7 +303,7 @@ class JournalService:
             'unit_id': unit_id
         })
 
-        return DeleteResponse(
+        return JournalDeleteResponse(
             success=delete_result.acknowledged,
             count=delete_result.deleted_count)
 
@@ -327,7 +317,7 @@ class JournalService:
             'entry_id': entry_id
         })
 
-        return DeleteResponse(
+        return JournalDeleteResponse(
             success=delete_result.acknowledged,
             count=delete_result.deleted_count)
 
@@ -341,6 +331,6 @@ class JournalService:
             'category_id': category_id
         })
 
-        return DeleteResponse(
+        return JournalDeleteResponse(
             success=delete_result.acknowledged,
             count=delete_result.deleted_count)

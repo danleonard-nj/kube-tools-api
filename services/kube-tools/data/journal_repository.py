@@ -24,7 +24,7 @@ class JournalEntryRepository(MongoRepositoryAsync):
             }
         }
 
-        return await self.find(query).to_list(
+        return await self.collection.find(query).to_list(
             length=None)
 
 

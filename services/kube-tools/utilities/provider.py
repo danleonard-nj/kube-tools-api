@@ -41,6 +41,7 @@ from data.google.google_location_history_repository import \
     GoogleLocationHistoryRepository
 from data.google.google_reverse_geocode_repository import \
     GoogleReverseGeocodingRepository
+from data.journal_repository import JournalCategoryRepository, JournalEntryRepository, JournalUnitRepository
 from data.location_repository import (WeatherStationRepository,
                                       ZipLatLongRepository)
 from data.mongo_export_repository import MongoExportRepository
@@ -62,6 +63,7 @@ from services.event_service import EventService
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
+from services.journal_service import JournalService
 from services.location_history_service import LocationHistoryService
 from services.mongo_backup_service import MongoBackupService
 from services.podcast_service import PodcastService
@@ -193,6 +195,9 @@ def register_repositories(
     descriptors.add_singleton(ApiEventAlertRepository)
     descriptors.add_singleton(DeadManSwitcHistoryhRepository)
     descriptors.add_singleton(GooleCalendarEventRepository)
+    descriptors.add_singleton(JournalCategoryRepository)
+    descriptors.add_singleton(JournalEntryRepository)
+    descriptors.add_singleton(JournalUnitRepository)
 
 
 def register_services(
@@ -219,6 +224,7 @@ def register_services(
     descriptors.add_singleton(TorrentService)
     descriptors.add_singleton(VestingScheduleService)
     descriptors.add_singleton(CalendarService)
+    descriptors.add_singleton(JournalService)
 
 
 class ContainerProvider(ProviderBase):

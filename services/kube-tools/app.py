@@ -10,21 +10,19 @@ from quart import Quart
 from routes.acr import acr_bp
 from routes.api_event_history import api_event_history_bp
 from routes.bank import bank_bp
+from routes.calendar import calendar_bp
+from routes.dead_man import dead_man_bp
 from routes.google import google_bp
-from routes.weather import weather_bp
+from routes.journal import journal_bp
 from routes.kubernetes import kubernetes_bp
 from routes.location_history import location_history_bp
 from routes.mongo_backup import mongo_backup_bp
-from routes.torrents import torrent_bp
-from routes.api_event_history import api_event_history_bp
-# from routes.nest import nest_bp
-from routes.calendar import calendar_bp
 from routes.podcasts import podcasts_bp
-from routes.vesting import vesting_bp
-from routes.dead_man import dead_man_bp
+from routes.torrents import torrent_bp
 from routes.usage import usage_bp
+from routes.vesting import vesting_bp
+from routes.weather import weather_bp
 from utilities.provider import ContainerProvider
-
 from utilities.utils import deprecate_logger
 
 deprecate_logger.info('testing deprected logger')
@@ -54,7 +52,7 @@ app.register_blueprint(calendar_bp)
 app.register_blueprint(api_event_history_bp)
 app.register_blueprint(bank_bp)
 app.register_blueprint(weather_bp)
-
+app.register_blueprint(journal_bp)
 app.register_blueprint(torrent_bp)
 app.register_blueprint(dead_man_bp)
 
