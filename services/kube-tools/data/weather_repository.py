@@ -1,4 +1,3 @@
-from flask.scaffold import F
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
 
