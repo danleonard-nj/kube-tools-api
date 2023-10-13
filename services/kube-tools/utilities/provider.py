@@ -1,4 +1,3 @@
-import openai
 from framework.abstractions.abstract_request import RequestContextProvider
 from framework.auth.azure import AzureAd
 from framework.auth.configuration import AzureAdConfiguration
@@ -115,17 +114,6 @@ def configure_mongo_client(
     return client
 
 
-def configure_openai(
-    container: ServiceCollection
-):
-    configuration = container.resolve(Configuration)
-
-    api_key = configuration.openai.get('api_key')
-    openai.api_key = api_key
-
-    return openai.Image
-
-
 def register_factories(
     descriptors: ServiceCollection
 ):
@@ -140,10 +128,6 @@ def register_factories(
     descriptors.add_singleton(
         dependency_type=AsyncIOMotorClient,
         factory=configure_mongo_client)
-
-    descriptors.add_singleton(
-        dependency_type=openai.Image,
-        factory=configure_openai)
 
 
 def register_clients(
