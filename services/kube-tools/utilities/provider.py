@@ -47,7 +47,6 @@ from data.mongo_export_repository import MongoExportRepository
 from data.nest_repository import (NestDeviceRepository, NestLogRepository,
                                   NestSensorRepository)
 from data.podcast_repository import PodcastRepository
-from data.vesting_schedule_repository import VestingScheduleRepository
 from data.weather_repository import WeatherRepository
 from domain.auth import AdRole, AuthPolicy
 from services.acr_purge_service import AcrPurgeService
@@ -69,7 +68,6 @@ from services.podcast_service import PodcastService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
 from services.torrent_service import TorrentService
 from services.usage_service import UsageService
-from services.vesting_schedule_service import VestingScheduleService
 from services.weather_service import WeatherService
 
 
@@ -175,7 +173,6 @@ def register_repositories(
     descriptors.add_singleton(BankTransactionsRepository)
     descriptors.add_singleton(BankWebhooksRepository)
     descriptors.add_singleton(WeatherRepository)
-    descriptors.add_singleton(VestingScheduleRepository)
     descriptors.add_singleton(ApiEventAlertRepository)
     descriptors.add_singleton(DeadManSwitcHistoryhRepository)
     descriptors.add_singleton(GooleCalendarEventRepository)
@@ -206,7 +203,6 @@ def register_services(
     descriptors.add_singleton(BankTransactionService)
     descriptors.add_singleton(BalanceSyncService)
     descriptors.add_singleton(TorrentService)
-    descriptors.add_singleton(VestingScheduleService)
     descriptors.add_singleton(CalendarService)
     descriptors.add_singleton(JournalService)
 

@@ -1,3 +1,4 @@
+from ast import parse
 import uuid
 from datetime import datetime
 
@@ -139,7 +140,7 @@ class JournalService:
 
         entry = JournalEntry(
             entry_id=str(uuid.uuid4()),
-            entry_date=datetime.now(),
+            entry_date=parse_date(create_request.entry_date),
             category_id=create_request.category_id,
             unit_id=create_request.unit_id,
             quantity=create_request.quantity,
@@ -243,7 +244,9 @@ class JournalService:
                 f"No category with the ID '{update_request.category_id}' exists")
 
         updated = JournalEntry.from_entity(
-            data=existing_record | update_request.to_dict())
+            data=existing_record
+            | update_request.to_dict()
+            | {'entry_date': parse_date(update_request.entry_date)})
 
         logger.info(f'Updating entry: {updated.to_dict()}')
 

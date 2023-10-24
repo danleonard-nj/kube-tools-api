@@ -121,7 +121,9 @@ class CalendarEvent(Serializable):
             recurring_event_id=data.get('recurringEventId'))
 
 
-def ensure_datetime(value):
+def ensure_datetime(
+    value: datetime | str
+) -> datetime:
     if isinstance(value, datetime):
         return value
 

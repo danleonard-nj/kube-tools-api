@@ -376,6 +376,7 @@ class CreateJournalEntryRequest(Serializable):
         self,
         data: dict
     ):
+        self.entry_date = data.get('entry_date')
         self.unit_id = data.get('unit_id')
         self.category_id = data.get('category_id')
         self.quantity = data.get('quantity')
@@ -388,6 +389,7 @@ class UpdateJournalEntryRequest(Serializable):
         data: dict
     ):
         self.entry_id = data.get('entry_id')
+        self.entry_date = data.get('entry_date')
         self.category_id = data.get('category_id')
         self.unit_id = data.get('unit_id')
         self.quantity = data.get('quantity')
