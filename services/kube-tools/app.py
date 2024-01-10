@@ -11,7 +11,6 @@ from routes.bank import bank_bp
 from routes.calendar import calendar_bp
 from routes.dead_man import dead_man_bp
 from routes.google import google_bp
-from routes.journal import journal_bp
 from routes.kubernetes import kubernetes_bp
 from routes.location_history import location_history_bp
 from routes.mongo_backup import mongo_backup_bp
@@ -40,7 +39,6 @@ app.register_blueprint(calendar_bp)
 app.register_blueprint(api_event_history_bp)
 app.register_blueprint(bank_bp)
 app.register_blueprint(weather_bp)
-app.register_blueprint(journal_bp)
 app.register_blueprint(torrent_bp)
 app.register_blueprint(dead_man_bp)
 
