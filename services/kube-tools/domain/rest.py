@@ -1,10 +1,7 @@
-from datetime import datetime, timedelta
 from typing import Dict, List, Union
 
 from framework.serialization import Serializable
 from quart import Response
-
-from domain.dms import Switch
 
 
 class GmailModifyEmailRequest(Serializable):
@@ -48,48 +45,6 @@ class UpdateEmailRuleRequest(Serializable):
         self.action = data.get('action')
         self.data = data.get('data')
         self.max_results = data.get('max_results')
-
-
-class CreateDeadManConfigurationRequest(Serializable):
-    def __init__(
-        self,
-        data: Dict
-    ):
-        self.configuration_name = data.get('configuration_name')
-        self.interval_hours = data.get('interval_hours')
-        self.grace_period_hours = data.get('grace_period_hours')
-        self.alert_type = data.get('alert_type')
-        self.alert_address = data.get('alert_address')
-
-
-class UpdateDeadManConfigurationRequest(Serializable):
-    def __init__(
-        self,
-        data: Dict
-    ):
-        self.configuration_id = data.get('configuration_id')
-        self.interval_hours = data.get('interval_hours')
-        self.grace_period_hours = data.get('grace_period_hours')
-        self.alert_type = data.get('alert_type')
-        self.alert_address = data.get('alert_address')
-
-
-class CreateSwitchRequest(Serializable):
-    def __init__(
-        self,
-        data: Dict
-    ):
-        self.switch_name = data.get('switch_name')
-        self.configuration_id = data.get('configuration_id')
-
-
-class DisarmRequest(Serializable):
-    def __init__(
-        self,
-        data: Dict
-    ):
-        self.username = data.get('username')
-
 
 class DeleteGmailEmailRuleResponse(Serializable):
     def __init__(
@@ -318,50 +273,6 @@ class ProcessGmailRuleResponse(Serializable):
         self.affected_count = (
             affected_count or 0
         )
-
-
-class DeadManSwitchPollResponse(Serializable):
-    @property
-    def time_remaining(
-        self
-    ):
-        return self.expiration_date - datetime.now()
-
-    def __init__(
-        self,
-        seconds_remaining: int,
-        minutes_remaining: int,
-        notified: bool,
-        expiration_date: int,
-        switch: Switch,
-        countdown: str | None = None
-    ):
-        self.seconds_remaining = seconds_remaining
-        self.minutes_remaining = minutes_remaining
-        self.expiration_date = expiration_date
-        self.notified = notified
-        self.countdown = countdown
-        self.switch = switch
-
-    def to_dict(
-        self
-    ) -> Dict:
-        return super().to_dict() | {
-            'expiration_date': self.expiration_date,
-            'minutes_remaining': round(self.minutes_remaining),
-            'seconds_remaining': round(self.seconds_remaining),
-            'switch': self.switch.to_dict()
-        }
-
-
-class DeadManSwitchPollDisabledResponse(Serializable):
-    def __init__(
-        self,
-        reason: str | None = None
-    ):
-        self.is_enabled = False
-        self.reason = reason or 'unspecified'
-
 
 class ChatGptCompletionRequest(Serializable):
     def __init__(

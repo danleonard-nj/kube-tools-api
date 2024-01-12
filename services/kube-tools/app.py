@@ -9,7 +9,6 @@ from routes.acr import acr_bp
 from routes.api_event_history import api_event_history_bp
 from routes.bank import bank_bp
 from routes.calendar import calendar_bp
-from routes.dead_man import dead_man_bp
 from routes.google import google_bp
 from routes.kubernetes import kubernetes_bp
 from routes.location_history import location_history_bp
@@ -40,7 +39,6 @@ app.register_blueprint(api_event_history_bp)
 app.register_blueprint(bank_bp)
 app.register_blueprint(weather_bp)
 app.register_blueprint(torrent_bp)
-app.register_blueprint(dead_man_bp)
 
 provider = ContainerProvider.get_service_provider()
 InternalProvider.bind(provider)

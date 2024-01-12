@@ -30,8 +30,6 @@ from data.bank_repository import (BankBalanceRepository,
                                   BankTransactionsRepository,
                                   BankWebhooksRepository)
 from data.chat_gpt_repository import ChatGptRepository
-from data.dead_man_switch_repository import (DeadManSwitcHistoryhRepository,
-                                             DeadManSwitchRepository)
 from data.google.google_auth_repository import GoogleAuthRepository
 from data.google.google_email_log_repository import GoogleEmailLogRepository
 from data.google.google_email_repository import GooleCalendarEventRepository
@@ -55,7 +53,6 @@ from services.bank_balance_service import BalanceSyncService
 from services.bank_service import BankService
 from services.bank_transaction_service import BankTransactionService
 from services.calendar_service import CalendarService
-from services.dead_man_switch_service import DeadManSwitchService
 from services.event_service import EventService
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_service import GmailService
@@ -141,7 +138,6 @@ def register_clients(
     descriptors.add_singleton(GoogleMapsClient)
     descriptors.add_singleton(EventClient)
     descriptors.add_singleton(GmailClient)
-    descriptors.add_singleton(DeadManSwitchService)
     descriptors.add_singleton(ChatGptServiceClient)
     descriptors.add_singleton(PlaidClient)
     descriptors.add_singleton(OpenWeatherClient)
@@ -158,7 +154,6 @@ def register_repositories(
     descriptors.add_singleton(GoogleLocationHistoryRepository)
     descriptors.add_singleton(GoogleReverseGeocodingRepository)
     descriptors.add_singleton(GoogleEmailRuleRepository)
-    descriptors.add_singleton(DeadManSwitchRepository)
     descriptors.add_singleton(NestSensorRepository)
     descriptors.add_singleton(NestDeviceRepository)
     descriptors.add_singleton(MongoExportRepository)
@@ -172,7 +167,6 @@ def register_repositories(
     descriptors.add_singleton(BankWebhooksRepository)
     descriptors.add_singleton(WeatherRepository)
     descriptors.add_singleton(ApiEventAlertRepository)
-    descriptors.add_singleton(DeadManSwitcHistoryhRepository)
     descriptors.add_singleton(GooleCalendarEventRepository)
 
 

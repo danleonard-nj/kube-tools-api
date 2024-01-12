@@ -3,11 +3,6 @@ import random
 from typing import Dict, List, Tuple
 
 import httpx
-from framework.clients.feature_client import FeatureClientAsync
-from framework.configuration.configuration import Configuration
-from framework.logger.providers import get_logger
-from matplotlib.pyplot import show
-
 from clients.email_gateway_client import EmailGatewayClient
 from clients.google_drive_client import GoogleDriveClient
 from data.podcast_repository import PodcastRepository
@@ -15,6 +10,9 @@ from domain.features import Feature
 from domain.podcasts.handlers import (AcastFeedHandler, FeedHandler,
                                       GenericFeedHandler)
 from domain.podcasts.podcasts import DownloadedEpisode, Episode, Feed, Show
+from framework.clients.feature_client import FeatureClientAsync
+from framework.configuration.configuration import Configuration
+from framework.logger.providers import get_logger
 from services.event_service import EventService
 
 logger = get_logger(__name__)
