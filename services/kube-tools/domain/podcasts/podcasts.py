@@ -100,7 +100,7 @@ class Show(Serializable):
 
         return [Episode(
             episode_id=episode.get('episode_id'),
-            episode_title=episode.get('title'),
+            episode_title=episode.get('episode_title'),
             audio=episode.get('audio'))
             for episode in episodes]
 

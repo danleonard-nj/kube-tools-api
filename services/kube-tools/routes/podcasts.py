@@ -1,6 +1,7 @@
 from framework.clients.feature_client import FeatureClientAsync
 from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
+from domain.auth import AuthPolicy
 
 from domain.features import Feature
 from services.podcast_service import PodcastService
@@ -10,8 +11,8 @@ podcasts_bp = MetaBlueprint('podcasts_bp', __name__)
 logger = get_logger(__name__)
 
 
-@podcasts_bp.configure('/api/podcasts', methods=['GET', 'POST'], auth_scheme='execute')
-async def get_podcasts(container):
+@podcasts_bp.configure('/api/podcasts', methods=['GET', 'POST'], auth_scheme=AuthPolicy.Execute)
+async def sync_podcasts(container):
     podcast_service: PodcastService = container.resolve(
         PodcastService)
     feature_client: FeatureClientAsync = container.resolve(
@@ -25,3 +26,11 @@ async def get_podcasts(container):
 
     result = await podcast_service.sync()
     return result
+
+
+@podcasts_bp.configure('/api/podcasts/shows', methods=['GET'], auth_scheme=AuthPolicy.Default)
+async def get_podcasts(container):
+    podcast_service: PodcastService = container.resolve(
+        PodcastService)
+    
+    return await podcast_service.get_podcasts()

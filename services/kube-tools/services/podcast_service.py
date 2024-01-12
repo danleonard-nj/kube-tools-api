@@ -6,6 +6,7 @@ import httpx
 from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration.configuration import Configuration
 from framework.logger.providers import get_logger
+from matplotlib.pyplot import show
 
 from clients.email_gateway_client import EmailGatewayClient
 from clients.google_drive_client import GoogleDriveClient
@@ -42,6 +43,18 @@ class PodcastService:
         self.__event_service = event_service
 
         self.upload_threads = []
+
+    async def get_podcasts(
+        self
+    ) -> List[dict]:
+        entities = await self.__podcast_repository.get_all()
+        
+        shows = [Show.from_entity(x) for x in entities]
+        logger.info(f'Found {len(shows)} shows')
+        
+        results = [show.to_dict() for show in shows]
+            
+        return results
 
     async def sync(
         self
