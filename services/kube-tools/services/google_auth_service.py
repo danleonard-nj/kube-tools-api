@@ -1,13 +1,22 @@
 from typing import List
-
 from framework.logger.providers import get_logger
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-
+import json
 from data.google.google_auth_repository import GoogleAuthRepository
 
 logger = get_logger(__name__)
 
+def dump_client(client: Credentials) -> dict:
+    return {
+        'token': client.token,
+        'refresh_token': client.refresh_token,
+        'token_uri': client.token_uri,
+        'client_id': client.client_id,
+        'client_secret': client.client_secret,
+        'scopes': client.scopes,
+        'expiry' : client.expiry.isoformat()
+    }
 
 class GoogleAuthService:
     def __init__(
@@ -15,6 +24,18 @@ class GoogleAuthService:
         repository: GoogleAuthRepository
     ):
         self.__repository = repository
+
+    async def save_auth_client(
+        self,
+        client: Credentials
+    ) -> None:
+        result = await self.__repository.collection.replace_one(
+            dict(client_id=client.client_id),
+            dump_client(client),
+            upsert=True
+        )
+        
+        logger.info(f'Saved Google auth client: {result.raw_result}')
 
     async def get_auth_client(
         self,
@@ -31,5 +52,11 @@ class GoogleAuthService:
             creds,
             scopes=scopes)
 
-        client.refresh(Request())
+        if client.expired:
+            logger.info(f'Google auth client expired, refreshing')
+            client.refresh(Request())
+
+            logger.info(f'Saving Google auth client')
+            await self.save_auth_client(client) 
+            
         return client

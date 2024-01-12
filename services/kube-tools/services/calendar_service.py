@@ -6,6 +6,7 @@ import stat
 from typing import Dict
 from data.google.google_email_repository import GooleCalendarEventRepository
 from services.google_auth_service import GoogleAuthService
+from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
@@ -153,9 +154,12 @@ class CalendarService:
         start_date: str | datetime,
         end_date: str | datetime
     ):
+        ArgumentNullException.if_none(start_date, 'start_date')
+        ArgumentNullException.if_none(end_date, 'end_date')
+        
         logger.info(
             f'Fetching calendar events from {start_date} to {end_date}')
-
+        
         start_date = ensure_datetime(start_date)
         end_date = ensure_datetime(end_date)
 
