@@ -4,6 +4,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 import json
 from data.google.google_auth_repository import GoogleAuthRepository
+from datetime import datetime
 
 logger = get_logger(__name__)
 
@@ -15,7 +16,8 @@ def dump_client(client: Credentials) -> dict:
         'client_id': client.client_id,
         'client_secret': client.client_secret,
         'scopes': client.scopes,
-        'expiry' : client.expiry.isoformat()
+        'expiry' : client.expiry.isoformat(),
+        'timestamp' : datetime.now().isoformat()
     }
 
 class GoogleAuthService:
