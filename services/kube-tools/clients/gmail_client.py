@@ -37,15 +37,6 @@ class GmailClient:
         self
     ) -> str:
 
-        cache_key = CacheKey.gmail_token()
-
-        # Try to fetch the Gmail auth token from mem cache
-        # token = self.__memory_cache.get(cache_key)
-        token = None
-
-        if token is not None:
-            return token
-
         logger.info(f'Fetching token from auth client')
 
         # Fetch an auth token w/ Gmail scope
@@ -54,16 +45,6 @@ class GmailClient:
 
         logger.info(f'Client granted scopes: {client.granted_scopes}')
         logger.info(f'Client scopes: {client.scopes}')
-
-        # # Fetch the token w/ refresh creds
-        # client.refresh(Request())
-
-        # Cache the fetched token
-        self.__memory_cache.set(
-            key=cache_key,
-            value=client.token,
-            ttl=60 * 45)
-
         logger.info(f'Client token: {client.token}')
 
         return client.token
