@@ -40,7 +40,8 @@ class GmailClient:
         cache_key = CacheKey.gmail_token()
 
         # Try to fetch the Gmail auth token from mem cache
-        token = self.__memory_cache.get(cache_key)
+        # token = self.__memory_cache.get(cache_key)
+        token = None
 
         if token is not None:
             return token

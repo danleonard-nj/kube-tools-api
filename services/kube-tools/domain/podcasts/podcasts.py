@@ -1,8 +1,10 @@
 import re
 from typing import Callable, Dict, List, OrderedDict
+
 from framework.logger import get_logger
 from framework.serialization import Serializable
 
+TITLE_FILENAME_REGEX='[^A-Za-z0-9 ]+'
 
 logger = get_logger(__name__)
 
@@ -43,9 +45,15 @@ class Episode(Serializable):
         self,
         show_title
     ) -> str:
-        show = re.sub('[^A-Za-z0-9 ]+', '', show_title)
-        name = re.sub('[^A-Za-z0-9 ]+', '', self.episode_title)
-        return show.replace(' ', '_') + '_' + name.replace(' ', '_') + '.mp3'
+        show = re.sub(TITLE_FILENAME_REGEX, '', show_title)
+        name = re.sub(TITLE_FILENAME_REGEX, '', self.episode_title)
+        
+        return (
+            show.replace(' ', '_') 
+            + '_' 
+            + name.replace(' ', '_') 
+            + '.mp3'
+        )
 
 
 class Feed:
@@ -64,8 +72,10 @@ class Show(Serializable):
         self
     ) -> List[str]:
 
-        return [episode.episode_id
-                for episode in self.episodes]
+        return [
+            episode.episode_id
+            for episode in self.episodes
+        ]
 
     def __init__(
         self,

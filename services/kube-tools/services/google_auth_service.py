@@ -71,8 +71,12 @@ class AuthClient(Serializable):
         self,
         scopes: List[str]
     ):
+        info = self.to_dict() | {
+            'scopes': scopes
+        }
+        
         return Credentials.from_authorized_user_info(
-            info=self.to_dict(),
+            info=info,
             scopes=scopes)
 
 class GoogleAuthService:
@@ -117,12 +121,14 @@ class GoogleAuthService:
 
         client = creds.get_credentials(
             scopes=scopes)
+        
+        if creds.scopes == client.scopes and not client.expired:
+            return client
 
-        if client.expired:
-            logger.info(f'Google auth client expired, refreshing')
-            client.refresh(Request())
+        logger.info('Refreshing Google auth client')
+        client.refresh(Request())
 
-            logger.info(f'Saving Google auth client')
-            await self.save_auth_client(client) 
+        logger.info(f'Saving Google auth client')
+        await self.save_auth_client(client) 
             
         return client
