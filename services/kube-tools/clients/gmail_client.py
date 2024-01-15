@@ -54,8 +54,8 @@ class GmailClient:
         logger.info(f'Client granted scopes: {client.granted_scopes}')
         logger.info(f'Client scopes: {client.scopes}')
 
-        # Fetch the token w/ refresh creds
-        client.refresh(Request())
+        # # Fetch the token w/ refresh creds
+        # client.refresh(Request())
 
         # Cache the fetched token
         self.__memory_cache.set(
