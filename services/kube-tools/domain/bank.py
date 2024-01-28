@@ -270,3 +270,27 @@ class PlaidWebhookData(Serializable):
         self.request_id = request_id
         self.data = data
         self.timestamp = timestamp
+
+
+
+class ChatGptBalanceCompletion(Serializable):
+    def __init__(
+        self,
+        balance: float,
+        usage: int,
+        is_success: bool
+    ):
+        self.balance = balance
+        self.usage = usage
+        self.is_success = is_success
+
+    @staticmethod
+    def from_balance_response(
+        balance: float,
+        usage: int
+    ):
+        return ChatGptBalanceCompletion(
+            balance=balance,
+            usage=usage,
+            is_success=balance != 'N/A'
+        )

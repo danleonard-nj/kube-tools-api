@@ -1,11 +1,10 @@
 import uuid
 from typing import Dict, List
 
-from framework.logger import get_logger
 import pandas as pd
-
 from data.bank_repository import BankWebhooksRepository
 from domain.bank import BankBalance, PlaidWebhookData
+from framework.logger import get_logger
 from services.bank_balance_service import BalanceSyncService
 from services.bank_transaction_service import BankTransactionService
 from utilities.utils import DateTimeUtil
@@ -25,21 +24,21 @@ class BankService:
         transaction_service: BankTransactionService,
         balance_service: BalanceSyncService
     ):
-        self.__webhooks_repository = webhook_repository
-        self.__transaction_service = transaction_service
-        self.__balance_service = balance_service
+        self._webhooks_repository = webhook_repository
+        self._transaction_service = transaction_service
+        self._balance_service = balance_service
 
     async def run_balance_sync(
         self
     ):
-        return await self.__balance_service.sync_balances()
+        return await self._balance_service.sync_balances()
 
     async def run_transaction_sync(
         self,
         days_back: int = None,
         include_transactions: bool = False
     ):
-        return await self.__transaction_service.sync_transactions(
+        return await self._transaction_service.sync_transactions(
             days_back=days_back,
             include_transactions=include_transactions)
 
@@ -57,7 +56,7 @@ class BankService:
 
         logger.info(f'Webhook record: {webhook_record.to_dict()}')
 
-        await self.__webhooks_repository.insert(
+        await self._webhooks_repository.insert(
             document=webhook_record.to_dict())
 
         return dict()
@@ -70,7 +69,7 @@ class BankService:
         group_institutions: bool = False
     ) -> List[BankBalance]:
 
-        records = await self.__balance_service.get_balance_history(
+        records = await self._balance_service.get_balance_history(
             start_timestamp=start_timestamp,
             end_timestamp=end_timestamp,
             bank_keys=bank_keys)
@@ -89,14 +88,14 @@ class BankService:
         self
     ) -> List[BankBalance]:
 
-        return await self.__balance_service.get_balances()
+        return await self._balance_service.get_balances()
 
     async def get_balance(
         self,
         bank_key: str
     ) -> BankBalance:
 
-        return await self.__balance_service.get_balance(
+        return await self._balance_service.get_balance(
             bank_key=bank_key)
 
     async def get_transactions(
@@ -107,7 +106,7 @@ class BankService:
         group_institutions: bool = False
     ) -> Dict:
 
-        records = await self.__transaction_service.get_transactions(
+        records = await self._transaction_service.get_transactions(
             start_timestamp=start_timestamp,
             end_timestamp=end_timestamp,
             bank_keys=bank_keys)
@@ -131,7 +130,7 @@ class BankService:
         sync_type=None
     ) -> BankBalance:
 
-        return await self.__balance_service.capture_account_balance(
+        return await self._balance_service.capture_account_balance(
             bank_key=bank_key,
             balance=balance,
             tokens=tokens,

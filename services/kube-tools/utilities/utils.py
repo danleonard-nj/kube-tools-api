@@ -166,10 +166,10 @@ class ValueConverter:
 def sort_by(items, key):
     if any(items):
         logger.info(f'Sort type: {type(items[0]).__name__}: Key: {key}')
-        return sorted(items, key=lambda x: __get_sort_key(x, key))
+        return sorted(items, key=lambda x: get_sort_key(x, key))
 
 
-def __get_sort_key(obj, key):
+def get_sort_key(obj, key):
     if isinstance(obj, dict):
         return obj[key]
     return getattr(obj, key)
@@ -196,6 +196,10 @@ def create_uuid(data):
     text = json.dumps(data, default=str)
     hash_value = md5(text.encode()).hexdigest()
     return str(uuid.UUID(hash_value))
+
+def first(items):
+    if any(items):
+        return items[0]
 
 
 deprecate_logger = build_deprecate_logger()

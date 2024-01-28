@@ -28,8 +28,6 @@ class CoordinateKey:
         legacy = create_uuid(self.key_data)
         key = KeyUtils.create_uuid(**self.key_data)
 
-        logger.info(
-            f'Reverse geo key valiation: {legacy}: {key}: {legacy == key}')
         return key
 
     def get_compound_key(self):
@@ -86,7 +84,7 @@ class ReverseGeocodingModel(Serializable):
             'response': response
         })
 
-    def __truncate_reverse_geo_item(self, item):
+    def _truncate_reverse_geo_item(self, item):
         return {
             'address': item.get('formatted_address'),
             'place_id': item.get('place_id'),
@@ -105,7 +103,7 @@ class ReverseGeocodingModel(Serializable):
             self.results)
 
         truncated_locations = [
-            self.__truncate_reverse_geo_item(result)
+            self._truncate_reverse_geo_item(result)
             for result in filtered_results
         ]
 

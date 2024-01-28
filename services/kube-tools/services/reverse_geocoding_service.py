@@ -6,12 +6,7 @@ from clients.google_maps_client import GoogleMapsClient
 from data.google.google_reverse_geocode_repository import \
     GoogleReverseGeocodingRepository
 from domain.location_history import CoordinateKey, ReverseGeocodingModel
-
-
-def first(items):
-    if any(items):
-        return items[0]
-
+from utilities.utils import first
 
 class GoogleReverseGeocodingService:
     def __init__(
@@ -19,8 +14,8 @@ class GoogleReverseGeocodingService:
         reverse_geo_repository: GoogleReverseGeocodingRepository,
         google_maps_client: GoogleMapsClient
     ):
-        self.__reverse_geo_repository = reverse_geo_repository
-        self.__google_maps_client = google_maps_client
+        self._reverse_geo_repository = reverse_geo_repository
+        self._google_maps_client = google_maps_client
 
     async def reverse_geocode(
         self,
@@ -46,7 +41,7 @@ class GoogleReverseGeocodingService:
             latitude=latitude,
             longitude=longitude).get_uuid()
 
-        result = await self.__reverse_geo_repository.get_by_key(
+        result = await self._reverse_geo_repository.get_by_key(
             key=key)
         entity = first(result)
 
@@ -54,7 +49,7 @@ class GoogleReverseGeocodingService:
             return ReverseGeocodingModel(
                 data=entity)
 
-        result = await self.__google_maps_client.reverse_geocode(
+        result = await self._google_maps_client.reverse_geocode(
             latitude=latitude,
             longitude=longitude)
 
@@ -63,7 +58,7 @@ class GoogleReverseGeocodingService:
             latitude=latitude,
             longitude=longitude)
 
-        await self.__reverse_geo_repository.insert(
+        await self._reverse_geo_repository.insert(
             document=model.to_dict())
 
         return model

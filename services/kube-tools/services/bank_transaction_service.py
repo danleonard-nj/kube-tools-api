@@ -2,16 +2,15 @@ import uuid
 from datetime import datetime, timedelta
 from typing import List
 
-from framework.configuration import Configuration
-from framework.exceptions.nulls import ArgumentNullException
-from framework.logger import get_logger
-from framework.utilities.iter_utils import first
-
 from clients.plaid_client import PlaidClient
 from data.bank_repository import BankTransactionsRepository
 from domain.bank import (PlaidAccount, PlaidTransaction, SyncActionType,
                          SyncResult)
 from domain.enums import BankKey, SyncType
+from framework.configuration import Configuration
+from framework.exceptions.nulls import ArgumentNullException
+from framework.logger import get_logger
+from framework.utilities.iter_utils import first
 from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
@@ -32,10 +31,10 @@ class BankTransactionService:
         transaction_repository: BankTransactionsRepository,
         plaid_client: PlaidClient
     ):
-        self.__transaction_repository = transaction_repository
-        self.__plaid_client = plaid_client
+        self._transaction_repository = transaction_repository
+        self._plaid_client = plaid_client
 
-        self.__plaid_accounts = configuration.banking.get(
+        self._plaid_accounts = configuration.banking.get(
             'plaid_accounts', list())
 
     async def get_transactions(
@@ -50,7 +49,7 @@ class BankTransactionService:
             end_timestamp or DateTimeUtil.timestamp()
         )
 
-        entities = await self.__transaction_repository.get_transactions(
+        entities = await self._transaction_repository.get_transactions(
             start_timestamp=start_timestamp,
             end_timestamp=end_timestamp,
             bank_keys=bank_keys)
@@ -68,7 +67,7 @@ class BankTransactionService:
         include_transactions: bool = False
     ):
         sync_results = dict()
-        for account in self.__plaid_accounts:
+        for account in self._plaid_accounts:
             # Parse the account info from config
             plaid_account = PlaidAccount.from_dict(account)
 
@@ -109,7 +108,7 @@ class BankTransactionService:
         transaction_bks = [x.transaction_bk for x in transactions]
 
         # Fetch existing transactions that have already been synced
-        existing_transaction_entities = await self.__transaction_repository.get_transactions_by_transaction_bks(
+        existing_transaction_entities = await self._transaction_repository.get_transactions_by_transaction_bks(
             bank_key=account.bank_key,
             transaction_bks=transaction_bks)
 
@@ -138,7 +137,7 @@ class BankTransactionService:
 
         logger.info(f'Date range: {start_date} - {end_date}')
 
-        results = await self.__plaid_client.get_transactions(
+        results = await self._plaid_client.get_transactions(
             access_token=account.access_token,
             start_date=format_datetime(start_date),
             end_date=format_datetime(end_date),
@@ -188,7 +187,7 @@ class BankTransactionService:
             transaction.set_transaction_id()
             transaction.last_operation = SyncActionType.Insert
 
-            await self.__transaction_repository.insert(
+            await self._transaction_repository.insert(
                 document=transaction.to_dict())
 
             return SyncResult(
@@ -211,7 +210,7 @@ class BankTransactionService:
             transaction.timestamp = DateTimeUtil.timestamp()
             transaction.last_operation = SyncActionType.Update
 
-            replace_result = await self.__transaction_repository.replace(
+            replace_result = await self._transaction_repository.replace(
                 selector=transaction.get_selector(),
                 document=transaction.to_dict())
 
@@ -226,7 +225,7 @@ class BankTransactionService:
             f'Transaction already synced: {transaction.transaction_id}')
 
         transaction.last_operation = SyncActionType.NoAction
-        replace_result = await self.__transaction_repository.replace(
+        replace_result = await self._transaction_repository.replace(
             selector=transaction.get_selector(),
             document=transaction.to_dict())
 

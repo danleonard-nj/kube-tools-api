@@ -1,3 +1,4 @@
+from calendar import c
 from datetime import datetime
 from typing import List
 
@@ -9,9 +10,17 @@ from google.oauth2.credentials import Credentials
 
 logger = get_logger(__name__)
 
+def get_key(
+    client_id: str,
+    scopes: List[str]
+) -> str:
+    scopes = '-'.join(scopes)
+    return f'{client_id}-{scopes}'
+
 class AuthClient(Serializable):
     def __init__(
         self,
+        client_key: str,
         token: str,
         refresh_token: str,
         token_url: str,
@@ -21,6 +30,7 @@ class AuthClient(Serializable):
         expiry: str,
         timestamp: str
     ):
+        self.client_key = client_key
         self.token = token
         self.refresh_token = refresh_token
         self.token_url = token_url
@@ -34,7 +44,14 @@ class AuthClient(Serializable):
     def from_client(
         client: Credentials
     ):
+        key = get_key(
+            client_id=client.client_id,
+            scopes=client.scopes)
+        
+        logger.info(f'Creating auth client: {key}')
+        
         return AuthClient(
+            client_key=key,
             token=client.token,
             refresh_token=client.refresh_token,
             token_url=client.token_uri,
@@ -49,7 +66,16 @@ class AuthClient(Serializable):
     def from_entity(
         data: dict
     ):
+        client_key = data.get('client_key')
+        
+        if client_key is None or client_key == '':
+            logger.info(f'No client key found, generating new key')
+            client_key = get_key(
+                client_id=data.get('client_id'),
+                scopes=data.get('scopes'))
+        
         return AuthClient(
+            client_key=client_key,
             token=data.get('token'),
             refresh_token=data.get('refresh_token'),
             token_url=data.get('token_uri'),

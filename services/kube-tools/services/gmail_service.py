@@ -2,20 +2,16 @@ import asyncio
 import enum
 from typing import Dict, List
 
-from framework.configuration import Configuration
-from framework.logger import get_logger
-
 from clients.gmail_client import GmailClient
-from clients.identity_client import IdentityClient
 from clients.twilio_gateway import TwilioGatewayClient
 from constants.google import (GmailRuleAction, GoogleEmailHeader,
                               GoogleEmailLabel)
-from domain.auth import ClientScope
 from domain.bank import BankRuleConfiguration
 from domain.enums import ProcessGmailRuleResultType
-from domain.events import ProcessEmailRuleEvent
 from domain.google import GmailEmail, GmailEmailRule
 from domain.rest import ProcessGmailRuleRequest, ProcessGmailRuleResponse
+from framework.configuration import Configuration
+from framework.logger import get_logger
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
 
@@ -32,16 +28,14 @@ class GmailService:
         gmail_client: GmailClient,
         rule_service: GmailRuleService,
         bank_sync_service: GmailBankSyncService,
-        twilio_gateway: TwilioGatewayClient,
-        identity_client: IdentityClient
+        twilio_gateway: TwilioGatewayClient
     ):
-        self.__gmail_client = gmail_client
-        self.__rule_service = rule_service
-        self.__twilio_gateway = twilio_gateway
-        self.__bank_sync_service = bank_sync_service
-        self.__identity_client = identity_client
+        self._gmail_client = gmail_client
+        self._rule_service = rule_service
+        self._twilio_gateway = twilio_gateway
+        self._bank_sync_service = bank_sync_service
 
-        self.__sms_recipient = configuration.gmail.get(
+        self._sms_recipient = configuration.gmail.get(
             'sms_recipient')
 
     async def run_mail_service(
@@ -52,7 +46,7 @@ class GmailService:
 
         run_results = dict()
 
-        rules = await self.__rule_service.get_rules()
+        rules = await self._rule_service.get_rules()
         rules.reverse()
 
         logger.info(f'Rules gathered: {len(rules)}')
@@ -143,7 +137,7 @@ class GmailService:
     ) -> List[str]:
 
         # Query the inbox w/ the defined rule query
-        query_result = await self.__gmail_client.search_inbox(
+        query_result = await self._gmail_client.search_inbox(
             query=rule.query,
             max_results=rule.max_results)
 
@@ -151,7 +145,7 @@ class GmailService:
 
         archived = 0
         for message_id in query_result.message_ids or []:
-            message = await self.__gmail_client.get_message(
+            message = await self._gmail_client.get_message(
                 message_id=message_id)
 
             # If the inbox label isn't present then the email
@@ -162,7 +156,7 @@ class GmailService:
             logger.info(f'Rule: {rule.name}: Archiving email: {message_id}')
 
             archived += 1
-            await self.__gmail_client.archive_message(
+            await self._gmail_client.archive_message(
                 message_id=message_id)
 
         return archived
@@ -174,7 +168,7 @@ class GmailService:
         logger.info(f'Processing bank sync rule: {rule.name}')
 
         # Query the inbox w/ the defined rule query
-        query_result = await self.__gmail_client.search_inbox(
+        query_result = await self._gmail_client.search_inbox(
             query=rule.query,
             max_results=rule.max_results)
 
@@ -184,7 +178,7 @@ class GmailService:
         for message_id in query_result.message_ids:
             logger.debug(f'Get email message: {message_id}')
 
-            message = await self.__gmail_client.get_message(
+            message = await self._gmail_client.get_message(
                 message_id=message_id)
 
             # If the email is read, ignore it
@@ -193,7 +187,7 @@ class GmailService:
 
             logger.info(f'Message eligible for bank sync: {message_id}')
 
-            bank_rule_config = await self.__bank_sync_service.handle_balance_sync(
+            bank_rule_config = await self._bank_sync_service.handle_balance_sync(
                 rule=rule,
                 message=message)
 
@@ -203,7 +197,7 @@ class GmailService:
             to_remove = [GoogleEmailLabel.Unread,
                          GoogleEmailLabel.Inbox]
 
-            await self.__gmail_client.modify_tags(
+            await self._gmail_client.modify_tags(
                 message_id=message_id,
                 to_add=to_add,
                 to_remove=to_remove)
@@ -253,8 +247,8 @@ class GmailService:
             logger.info(f'Sending SMS alert for bank sync')
 
             # Send the email snippet in the message body
-            await self.__twilio_gateway.send_sms(
-                recipient=self.__sms_recipient,
+            await self._twilio_gateway.send_sms(
+                recipient=self._sms_recipient,
                 message=body)
 
         else:
@@ -271,7 +265,7 @@ class GmailService:
         logger.info(f'Processing SMS rule: {rule.name}')
 
         # Query the inbox w/ the defined rule query
-        query_result = await self.__gmail_client.search_inbox(
+        query_result = await self._gmail_client.search_inbox(
             query=rule.query,
             max_results=rule.max_results)
 
@@ -281,7 +275,7 @@ class GmailService:
         for message_id in query_result.message_ids:
             logger.debug(f'Get email message: {message_id}')
 
-            message = await self.__gmail_client.get_message(
+            message = await self._gmail_client.get_message(
                 message_id=message_id)
 
             # If the email is read, ignore it
@@ -297,8 +291,8 @@ class GmailService:
             logger.info(f'Message body: {body}')
 
             # Send the email snippet in the message body
-            await self.__twilio_gateway.send_sms(
-                recipient=self.__sms_recipient,
+            await self._twilio_gateway.send_sms(
+                recipient=self._sms_recipient,
                 message=body)
 
             # Mark read the email so another notification isn't sent
@@ -307,7 +301,7 @@ class GmailService:
             to_remove = [GoogleEmailLabel.Unread,
                          GoogleEmailLabel.Inbox]
 
-            await self.__gmail_client.modify_tags(
+            await self._gmail_client.modify_tags(
                 message_id=message_id,
                 to_add=to_add,
                 to_remove=to_remove)

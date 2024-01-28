@@ -1,20 +1,19 @@
 import uuid
 from typing import List
 
-from framework.exceptions.nulls import ArgumentNullException
-from framework.logger import get_logger
-from framework.utilities.iter_utils import first
-
 from clients.email_gateway_client import EmailGatewayClient
-from framework.configuration import Configuration
 from clients.plaid_client import PlaidClient
 from data.bank_repository import BankBalanceRepository
 from domain.bank import BankBalance, PlaidAccount, PlaidBalance
 from domain.enums import BankKey, SyncType
 from domain.rest import GetBalancesResponse
+from framework.clients.feature_client import FeatureClientAsync
+from framework.configuration import Configuration
+from framework.exceptions.nulls import ArgumentNullException
+from framework.logger import get_logger
+from framework.utilities.iter_utils import first
 from services.event_service import EventService
 from utilities.utils import DateTimeUtil
-from framework.clients.feature_client import FeatureClientAsync
 
 logger = get_logger(__name__)
 
@@ -50,13 +49,13 @@ class BalanceSyncService:
         plaid_client: PlaidClient,
         feature_client: FeatureClientAsync
     ):
-        self.__balance_repository = balance_repository
-        self.__email_client = email_client
-        self.__event_service = event_service
-        self.__feature_client = feature_client
-        self.__plaid_client = plaid_client
+        self._balance_repository = balance_repository
+        self._email_client = email_client
+        self._event_service = event_service
+        self._feature_client = feature_client
+        self._plaid_client = plaid_client
 
-        self.__plaid_accounts = configuration.banking.get(
+        self._plaid_accounts = configuration.banking.get(
             'plaid_accounts', list())
 
     async def run_sync(
@@ -89,10 +88,10 @@ class BalanceSyncService:
             sync_type=sync_type,
             timestamp=DateTimeUtil.timestamp())
 
-        result = await self.__balance_repository.insert(
+        result = await self._balance_repository.insert(
             document=balance.to_dict())
 
-        await self.__handle_balance_capture_alert_email(
+        await self._handle_balance_capture_alert_email(
             balance=balance)
 
         logger.info(f'Inserted bank record: {result.inserted_id}')
@@ -104,13 +103,13 @@ class BalanceSyncService:
     ):
         balances = list()
 
-        for account in self.__plaid_accounts:
+        for account in self._plaid_accounts:
             logger.info(f'Syncing plaid account: {account}')
 
             config = PlaidAccount.from_dict(account)
 
             # Fetch the balance from Plaid
-            balance_response = await self.__plaid_client.get_balance(
+            balance_response = await self._plaid_client.get_balance(
                 access_token=config.access_token)
 
             accounts = balance_response.get('accounts', list())
@@ -143,13 +142,13 @@ class BalanceSyncService:
 
         return balances
 
-    async def __handle_balance_capture_alert_email(
+    async def _handle_balance_capture_alert_email(
         self,
         balance: BankBalance
     ):
         ArgumentNullException.if_none(balance, 'balance')
 
-        is_enabled = await self.__feature_client.is_enabled(
+        is_enabled = await self._feature_client.is_enabled(
             feature_key=BALANCE_CAPTURE_EMAILS_FEATURE_KEY)
 
         if not is_enabled:
@@ -159,7 +158,7 @@ class BalanceSyncService:
         logger.info(f'Sending email for bank {balance.bank_key}')
 
         # Send an alert email when a bank balance has been
-        email_request, endpoint = self.__email_client.get_json_email_request(
+        email_request, endpoint = self._email_client.get_json_email_request(
             recipient=EMAIL_RECIPIENT,
             subject=f'{EMAIL_SUBJECT} - {balance.bank_key}',
             json=balance.to_dict())
@@ -167,7 +166,7 @@ class BalanceSyncService:
         logger.info(f'Email request: {endpoint}: {email_request.to_dict()}')
 
         # Drop the trigger message on the service bus queue
-        await self.__event_service.dispatch_email_event(
+        await self._event_service.dispatch_email_event(
             endpoint=endpoint,
             message=email_request.to_dict())
 
@@ -178,13 +177,11 @@ class BalanceSyncService:
 
         ArgumentNullException.if_none_or_whitespace(bank_key, 'bank_key')
 
-        logger.info(f'Getting balance for bank {bank_key}')
-
         # Parse the bank key, this will throw if an
         # invalid key is provided
         key = BankKey(value=bank_key)
 
-        entity = await self.__balance_repository.get_balance_by_bank_key(
+        entity = await self._balance_repository.get_balance_by_bank_key(
             bank_key=str(key))
 
         if entity is None:
@@ -211,7 +208,6 @@ class BalanceSyncService:
                 if key not in BALANCE_BANK_KEY_EXCLUSIONS]
 
         for key in keys:
-            logger.info(f'Getting balance for bank {key}')
             result = await self.get_balance(
                 bank_key=str(key))
 
@@ -241,7 +237,7 @@ class BalanceSyncService:
             if bank_key not in BankKey.values():
                 raise Exception(f"'{bank_key}' is not a valid bank key")
 
-        entities = await self.__balance_repository.get_balance_history(
+        entities = await self._balance_repository.get_balance_history(
             start_timestamp=start_timestamp,
             end_timestamp=end_timestamp,
             bank_keys=bank_keys)

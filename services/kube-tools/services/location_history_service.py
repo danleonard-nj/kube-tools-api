@@ -17,8 +17,8 @@ class LocationHistoryService:
         repository: GoogleLocationHistoryRepository,
         reverse_geo_service: GoogleReverseGeocodingService
     ):
-        self.__repository = repository
-        self.__reverse_geo_service = reverse_geo_service
+        self._repository = repository
+        self._reverse_geo_service = reverse_geo_service
 
     async def get_locations(
         self,
@@ -39,12 +39,12 @@ class LocationHistoryService:
             limit=limit)
 
         # Query locations on geospatial index
-        location_results = await self.__repository.collection.aggregate(
+        location_results = await self._repository.collection.aggregate(
             pipeline=pipeline.get_pipeline(),
             allowDiskUse=True).to_list(length=None)
 
         # Create location history models
-        location_history = self.__get_location_history_aggregate_models(
+        location_history = self._get_location_history_aggregate_models(
             location_results=location_results,
             include_timestamps=include_timestamps)
 
@@ -54,17 +54,17 @@ class LocationHistoryService:
             return list()
 
         # Get a list of the distinct coordinate pairs
-        coordinate_pairs = self.__get_coordinate_pairs(
+        coordinate_pairs = self._get_coordinate_pairs(
             location_history=location_history)
 
         logger.info(f'Coordinate pairs: {coordinate_pairs}')
 
         # Reverse geocode all coordinate pairs from result
-        reverse_geo = await self.__reverse_geo_service.reverse_geocode(
+        reverse_geo = await self._reverse_geo_service.reverse_geocode(
             coordinate_pairs=coordinate_pairs)
 
         # Create a lookup of reverse geo data
-        reverse_geo_lookup = self.__get_reverse_geo_lookup(
+        reverse_geo_lookup = self._get_reverse_geo_lookup(
             reverse_geo=reverse_geo)
 
         for model in location_history:
@@ -73,7 +73,7 @@ class LocationHistoryService:
 
         return [model.to_dict() for model in location_history]
 
-    def __get_location_history_aggregate_models(
+    def _get_location_history_aggregate_models(
         self,
         location_results,
         include_timestamps: bool
@@ -89,7 +89,7 @@ class LocationHistoryService:
             for result in location_results
         ]
 
-    def __get_coordinate_pairs(
+    def _get_coordinate_pairs(
         self,
         location_history
     ) -> List[Tuple[float, float]]:
@@ -102,7 +102,7 @@ class LocationHistoryService:
             for model in location_history
         ]
 
-    def __get_reverse_geo_lookup(
+    def _get_reverse_geo_lookup(
         self,
         reverse_geo
     ) -> Dict[str, Any]:

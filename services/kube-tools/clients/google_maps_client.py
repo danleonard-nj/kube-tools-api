@@ -8,6 +8,15 @@ from httpx import AsyncClient
 logger = get_logger(__name__)
 
 
+class GoogleMapsException(Exception):
+    def __init__(
+        self,
+        longitude: int,
+        latitude: int
+    ):
+        super().__init__(
+            f'Failed to fetch reverse geocode data for coordinate pair: {latitude}, {longitude}')
+
 class GoogleMapsClient:
     def __init__(
         self,
@@ -37,7 +46,8 @@ class GoogleMapsClient:
         logger.info(f'Response: {response.status_code}')
 
         if response.status_code != 200:
-            raise Exception(
-                f"Failed to fetch reverse geocode data for coordinate pair: {latitude}, {longitude}")
+            raise GoogleMapsException(
+                latitude=latitude,
+                longitude=longitude)
 
         return response.json()
