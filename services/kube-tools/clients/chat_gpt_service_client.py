@@ -1,15 +1,15 @@
 import asyncio
+from typing import Union
 
+from clients.identity_client import IdentityClient
+from domain.auth import AuthClient, ClientScope
+from domain.cache import CacheKey
+from domain.exceptions import ChatGptException
+from domain.rest import ChatGptCompletionRequest
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from framework.logger import get_logger
 from httpx import AsyncClient
-
-from clients.identity_client import IdentityClient
-from domain.auth import ClientScope
-from domain.cache import CacheKey
-from domain.exceptions import ChatGptException
-from domain.rest import ChatGptCompletionRequest
 
 logger = get_logger(__name__)
 
@@ -23,8 +23,8 @@ class ChatGptServiceClient:
         cache_client: CacheClientAsync
     ):
         self.__http_client = http_client
-        self.__identity_client = identity_client
-        self.__cache_client = cache_client
+        self._identity_client = identity_client
+        self._cache_client = cache_client
 
         self.__base_url = configuration.chatgpt.get('base_url')
 
@@ -34,17 +34,17 @@ class ChatGptServiceClient:
         cache_key = CacheKey.chatgpt_service_token()
         logger.info(f'Getting cached token for {cache_key}')
 
-        token = await self.__cache_client.get_cache(
+        token = await self._cache_client.get_cache(
             key=cache_key)
 
         if token is None:
             logger.info(f'No cached token found for {cache_key}')
-            token = await self.__identity_client.get_token(
-                client_name='kube-tools-api',
+            token = await self._identity_client.get_token(
+                client_name=AuthClient.KubeToolsApi,
                 scope=ClientScope.ChatGptApi)
 
             asyncio.create_task(
-                self.__cache_client.set_cache(
+                self._cache_client.set_cache(
                     key=cache_key,
                     value=token))
 
@@ -59,7 +59,7 @@ class ChatGptServiceClient:
     async def get_chat_completion(
         self,
         prompt: str
-    ):
+    ) -> Union[dict, int]:
         logger.info(f'Getting chat completion for prompt: {prompt}')
 
         headers = await self.get_headers()

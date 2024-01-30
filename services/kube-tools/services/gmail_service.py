@@ -1,5 +1,3 @@
-import asyncio
-import enum
 from typing import Dict, List
 
 from clients.gmail_client import GmailClient
@@ -10,6 +8,7 @@ from domain.bank import BankRuleConfiguration
 from domain.enums import ProcessGmailRuleResultType
 from domain.google import GmailEmail, GmailEmailRule
 from domain.rest import ProcessGmailRuleRequest, ProcessGmailRuleResponse
+from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
 from framework.logger import get_logger
 from services.gmail_balance_sync_service import GmailBankSyncService
@@ -51,28 +50,22 @@ class GmailService:
 
         logger.info(f'Rules gathered: {len(rules)}')
 
-        # logger.info(f'Fetching event token')
-        # token = await self.__identity_client.get_token(
-        #     client_name='kube-tools-api',
-        #     scope=ClientScope.KubeToolsApi)
+        tasks = TaskCollection()
 
         for rule in rules:
             process_request = ProcessGmailRuleRequest({
                 'rule': rule.to_dict()
             })
 
-            # process_event = ProcessEmailRuleEvent(
-            #     body=process_request.to_dict(),
-            #     endpoint='/api/gmail/process',
-            #     token=token)
-
-            await self.process_rule(
-                process_request=process_request)
+            tasks.add_task(self.process_rule(
+                process_request=process_request))
 
         # # Fire and forget the log task to store the results
         # # of the run
         # asyncio.create_task(self.__rule_service.log_results(
         #     results=run_results))
+        
+        await tasks.run()
 
         return run_results
 

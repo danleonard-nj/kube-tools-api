@@ -1,3 +1,4 @@
+import asyncio
 from typing import Dict, List
 
 from framework.caching.memory_cache import MemoryCache
@@ -18,6 +19,7 @@ from services.google_auth_service import GoogleAuthService
 
 logger = get_logger(__name__)
 
+DEFAULT_CONCURRENCY=24
 
 class GmailClient:
     def __init__(
@@ -26,34 +28,31 @@ class GmailClient:
         auth_service: GoogleAuthService,
         http_client: AsyncClient
     ):
-        self.__auth_service = auth_service
-        self.__http_client = http_client
-        self.__memory_cache = MemoryCache()
+        self._auth_service = auth_service
+        self._http_client = http_client
 
-        self.__base_url = configuration.gmail.get(
+        self._base_url = configuration.gmail.get(
             'base_url')
+        
+        concurrency = configuration.gmail.get(
+            'concurrency', DEFAULT_CONCURRENCY)
+        self._semaphore = asyncio.Semaphore(concurrency)
 
-    async def __get_token(
+    async def _get_token(
         self
     ) -> str:
 
-        logger.info(f'Fetching token from auth client')
-
         # Fetch an auth token w/ Gmail scope
-        client = await self.__auth_service.get_auth_client(
+        client = await self._auth_service.get_auth_client(
             scopes=GoogleClientScope.Gmail)
-
-        logger.info(f'Client granted scopes: {client.granted_scopes}')
-        logger.info(f'Client scopes: {client.scopes}')
-        logger.info(f'Client token: {client.token}')
 
         return client.token
 
-    async def __get_auth_headers(
+    async def _get_auth_headers(
         self
     ) -> Dict:
 
-        token = await self.__get_token()
+        token = await self._get_token()
 
         return {
             'Authorization': f'Bearer {token}'
@@ -63,14 +62,20 @@ class GmailClient:
         self,
         message_id: str
     ) -> Dict:
-
+        
+        logger.info(f'Fetching message: {message_id}')
+        
         # Build endpoint with message
-        endpoint = f'{self.__base_url}/v1/users/me/messages/{message_id}'
+        endpoint = f'{self._base_url}/v1/users/me/messages/{message_id}'
 
-        auth_headers = await self.__get_auth_headers()
-        message_response = await self.__http_client.get(
+        auth_headers = await self._get_auth_headers()
+        await self._semaphore.acquire()
+        
+        message_response = await self._http_client.get(
             url=endpoint,
             headers=auth_headers)
+        
+        self._semaphore.release()
 
         content = message_response.json()
         return GmailEmail(
@@ -100,14 +105,14 @@ class GmailClient:
         logger.info(f'Tags: add + {to_add} | remove - {to_remove}')
 
         # Build endpoint with message
-        endpoint = f'{self.__base_url}/v1/users/me/messages/{message_id}/modify'
+        endpoint = f'{self._base_url}/v1/users/me/messages/{message_id}/modify'
 
         modify_request = GmailModifyEmailRequest(
             add_label_ids=to_add,
             remove_label_ids=to_remove)
 
-        auth_headers = await self.__get_auth_headers()
-        query_result = await self.__http_client.post(
+        auth_headers = await self._get_auth_headers()
+        query_result = await self._http_client.post(
             url=endpoint,
             json=modify_request.to_dict(),
             headers=auth_headers)
@@ -141,7 +146,7 @@ class GmailClient:
 
         # Build the inbox query endpoint
         endpoint = build_url(
-            base=f'{self.__base_url}/v1/users/me/messages',
+            base=f'{self._base_url}/v1/users/me/messages',
             q=query)
 
         # Add continuation token if provided
@@ -153,8 +158,8 @@ class GmailClient:
             endpoint = f'{endpoint}&maxResults={max_results}'
 
         # Query the inbox
-        auth_headers = await self.__get_auth_headers()
-        query_result = await self.__http_client.get(
+        auth_headers = await self._get_auth_headers()
+        query_result = await self._http_client.get(
             url=endpoint,
             headers=auth_headers)
 

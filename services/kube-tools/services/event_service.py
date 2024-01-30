@@ -1,10 +1,9 @@
-from framework.exceptions.nulls import ArgumentNullException
-from framework.logger import get_logger
-
 from clients.event_client import EventClient
 from clients.identity_client import IdentityClient
-from domain.auth import ClientScope
+from domain.auth import AuthClient, ClientScope
 from domain.events import ApiMessage, SendEmailEvent
+from framework.exceptions.nulls import ArgumentNullException
+from framework.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -41,7 +40,7 @@ class EventService:
         logger.info(f'Emit email notification event: {endpoint}')
 
         token = await self.__identity_client.get_token(
-            client_name='kube-tools-api',
+            client_name=AuthClient.KubeToolsApi,
             scope=ClientScope.EmailGatewayApi)
 
         event = SendEmailEvent(

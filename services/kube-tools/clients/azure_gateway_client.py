@@ -1,13 +1,12 @@
 from typing import Dict
 
+from clients.identity_client import IdentityClient
+from domain.auth import AuthClient, ClientScope
+from domain.exceptions import AzureGatewayLogRequestException
 from framework.configuration import Configuration
 from framework.logger.providers import get_logger
 from framework.uri import build_url
 from httpx import AsyncClient
-
-from clients.identity_client import IdentityClient
-from domain.auth import ClientScope
-from domain.exceptions import AzureGatewayLogRequestException
 
 logger = get_logger(__name__)
 
@@ -23,18 +22,18 @@ class AzureGatewayClient:
         identity_client: IdentityClient,
         http_client: AsyncClient
     ):
-        self.__http_client = http_client
-        self.__identity_client = identity_client
+        self._http_client = http_client
+        self._identity_client = identity_client
 
-        self.__base_url = configuration.gateway.get('api_gateway_base_url')
+        self._base_url = configuration.gateway.get('api_gateway_base_url')
 
     async def __get_auth_headers(
         self
     ):
         logger.info(f'Fetching azure gateway auth token')
 
-        token = await self.__identity_client.get_token(
-            client_name='kube-tools-api',
+        token = await self._identity_client.get_token(
+            client_name=AuthClient.KubeToolsApi,
             scope=ClientScope.AzureGatewayApi)
 
         return {
@@ -48,13 +47,13 @@ class AzureGatewayClient:
         logger.info(f'ACR: get manifests: {repository_name}')
 
         url = build_url(
-            base=f'{self.__base_url}/api/azure/acr/manifests',
+            base=f'{self._base_url}/api/azure/acr/manifests',
             repository_name=repository_name)
 
         logger.info(f'Endpoint: {url}')
 
         headers = await self.__get_auth_headers()
-        response = await self.__http_client.get(
+        response = await self._http_client.get(
             url=url,
             headers=headers)
 
@@ -69,14 +68,14 @@ class AzureGatewayClient:
         logger.info(f'ACR: delete manifests: ID: {manifest_id}')
 
         url = build_url(
-            base=f'{self.__base_url}/api/azure/acr/manifests',
+            base=f'{self._base_url}/api/azure/acr/manifests',
             repository_name=repository_name,
             manifest_id=manifest_id)
 
         logger.info(f'Endpoint: {url}')
 
         headers = await self.__get_auth_headers()
-        response = await self.__http_client.delete(
+        response = await self._http_client.delete(
             url=url,
             headers=headers)
 
@@ -86,11 +85,11 @@ class AzureGatewayClient:
     async def acr_get_repositories(
         self
     ) -> Dict:
-        endpoint = f'{self.__base_url}/api/azure/acr/repositories'
+        endpoint = f'{self._base_url}/api/azure/acr/repositories'
         logger.info(f'Endpoint: {endpoint}')
 
         headers = await self.__get_auth_headers()
-        response = await self.__http_client.get(
+        response = await self._http_client.get(
             url=endpoint,
             headers=headers)
 
@@ -102,11 +101,11 @@ class AzureGatewayClient:
     ) -> Dict:
         logger.info('ACR: Get pod images')
 
-        endpoint = f'{self.__base_url}/api/azure/aks/pods/images'
+        endpoint = f'{self._base_url}/api/azure/aks/pods/images'
         logger.info(f'Endpoint: {endpoint}')
 
         headers = await self.__get_auth_headers()
-        response = await self.__http_client.get(
+        response = await self._http_client.get(
             url=endpoint,
             headers=headers)
 
@@ -120,13 +119,13 @@ class AzureGatewayClient:
         logger.info(f'Params: {kwargs}')
 
         url = build_url(
-            base=f'{self.__base_url}/api/azure/cost/timeframe/daily/groupby/product',
+            base=f'{self._base_url}/api/azure/cost/timeframe/daily/groupby/product',
             **kwargs)
 
         logger.info(f'Endpoint: {url}')
 
         headers = await self.__get_auth_headers()
-        response = await self.__http_client.get(
+        response = await self._http_client.get(
             url=url,
             headers=headers)
 
@@ -136,12 +135,12 @@ class AzureGatewayClient:
     async def get_pods(
         self
     ) -> Dict:
-        url = f'{self.__base_url}/api/azure/aks/pods/names'
+        url = f'{self._base_url}/api/azure/aks/pods/names'
 
         logger.info(f'Endpoint: {url}')
 
         headers = await self.__get_auth_headers()
-        response = await self.__http_client.get(
+        response = await self._http_client.get(
             url=url,
             headers=headers)
 
@@ -158,12 +157,12 @@ class AzureGatewayClient:
         namespace: str,
         pod: str
     ) -> Dict:
-        url = f'{self.__base_url}/api/azure/aks/{namespace}/{pod}/logs'
+        url = f'{self._base_url}/api/azure/aks/{namespace}/{pod}/logs'
 
         logger.info(f'Endpoint: {url}')
 
         headers = await self.__get_auth_headers()
-        response = await self.__http_client.get(
+        response = await self._http_client.get(
             url=url,
             headers=headers)
 

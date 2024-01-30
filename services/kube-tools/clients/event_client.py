@@ -15,12 +15,12 @@ class EventClient:
         queue_name = configuration.service_bus.get(
             'queue_name')
 
-        self.__client = ServiceBusClient.from_connection_string(
+        self._client = ServiceBusClient.from_connection_string(
             conn_str=connection_string,
             logging_enable=True,
             transport_type=TransportType.Amqp)
 
-        self.__sender = self.__client.get_queue_sender(
+        self._sender = self._client.get_queue_sender(
             queue_name=queue_name)
 
     def send_messages(
@@ -34,13 +34,13 @@ class EventClient:
         logger.info(f'Getting service bus queue sender')
 
         # TODO: Batch the mesages batches to prevent exceeding max batch size
-        batch = self.__sender.create_message_batch()
+        batch = self._sender.create_message_batch()
         for message in messages:
             logger.info(
                 f'Adding message to batch: {message.message_id}: {message.correlation_id}')
             batch.add_message(message)
 
-        self.__sender.send_messages(batch)
+        self._sender.send_messages(batch)
         logger.info(f'Messages sent successfully')
 
     def send_message(
@@ -53,7 +53,7 @@ class EventClient:
 
         logger.info(f'Dispatching event message')
 
-        self.__sender.send_messages(
+        self._sender.send_messages(
             message=message)
 
         logger.info(f'Message sent successfully')

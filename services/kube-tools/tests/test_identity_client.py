@@ -1,5 +1,5 @@
 from clients.identity_client import IdentityClient
-from domain.auth import ClientScope
+from domain.auth import AuthClient, ClientScope
 from tests.buildup import ApplicationBase
 from framework.clients.cache_client import CacheClientAsync
 from framework.di.service_collection import ServiceCollection
@@ -27,7 +27,7 @@ class IdentityClientTests(ApplicationBase):
         client = self.get_client()
 
         token = await client.get_token(
-            client_name='kube-tools-api',
+            client_name=AuthClient.KubeToolsApi,
             scope=ClientScope.AzureGatewayApi)
 
         self.assertIsNotNone(token)
@@ -36,6 +36,6 @@ class IdentityClientTests(ApplicationBase):
         client = self.get_client()
 
         token = await client.get_token(
-            client_name='kube-tools-api')
+            client_name=AuthClient.KubeToolsApi)
 
         self.assertIsNotNone(token)

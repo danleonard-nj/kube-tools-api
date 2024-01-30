@@ -2,9 +2,15 @@ from datetime import datetime, timedelta
 from typing import Dict, List
 
 from framework.serialization import Serializable
-from data.bank_repository import MongoQuery
-
 from utilities.utils import DateTimeUtil
+
+
+class Queryable:
+    def get_query(
+        self
+    ) -> dict:
+        raise NotImplementedError()
+
 
 
 class MongoBackupConstants:

@@ -1,49 +1,15 @@
-import stat
 import time
 from typing import Dict, List
 
+from data.api_event_repository import (ApiEventAlertRepository,
+                                       ApiEventRepository)
+from domain.api_events import ApiEventAlert
 from framework.logger import get_logger
-
-from data.api_event_repository import ApiEventAlertRepository, ApiEventRepository
 from framework.serialization import Serializable
 
 DEFAULT_ALERT_LOOKBACK_HOURS = 1
 
 logger = get_logger(__name__)
-
-
-class ApiEventAlert(Serializable):
-    def __init__(
-        self,
-        event_id: str,
-        key: str,
-        endpoint: str,
-        status_code: int,
-        event_date: int
-    ):
-        self.event_id = event_id
-        self.key = key
-        self.endpoint = endpoint
-        self.status_code = status_code
-        self.event_date = event_date
-
-    @staticmethod
-    def from_event(data):
-        return ApiEventAlert(
-            event_id=data.get('log_id'),
-            key=data.get('key'),
-            endpoint=data.get('endpoint'),
-            status_code=data.get('status_code'),
-            event_date=data.get('timestamp'))
-
-    @staticmethod
-    def from_entity(data):
-        return ApiEventAlert(
-            event_id=data.get('event_id'),
-            key=data.get('key'),
-            endpoint=data.get('endpoint'),
-            status_code=data.get('status_code'),
-            event_date=data.get('event_date'))
 
 
 class ApiEventHistoryService:
@@ -52,8 +18,8 @@ class ApiEventHistoryService:
         repository: ApiEventRepository,
         alert_repostory: ApiEventAlertRepository
     ):
-        self.__repository = repository
-        self.__alert_repository = alert_repostory
+        self._repository = repository
+        self._alert_repository = alert_repostory
 
     async def poll_event_alerts(
         self,
@@ -63,11 +29,7 @@ class ApiEventHistoryService:
         logger.info(f'Polling for api event alerts: {hours_back} hours back')
         hours_back = hours_back or DEFAULT_ALERT_LOOKBACK_HOURS
 
-        error_event_entities = await self.__repository.collection.find({
-            'status_code': {
-                '$ne': 200
-            }
-        })
+        error_event_entities = await self._repository.get_error_events()
 
         error_events = [ApiEventAlert.from_event(e)
                         for e in error_event_entities]
@@ -76,14 +38,9 @@ class ApiEventHistoryService:
 
         cutoff_timestamp = int(time.time()) - (hours_back * 60 * 60)
 
-        api_events = await self.__repository.collection.find({
-            'timestamp': {
-                '$gte': cutoff_timestamp
-            },
-            'log_id': {
-                '$nin': event_ids
-            }
-        })
+        api_events = await self._repository.get_events_by_log_ids(
+            cutoff_timestamp=cutoff_timestamp,
+            log_ids=event_ids)
 
         if not any(api_events):
             logger.info('No new api events found')
@@ -94,7 +51,7 @@ class ApiEventHistoryService:
         api_events = [ApiEventAlert.from_event(e) for e in api_events]
 
         logger.info(f'Inserting {len(api_events)} new api events')
-        await self.__alert_repository.insert_many(
+        await self._alert_repository.insert_many(
             [e.to_dict() for e in api_events])
 
         # TODO: Send alerts
@@ -109,15 +66,10 @@ class ApiEventHistoryService:
         logger.info(
             f'Getting api event history from {start_timestamp} to {end_timestamp}')
 
-        query = self.__repository.collection.find({
-            'timestamp': {
-                '$gte': start_timestamp,
-                '$lte': end_timestamp
-            }
-        })
-
-        records = await query.to_list(
-            length=None)
+        records = self._repository.get_events(
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp
+        )
 
         results = []
         for record in records:

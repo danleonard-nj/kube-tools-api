@@ -3,15 +3,11 @@ from typing import Dict, List
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
 
-
-class MongoQuery:
-    def get_query(
-        self
-    ) -> Dict:
-        raise NotImplementedError()
+from domain.mongo import Queryable
 
 
-class GetBalanceByBankKeyQuery(MongoQuery):
+
+class GetBalanceByBankKeyQuery(Queryable):
     def __init__(
         self,
         bank_key: str
@@ -26,7 +22,7 @@ class GetBalanceByBankKeyQuery(MongoQuery):
         }
 
 
-class GetBalanceHistoryQuery(MongoQuery):
+class GetBalanceHistoryQuery(Queryable):
     def __init__(
         self,
         start_timestamp: int,

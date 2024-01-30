@@ -1,9 +1,8 @@
+from domain.auth import AuthPolicy
+from domain.features import Feature
 from framework.clients.feature_client import FeatureClientAsync
 from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
-from domain.auth import AuthPolicy
-
-from domain.features import Feature
 from services.podcast_service import PodcastService
 
 podcasts_bp = MetaBlueprint('podcasts_bp', __name__)

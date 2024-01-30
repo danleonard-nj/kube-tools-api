@@ -1,8 +1,7 @@
-from framework.exceptions.nulls import ArgumentNullException
-from framework.logger.providers import get_logger
-
 from clients.azure_gateway_client import AzureGatewayClient
 from domain.acr import AcrImage
+from framework.exceptions.nulls import ArgumentNullException
+from framework.logger.providers import get_logger
 
 logger = get_logger(__name__)
 
@@ -12,7 +11,7 @@ class AcrService:
         self,
         azure_gateway_client: AzureGatewayClient
     ):
-        self.__azure_gateway_client = azure_gateway_client
+        self._azure_gateway_client = azure_gateway_client
 
     async def purge_image(
         self,
@@ -25,7 +24,7 @@ class AcrService:
 
         logger.info(f'Purging image: {repo_name}: {manifest_id}')
 
-        response = await self.__azure_gateway_client.acr_delete_manifest(
+        response = await self._azure_gateway_client.acr_delete_manifest(
             repository_name=repo_name,
             manifest_id=manifest_id)
 
@@ -39,7 +38,7 @@ class AcrService:
 
         logger.info(f'Get images for repo: {repo_name}')
 
-        images = await self.__azure_gateway_client.acr_get_manifests(
+        images = await self._azure_gateway_client.acr_get_manifests(
             repository_name=repo_name)
 
         manifests = images.get('manifests')
@@ -54,7 +53,7 @@ class AcrService:
     async def get_acr_repo_names(
         self
     ):
-        repos = await self.__azure_gateway_client.acr_get_repositories()
+        repos = await self._azure_gateway_client.acr_get_repositories()
 
         logger.info(f'Repos: {repos}')
 

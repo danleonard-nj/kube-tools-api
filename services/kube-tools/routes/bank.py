@@ -1,20 +1,15 @@
 from typing import Dict
 
+from domain.auth import AuthPolicy
 from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
-
-from domain.auth import AuthPolicy
 from services.bank_service import BankService
 from utilities.utils import parse_timestamp
 
 logger = get_logger(__name__)
 
 bank_bp = MetaBlueprint('bank_bp', __name__)
-
-TRUE = str(True).lower()
-FALSE = str(False).lower()
-
 
 def get_transactions_query_params() -> Dict:
     start_timestamp = request.args.get('start_timestamp')
@@ -26,7 +21,7 @@ def get_transactions_query_params() -> Dict:
         'start_timestamp': parse_timestamp(start_timestamp) if start_timestamp is not None else None,
         'end_timestamp': parse_timestamp(end_timestamp) if end_timestamp is not None else None,
         'bank_keys': bank_keys if bank_keys is not None else list(),
-        'group_institutions': request.args.get('group_institutions', FALSE).lower() == TRUE
+        'group_institutions': request.args.get('group_institutions', 'false').lower() == 'true'
     }
 
 
@@ -39,7 +34,7 @@ def get_balance_history_query_params() -> Dict:
         'start_timestamp': parse_timestamp(start_timestamp) if start_timestamp is not None else None,
         'end_timestamp': parse_timestamp(end_timestamp) if end_timestamp is not None else None,
         'bank_keys': bank_keys if bank_keys is not None else list(),
-        'group_institutions': request.args.get('group_institutions', FALSE).lower() == TRUE
+        'group_institutions': request.args.get('group_institutions', 'false').lower() == 'true'
     }
 
 

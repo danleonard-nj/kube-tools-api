@@ -3,6 +3,8 @@ from typing import Dict, List
 
 from framework.serialization import Serializable
 
+class AuthClient(enum.StrEnum):
+    KubeToolsApi = 'kube-tools-api'
 
 class ClientScope(enum.StrEnum):
     EmailGatewayApi = 'api://4ff83655-c28e-478f-b384-08ca8e98a811/.default'

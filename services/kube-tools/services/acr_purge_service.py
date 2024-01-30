@@ -3,12 +3,11 @@ from typing import List, Union
 
 import pandas as pd
 import pytz
+from clients.azure_gateway_client import AzureGatewayClient
+from clients.email_gateway_client import EmailGatewayClient
 from dateutil import parser
 from framework.configuration import Configuration
 from framework.logger.providers import get_logger
-
-from clients.azure_gateway_client import AzureGatewayClient
-from clients.email_gateway_client import EmailGatewayClient
 from services.acr_service import AcrImage, AcrService
 from services.event_service import EventService
 from utilities.utils import ValueConverter
@@ -25,11 +24,11 @@ class AcrPurgeService:
         azure_gateway_client: AzureGatewayClient,
         acr_service: AcrService
     ):
-        self.__acr_service = acr_service
-        self.__email_client = email_client
-        self.__event_service = event_service
-        self.__azure_gateway_client = azure_gateway_client
-        self.__exclusions = configuration.acr_purge.get(
+        self._acr_service = acr_service
+        self._email_client = email_client
+        self._event_service = event_service
+        self._azure_gateway_client = azure_gateway_client
+        self._exclusions = configuration.acr_purge.get(
             'exclusions', [])
 
     async def purge_images(
@@ -44,11 +43,11 @@ class AcrPurgeService:
         top_count = int(top_count)
 
         processed_images = []
-        repos = await self.__acr_service.get_acr_repo_names()
+        repos = await self._acr_service.get_acr_repo_names()
 
         # Get a list of all the active images running
         # in the cluster to be excluded from the purge
-        active_images = await self.__azure_gateway_client.get_pod_images()
+        active_images = await self._azure_gateway_client.get_pod_images()
 
         def format_row(data): return {
             'active_image': data,
@@ -95,12 +94,12 @@ class AcrPurgeService:
             ])
 
         if any(processed_images):
-            email_request, endpoint = self.__email_client.get_datatable_email_request(
+            email_request, endpoint = self._email_client.get_datatable_email_request(
                 recipient='dcl525@gmail.com',
                 subject='ACR Purge',
                 data=processed_images)
 
-            await self.__event_service.dispatch_email_event(
+            await self._event_service.dispatch_email_event(
                 endpoint=endpoint,
                 message=email_request.to_dict())
 
@@ -116,7 +115,7 @@ class AcrPurgeService:
 
         logger.info(f'Get images for repo: {repo_name}')
 
-        images = await self.__acr_service.get_manifests(
+        images = await self._acr_service.get_manifests(
             repo_name=repo_name)
 
         now = datetime.utcnow().astimezone(tz=pytz.UTC)
@@ -164,7 +163,7 @@ class AcrPurgeService:
         logger.info(f'Repo: {repo_name}: Purge count: {len(processed_images)}')
 
         for image in processed_images:
-            await self.__acr_service.purge_image(
+            await self._acr_service.purge_image(
                 repo_name=repo_name,
                 manifest_id=image.id)
 
@@ -174,7 +173,7 @@ class AcrPurgeService:
         self,
         repository_name
     ):
-        for exclusion in self.__exclusions:
+        for exclusion in self._exclusions:
             logger.info(f"Rule: [{exclusion}]: evaluating rule")
             try:
                 if eval(exclusion) is True:
