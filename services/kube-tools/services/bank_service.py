@@ -1,7 +1,6 @@
 import uuid
 from typing import Dict, List
 
-import pandas as pd
 from data.bank_repository import BankWebhooksRepository
 from domain.bank import BankBalance, PlaidWebhookData
 from framework.logger import get_logger
@@ -13,7 +12,6 @@ logger = get_logger(__name__)
 
 
 def format_datetime(dt):
-    logger.info(f'Formatting datetime: {dt}')
     return dt.strftime('%Y-%m-%d')
 
 
@@ -86,7 +84,7 @@ class BankService:
 
     async def get_balances(
         self
-    ) -> List[BankBalance]:
+    ) -> list[BankBalance]:
 
         return await self._balance_service.get_balances()
 
@@ -104,7 +102,7 @@ class BankService:
         end_timestamp: int,
         bank_keys: List[str],
         group_institutions: bool = False
-    ) -> Dict:
+    ) -> dict:
 
         records = await self._transaction_service.get_transactions(
             start_timestamp=start_timestamp,
@@ -114,10 +112,15 @@ class BankService:
         if not group_institutions:
             return records
 
-        results = dict()
+        # results = dict()
+        
+        results = {
+            bank_key: list() for bank_key in bank_keys
+        }
+        
         for record in records:
-            if record.bank_key not in results:
-                results[record.bank_key] = list()
+            # if record.bank_key not in results:
+            #     results[record.bank_key] = list()
             results[record.bank_key].append(record)
         return results
 

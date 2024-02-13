@@ -6,17 +6,14 @@ from framework.serialization import Serializable
 
 logger = get_logger(__name__)
 
-
-FORECAST_COLUMN_EXCLUSIONS = [
-    'timestamp'
-]
-
-
 def str_concat(series):
     def func(x, y): return f'{x}, {y}' if y not in x else x
 
     return reduce(func, series)
 
+FORECAST_COLUMN_EXCLUSIONS = [
+    'timestamp'
+]
 
 FORECAST_AGGREGATE_MAPPING = {
     'temperature': 'max',
@@ -28,6 +25,7 @@ FORECAST_AGGREGATE_MAPPING = {
     'description': str_concat
 }
 
+FORECAST_AGGREGATE_KEY = 'date'
 
 class TemperatureResult(Serializable):
     def __init__(
@@ -88,3 +86,26 @@ class GetWeatherQueryParams(Serializable):
             'appid': self.__api_key,
             'units': 'imperial'
         }
+
+class ForecastRecord:
+    def __init__(
+        self,
+        date: str,
+        timestamp: int,
+        temperature: float,
+        feels_like: float,
+        temperature_min: float,
+        temperature_max: float,
+        pressure: int,
+        humidity: int,
+        weather_description: str
+    ):
+        self.date = date
+        self.temperature = temperature
+        self.feels_like = feels_like
+        self.temperature_min = temperature_min
+        self.temperature_max = temperature_max
+        self.pressure = pressure
+        self.humidity = humidity
+        self.weather_description = weather_description
+        self.timestamp = timestamp

@@ -12,39 +12,13 @@ from framework.validators.nulls import none_or_whitespace
 from clients.open_weather_client import OpenWeatherClient
 from data.weather_repository import WeatherRepository
 from domain.cache import CacheKey
-from domain.weather import (FORECAST_AGGREGATE_MAPPING,
+from domain.weather import (FORECAST_AGGREGATE_KEY, FORECAST_AGGREGATE_MAPPING,
                             FORECAST_COLUMN_EXCLUSIONS, TemperatureResult)
 from utilities.utils import DateTimeUtil, KeyUtils
 
 logger = get_logger(__name__)
 
-FORECAST_AGGREGATE_KEY = 'date'
 DEAULT_TIMEZONE = 'America/Phoenix'
-
-
-class ForecastRecord:
-    def __init__(
-        self,
-        date: str,
-        timestamp: int,
-        temperature: float,
-        feels_like: float,
-        temperature_min: float,
-        temperature_max: float,
-        pressure: int,
-        humidity: int,
-        weather_description: str
-    ):
-        self.date = date
-        self.temperature = temperature
-        self.feels_like = feels_like
-        self.temperature_min = temperature_min
-        self.temperature_max = temperature_max
-        self.pressure = pressure
-        self.humidity = humidity
-        self.weather_description = weather_description
-        self.timestamp = timestamp
-
 
 class WeatherService:
     def __init__(
@@ -52,17 +26,16 @@ class WeatherService:
         configuration: Configuration,
         open_weather_client: OpenWeatherClient,
         weather_repository: WeatherRepository,
-        feature_client: FeatureClientAsync,
         cache_client: CacheClientAsync
     ):
-        self.__client = open_weather_client
-        self.__repository = weather_repository
-        self.__cache_client = cache_client
+        self._client = open_weather_client
+        self._repository = weather_repository
+        self._cache_client = cache_client
 
         tz_name = configuration.weather.get(
             'timezone', DEAULT_TIMEZONE)
 
-        self.__timezone = pytz.timezone(tz_name)
+        self._timezone = pytz.timezone(tz_name)
 
     async def get_weather_by_zip(
         self,
@@ -71,25 +44,25 @@ class WeatherService:
         cache_key = CacheKey.weather_by_zip(
             zip_code=zip_code)
 
-        result = await self.__cache_client.get_json(
+        result = await self._cache_client.get_json(
             key=cache_key)
 
         if result is not None:
             logger.info(f'Cache hit for key: {cache_key}')
             return result
 
-        result = await self.__fetch_weather_by_zip(
+        result = await self._fetch_weather_by_zip(
             zip_code=zip_code)
 
         asyncio.create_task(
-            self.__cache_client.set_json(
+            self._cache_client.set_json(
                 key=cache_key,
                 value=result,
                 ttl=10))
 
         return result
 
-    async def __fetch_weather_by_zip(
+    async def _fetch_weather_by_zip(
         self,
         zip_code: str
     ):
@@ -100,7 +73,7 @@ class WeatherService:
                 "error": f"Invalid zip code: '{zip_code}'"
             }
 
-        data = await self.__client.get_weather_by_zip(
+        data = await self._client.get_weather_by_zip(
             zip_code)
 
         if 'dt' in data:
@@ -183,29 +156,29 @@ class WeatherService:
         cache_key = CacheKey.weather_forecast_by_zip(
             zip_code=zip_code)
 
-        result = await self.__cache_client.get_json(
+        result = await self._cache_client.get_json(
             key=cache_key)
 
         if result is not None:
             logger.info(f'Cache hit for key: {cache_key}')
             return result
 
-        result = await self.__generate_forecast(
+        result = await self._generate_forecast(
             zip_code=zip_code)
 
         asyncio.create_task(
-            self.__cache_client.set_json(
+            self._cache_client.set_json(
                 key=cache_key,
                 value=result,
                 ttl=10))
 
         return result
 
-    async def __generate_forecast(
+    async def _generate_forecast(
         self,
         zip_code: str
     ):
-        forecast_data = await self.__client.get_forecast(
+        forecast_data = await self._client.get_forecast(
             zip_code=zip_code)
 
         data = forecast_data.get('list')
@@ -221,7 +194,7 @@ class WeatherService:
 
             parsed_date = datetime.fromtimestamp(
                 timestamp,
-                tz=self.__timezone)
+                tz=self._timezone)
 
             parsed_date = parsed_date.strftime('%Y-%m-%d')
 
@@ -284,7 +257,7 @@ class WeatherService:
 
                     details.append(record)
 
-            # 3 hour interval updats
+            # 3 hour interval updates
             day['details'] = details
 
         return aggregated_data
@@ -293,7 +266,7 @@ class WeatherService:
         self,
         record: TemperatureResult
     ):
-        result = await self.__repository.insert(
+        result = await self._repository.insert(
             document=record.to_dict())
 
         logger.info(f'Insert result: {result.inserted_id}')
@@ -309,7 +282,7 @@ class WeatherService:
             zip_code=zip_code)
         logger.info(f'Cache key: {cache_key}')
 
-        result = await self.__cache_client.get_cache(
+        result = await self._cache_client.get_cache(
             key=cache_key)
 
         return result
@@ -325,7 +298,7 @@ class WeatherService:
 
         logger.info(f'Cache key: {cache_key}')
 
-        result = await self.__cache_client.set_cache(
+        result = await self._cache_client.set_cache(
             key=cache_key,
             value=cardinality_key,
             ttl=60 * 60 * 24 * 7)

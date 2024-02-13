@@ -1,3 +1,4 @@
+import logging
 from framework.abstractions.abstract_request import RequestContextProvider
 from framework.di.static_provider import InternalProvider
 from framework.logger.providers import get_logger
@@ -23,6 +24,7 @@ from utilities.utils import deprecate_logger
 logger = get_logger(__name__)
 app = Quart(__name__)
 
+logging.getLogger().setLevel(logging.DEBUG)
 
 configure_serializer(app)
 
