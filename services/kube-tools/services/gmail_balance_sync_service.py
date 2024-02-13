@@ -1,6 +1,6 @@
 import asyncio
 import re
-from typing import Any, Dict, List
+from typing import Dict, List
 
 from bs4 import BeautifulSoup
 from clients.chat_gpt_service_client import (ChatGptException,
@@ -11,9 +11,7 @@ from domain.enums import BankKey, SyncType
 from domain.google import GmailEmail, GmailEmailRule, parse_gmail_body
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
-from framework.crypto.hashing import sha256
 from framework.logger import get_logger
-from framework.serialization import Serializable
 from framework.validators.nulls import none_or_whitespace
 from services.bank_service import BankService
 from services.gmail_rule_service import GmailRuleService
@@ -52,7 +50,6 @@ BALANCE_EMAIL_INCLUSION_KEYWORDS = [
 
 BALANCE_EMAIL_EXCLUSION_KEYWORDS = [
 ]
-
 
 
 def log_truncate(segment):

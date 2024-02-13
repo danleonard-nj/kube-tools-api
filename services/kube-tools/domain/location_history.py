@@ -7,6 +7,12 @@ from utilities.utils import KeyUtils, contains, create_uuid
 
 logger = get_logger(__name__)
 
+ALLOWED_PLACE_TYPES = [
+    'formatted_address',
+    'premise',
+    'neighborhood'
+]
+
 
 class CoordinateKey:
     @property
@@ -84,22 +90,22 @@ class ReverseGeocodingModel(Serializable):
             'response': response
         })
 
-    def _truncate_reverse_geo_item(self, item):
+    def _truncate_reverse_geo_item(
+        self,
+        item: dict
+    ):
         return {
             'address': item.get('formatted_address'),
             'place_id': item.get('place_id'),
             'types': item.get('types')
         }
 
-    def get_truncated_data(self) -> List[ReducedGeocodingModel]:
-        allowed_types = [
-            'formatted_address',
-            'premise',
-            'neighborhood'
-        ]
+    def get_truncated_data(
+        self
+    ) -> List[ReducedGeocodingModel]:
 
         filtered_results = filter(
-            lambda x: contains(x.get('types', []), allowed_types),
+            lambda x: contains(x.get('types', []), ALLOWED_PLACE_TYPES),
             self.results)
 
         truncated_locations = [
@@ -113,29 +119,14 @@ class ReverseGeocodingModel(Serializable):
         )
 
 
-class LocationHistoryModel(Serializable):
-    def __init__(self, data):
-        self.key = data.get('key')
-        self.longitude, self.latitude = data.get(
-            'location').get('coordinates')
-
-        self.coordinate_key = self.get_coordinate_key(
-            latitude=self.latitude,
-            longitude=self.longitude)
-
-        self.device_tag = data.get('deviceTag')
-        self.source = data.get('source')
-        self.accuracy = data.get('accuracy')
-        self.timestamp = data.get('timestamp')
-
-    def get_coordinate_key(self, latitude, longitude):
-        return CoordinateKey(
-            latitude=latitude,
-            longitude=longitude).get_uuid()
-
-
 class LocationAggregatePipeline:
-    def __init__(self, latitude, longitude, max_distance, limit):
+    def __init__(
+        self,
+        latitude: float,
+        longitude: float,
+        max_distance: int,
+        limit: int
+    ):
         self.latitude = latitude
         self.longitude = longitude
         self.max_distance = max_distance
@@ -144,12 +135,12 @@ class LocationAggregatePipeline:
     def get_pipeline(self):
         return [
             {
-                "$geoNear": {
-                    "distanceField": "distance",
-                    "maxDistance": self.max_distance,
-                    "spherical": True,
-                    "near": {
-                        "coordinates": [
+                '$geoNear': {
+                    'distanceField': 'distance',
+                    'maxDistance': self.max_distance,
+                    'spherical': True,
+                    'near': {
+                        'coordinates': [
                             self.longitude,
                             self.latitude
                         ]
@@ -190,7 +181,7 @@ class LocationAggregatePipeline:
                 }
             },
             {
-                "$sort": {'_id.distance': 1}
+                '$sort': {'_id.distance': 1}
             },
             {
                 '$limit': self.limit
@@ -199,7 +190,11 @@ class LocationAggregatePipeline:
 
 
 class LocationHistoryAggregateModel(Serializable):
-    def __init__(self, data, include_timestamps):
+    def __init__(
+        self,
+        data: dict,
+        include_timestamps: bool
+    ):
         group_key = data.get('_id')
         distance = data.get('distance')
 
@@ -219,29 +214,47 @@ class LocationHistoryAggregateModel(Serializable):
         if include_timestamps:
             self.timestamps = data.get('timestamps')
 
-    def meters_to_miles(self, value):
+    def meters_to_miles(
+        self,
+        value
+    ):
         return round(value * 0.000621371, 2)
 
-    def meters_to_feet(self, value):
+    def meters_to_feet(
+        self,
+        value
+    ):
         return round(value * 3.28084, 2)
 
-    def get_distance_details(self, meters):
+    def get_distance_details(
+        self,
+        meters
+    ):
         return {
             'miles': self.meters_to_miles(meters),
             'feet': self.meters_to_feet(meters)
         }
 
-    def get_coordinate_key(self, latitude, longitude):
+    def get_coordinate_key(
+        self,
+        latitude,
+        longitude
+    ):
         return CoordinateKey(
             latitude=latitude,
             longitude=longitude).get_uuid()
 
 
 class GeocodedDataCoordinateKeyQuery:
-    def __init__(self, coordinate_keys):
+    def __init__(
+        self,
+        coordinate_keys: list[str]
+    ):
         self.coordinate_keys = coordinate_keys
 
-    def get_query(self):
+    def get_query(
+        self
+    ):
         return {
             'coordinate_key': {
                 '$in': self.coordinate_keys

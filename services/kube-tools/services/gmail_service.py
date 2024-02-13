@@ -59,11 +59,6 @@ class GmailService:
 
             tasks.add_task(self.process_rule(
                 process_request=process_request))
-
-        # # Fire and forget the log task to store the results
-        # # of the run
-        # asyncio.create_task(self.__rule_service.log_results(
-        #     results=run_results))
         
         await tasks.run()
 

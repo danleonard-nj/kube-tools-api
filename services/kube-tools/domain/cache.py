@@ -21,11 +21,11 @@ class CacheKey:
     def azure_gateway_usage_key(
         url: str
     ):
-        return f'azure-gateway-usage-{url}'
+        return f'kube-tools-azure-gateway-usage-{url}'
 
     @staticmethod
     def azure_gateway_token() -> str:
-        return 'azure-gateway-client-token'
+        return 'kube-tools-azure-gateway-client-token'
 
     @staticmethod
     def auth_token(
@@ -37,21 +37,21 @@ class CacheKey:
                 'client': client,
                 'scope': scope
             })
-            return f'auth-client-{hash_key}'
+            return f'kube-tools-auth-client-{hash_key}'
         else:
-            return f'auth-{client}'
+            return f'kube-tools-auth-{client}'
 
     @staticmethod
     def gmail_token() -> str:
-        return 'gmail-oauth-token'
+        return 'kube-tools-gmail-oauth-token'
 
     @staticmethod
     def google_drive_token() -> str:
-        return 'google-drive-oauth-token'
+        return 'kube-tools-google-drive-oauth-token'
 
     @staticmethod
     def google_nest_auth_token() -> str:
-        return 'google-nest-auth-token'
+        return 'kube-tools-google-nest-auth-token'
 
     @staticmethod
     def nest_device_grouped_sensor_data(
@@ -62,13 +62,13 @@ class CacheKey:
             device_id=device_id,
             key=key)
 
-        return f'google-nest-gsd-{hash_key}'
+        return f'kube-tools-google-nest-gsd-{hash_key}'
 
     @staticmethod
     def nest_device(
         device_id: str
     ) -> str:
-        return f'google-nest-device-{device_id}'
+        return f'kube-tools-google-nest-device-{device_id}'
 
     @staticmethod
     def chatgpt_service_token(
@@ -106,4 +106,4 @@ class CacheKey:
         key = KeyUtils.create_uuid(
             balance_prompt=balance_prompt)
 
-        return f'gpt-balance-prompt-{key}'
+        return f'kube-tools-gpt-balance-prompt-{key}'

@@ -21,10 +21,9 @@ async def usage_report(container):
         return feature_client.get_disabled_feature_response(
             feature_key=Feature.UsageReport)
 
-    args = UsageArgs(
-        request=request)
+    range_key = request.args.get('range_key')
 
     result = await service.send_cost_management_report(
-        range_key=args.range_key)
+        range_key=range_key)
 
     return result

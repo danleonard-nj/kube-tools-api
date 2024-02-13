@@ -202,6 +202,7 @@ class GmailEmailRule(Serializable):
             created_date=data.get('created_date')
         )
 
+
 class GoogleClientScope:
     Drive = ['https://www.googleapis.com/auth/drive']
     Gmail = ['https://www.googleapis.com/auth/gmail.modify']
@@ -209,6 +210,7 @@ class GoogleClientScope:
 
 class GoogleDriveDirectory:
     PodcastDirectoryId = '1jvoXhIvGLAn5DV73MK3IbcfQ6EF-L3qm'
+
 
 class GoogleDriveFilePermission(Serializable):
     def __init__(
@@ -302,6 +304,8 @@ class EmailRuleLog(Serializable):
 def parse_gmail_body(
         message: GmailEmail
 ):
+    # TODO: Use recursion to handle nested parts
+
     results = []
     data = message.raw
     payload = data.get('payload')
@@ -403,7 +407,7 @@ class AuthClient(Serializable):
         self.scopes = scopes
         self.expiry = expiry
         self.timestamp = timestamp
-        
+
     @staticmethod
     def from_client(
         client: Credentials
@@ -411,9 +415,9 @@ class AuthClient(Serializable):
         key = get_key(
             client_id=client.client_id,
             scopes=client.scopes)
-        
+
         logger.info(f'Creating auth client: {key}')
-        
+
         return AuthClient(
             client_key=key,
             token=client.token,
@@ -425,19 +429,19 @@ class AuthClient(Serializable):
             timestamp=datetime.now().isoformat(),
             scopes=client.scopes
         )
-    
+
     @staticmethod
     def from_entity(
         data: dict
     ):
         client_key = data.get('client_key')
-        
+
         if client_key is None or client_key == '':
             logger.info(f'No client key found, generating new key')
             client_key = get_key(
                 client_id=data.get('client_id'),
                 scopes=data.get('scopes'))
-        
+
         return AuthClient(
             client_key=client_key,
             token=data.get('token'),
@@ -448,7 +452,7 @@ class AuthClient(Serializable):
             scopes=data.get('scopes'),
             expiry=data.get('expiry'),
             timestamp=data.get('timestamp')
-    )
+        )
 
     def get_selector(
         self
@@ -456,7 +460,7 @@ class AuthClient(Serializable):
         return {
             'client_id': self.client_id
         }
-        
+
     def get_credentials(
         self,
         scopes: List[str]
@@ -464,7 +468,7 @@ class AuthClient(Serializable):
         info = self.to_dict() | {
             'scopes': scopes
         }
-        
+
         return Credentials.from_authorized_user_info(
             info=info,
             scopes=scopes)

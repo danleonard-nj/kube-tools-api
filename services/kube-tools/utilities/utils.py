@@ -197,9 +197,10 @@ def create_uuid(data):
     hash_value = md5(text.encode()).hexdigest()
     return str(uuid.UUID(hash_value))
 
+
 def first(items):
-    if any(items):
-        return items[0]
+    for item in items:
+        return item
 
 
 deprecate_logger = build_deprecate_logger()

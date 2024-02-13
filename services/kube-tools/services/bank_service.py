@@ -76,10 +76,19 @@ class BankService:
             return records
 
         results = dict()
+
+        # Get the unique bank keys
+        keys = list(set([x.bank_key for x in records]))
+
+        # Create a list for each bank key
+        results = {
+            bk: list() for bk in keys
+        }
+
+        # Add the records to the appropriate list
         for balance in records:
-            if balance.bank_key not in results:
-                results[balance.bank_key] = list()
             results[balance.bank_key].append(balance)
+
         return results
 
     async def get_balances(
@@ -112,15 +121,11 @@ class BankService:
         if not group_institutions:
             return records
 
-        # results = dict()
-        
         results = {
             bank_key: list() for bank_key in bank_keys
         }
-        
+
         for record in records:
-            # if record.bank_key not in results:
-            #     results[record.bank_key] = list()
             results[record.bank_key].append(record)
         return results
 

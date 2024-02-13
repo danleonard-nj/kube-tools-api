@@ -1,5 +1,4 @@
 import asyncio
-from functools import cache
 from typing import List
 
 from data.google.google_auth_repository import GoogleAuthRepository

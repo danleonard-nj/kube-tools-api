@@ -1,10 +1,9 @@
 from datetime import datetime
 from typing import Tuple
 
+from domain.auth import AuthPolicy
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
-from domain.auth import AdRole, AuthPolicy
-
 from services.api_event_service import ApiEventHistoryService
 
 api_event_history_bp = MetaBlueprint('api_event_history_bp', __name__)

@@ -2,10 +2,6 @@ import uuid
 from datetime import datetime
 from typing import Dict, List
 
-from framework.clients.feature_client import FeatureClientAsync
-from framework.exceptions.nulls import ArgumentNullException
-from framework.logger import get_logger
-
 from data.google.google_email_log_repository import GoogleEmailLogRepository
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from domain.exceptions import (EmailRuleExistsException,
@@ -14,12 +10,12 @@ from domain.features import Feature
 from domain.google import EmailRuleLog, GmailEmailRule
 from domain.rest import (CreateEmailRuleRequest, DeleteGmailEmailRuleResponse,
                          UpdateEmailRuleRequest)
+from framework.clients.feature_client import FeatureClientAsync
+from framework.exceptions.nulls import ArgumentNullException
+from framework.logger import get_logger
 from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
-
-WELLS_FARGO_RULE_ID = '7062d7af-c920-4f2e-bdc5-e52314d69194'
-
 
 class GmailRuleService:
     def __init__(
@@ -28,9 +24,9 @@ class GmailRuleService:
         log_repository: GoogleEmailLogRepository,
         feature_client: FeatureClientAsync
     ):
-        self.__email_rule_repository = email_rule_repository
-        self.__log_repository = log_repository
-        self.__feature_client = feature_client
+        self._email_rule_repository = email_rule_repository
+        self._log_repository = log_repository
+        self._feature_client = feature_client
 
     async def get_rules_by_name(
         self,
@@ -38,7 +34,7 @@ class GmailRuleService:
     ):
         logger.info(f'Fetching rules by name: {rule_names}')
 
-        entities = await self.__email_rule_repository.get_email_rules_by_names(
+        entities = await self._email_rule_repository.get_email_rules_by_names(
             names=rule_names)
 
         rule_names = [
@@ -57,7 +53,7 @@ class GmailRuleService:
         logger.info(f'Fetching all email rules')
 
         # Fetch all rules from db
-        entities = await self.__email_rule_repository.get_all()
+        entities = await self._email_rule_repository.get_all()
 
         # Construct domain models from entities
         rules = [
@@ -79,7 +75,7 @@ class GmailRuleService:
         logger.info(f'Create email rule: {create_request.to_dict()}')
 
         # Query existing rules w/ requested name
-        existing = await self.__email_rule_repository.get({
+        existing = await self._email_rule_repository.get({
             'name': create_request.name
         })
 
@@ -103,7 +99,7 @@ class GmailRuleService:
             created_date=datetime.now())
 
         # Insert the rule entity
-        result = await self.__email_rule_repository.insert(
+        result = await self._email_rule_repository.insert(
             document=rule.to_dict())
 
         logger.info(f'Rule / entity: {rule.rule_id} / {result.inserted_id}')
@@ -120,7 +116,7 @@ class GmailRuleService:
         logger.info(f'Delete rule: {rule_id}')
 
         # Verify the rule exists by ID provided
-        exists = await self.__email_rule_repository.email_rule_exists_by_id(
+        exists = await self._email_rule_repository.email_rule_exists_by_id(
             rule_id=rule_id)
 
         logger.info(f'Rule exists: {rule_id}: {exists}')
@@ -131,7 +127,7 @@ class GmailRuleService:
                 rule_id=rule_id)
 
         # Delete the rule
-        result = await self.__email_rule_repository.delete({
+        result = await self._email_rule_repository.delete({
             'rule_id': rule_id
         })
 
@@ -150,7 +146,7 @@ class GmailRuleService:
         logger.info(f'Get rule: {rule_id}')
 
         # Fetch the rule from the db
-        entity = await self.__email_rule_repository.get({
+        entity = await self._email_rule_repository.get({
             'rule_id': rule_id
         })
 
@@ -187,7 +183,7 @@ class GmailRuleService:
             update_request=update_request)
 
         # Update the rule in the db
-        result = await self.__email_rule_repository.replace(
+        result = await self._email_rule_repository.replace(
             selector=rule.get_selector(),
             document=rule.to_dict())
 
@@ -201,7 +197,7 @@ class GmailRuleService:
     ):
         logger.info(f'Logging rule service results: {results}')
 
-        is_enabled = await self.__feature_client.is_enabled(
+        is_enabled = await self._feature_client.is_enabled(
             feature_key=Feature.EmailRuleLogIngestion)
 
         if not is_enabled:
@@ -215,5 +211,5 @@ class GmailRuleService:
 
         logger.info(f'Log record: {record.to_dict()}')
 
-        await self.__log_repository.insert(
+        await self._log_repository.insert(
             document=record.to_dict())

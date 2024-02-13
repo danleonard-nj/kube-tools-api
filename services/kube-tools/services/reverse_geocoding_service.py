@@ -1,12 +1,12 @@
-from typing import List, Tuple, Union, TypeVar
-
-from framework.concurrency import TaskCollection
+from typing import List, Tuple
 
 from clients.google_maps_client import GoogleMapsClient
 from data.google.google_reverse_geocode_repository import \
     GoogleReverseGeocodingRepository
 from domain.location_history import CoordinateKey, ReverseGeocodingModel
+from framework.concurrency import TaskCollection
 from utilities.utils import first
+
 
 class GoogleReverseGeocodingService:
     def __init__(
@@ -33,7 +33,7 @@ class GoogleReverseGeocodingService:
 
     async def get_or_fetch_reverse_geocode(
         self,
-        coordinate_pair: Tuple[Union[float, int], Union[float, int]]
+        coordinate_pair: Tuple[float | int, float | int]
     ) -> ReverseGeocodingModel:
 
         latitude, longitude = coordinate_pair

@@ -1,7 +1,6 @@
 from abc import abstractmethod
 
 import xmltodict
-
 from domain.podcasts.podcasts import Episode, Show
 from utilities.utils import KeyUtils
 
@@ -47,6 +46,7 @@ class GenericFeedHandler(FeedHandler):
         dct = xmltodict.parse(xml_input=feed)
         channel = dct.get('rss').get('channel')
 
+        # Create a unique ID for the show
         show_title = channel.get('title')
         show_id = KeyUtils.create_uuid(
             show_title=show_title)
