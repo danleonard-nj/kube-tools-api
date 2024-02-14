@@ -44,12 +44,12 @@ class PodcastService:
         self
     ) -> List[dict]:
         entities = await self._podcast_repository.get_all()
-        
+
         shows = [Show.from_entity(x) for x in entities]
         logger.info(f'Found {len(shows)} shows')
-        
+
         results = [show.to_dict() for show in shows]
-            
+
         return results
 
     async def sync(
@@ -139,18 +139,18 @@ class PodcastService:
 
     def _get_results_table(
             self,
-            episodes: List[Episode]
+            episodes: List[DownloadedEpisode]
     ) -> Dict:
         '''
         Get sync result table for email notification
         '''
-        
+
         def format_result(
             episode: Episode
         ) -> Dict:
             return {
                 'Show': episode.show.show_title,
-                'Episode': episode.episode_title,
+                'Episode': episode.episode.episode_title,
                 'Size': f'{episode.size} mb'
             }
 

@@ -31,8 +31,8 @@ from data.bank_repository import (BankBalanceRepository,
                                   BankWebhooksRepository)
 from data.chat_gpt_repository import ChatGptRepository
 from data.google.google_auth_repository import GoogleAuthRepository
+from data.google.google_calendar_repository import GooleCalendarEventRepository
 from data.google.google_email_log_repository import GoogleEmailLogRepository
-from data.google.google_email_repository import GooleCalendarEventRepository
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from data.google.google_location_history_repository import \
     GoogleLocationHistoryRepository

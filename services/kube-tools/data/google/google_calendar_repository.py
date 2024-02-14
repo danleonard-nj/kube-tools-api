@@ -4,7 +4,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from domain.mongo import MongoCollection, MongoDatabase
 
 
-class GoogleEmailRuleRepository(MongoRepositoryAsync):
+class GooleCalendarEventRepository(MongoRepositoryAsync):
     def __init__(
         self,
         client: AsyncIOMotorClient
@@ -12,4 +12,10 @@ class GoogleEmailRuleRepository(MongoRepositoryAsync):
         super().__init__(
             client=client,
             database=MongoDatabase.Google,
-            collection=MongoCollection.EmailRule)
+            collection='CalendarEvent')
+
+    async def insert_many(
+        self,
+        documents: list[dict]
+    ):
+        return self.collection.insert_many(documents)

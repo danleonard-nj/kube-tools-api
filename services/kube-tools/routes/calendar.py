@@ -19,3 +19,10 @@ async def get_calendar_events(container):
         end_date=end_date)
 
     return result
+
+
+@calendar_bp.configure('/api/calendar/sync', methods=['POST'], auth_scheme=AuthPolicy.Default)
+async def sync_calendar_events(container):
+    service: CalendarService = container.resolve(CalendarService)
+
+    return await service.sync_calendar_events()
