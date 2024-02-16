@@ -163,6 +163,10 @@ class GmailBankSyncService:
 
             balance = self._format_balance_result(balance)
 
+            if 'N/A' in balance:
+                logger.info(f'Balance is N/A')
+                return
+
             # Try to parse the balance as a float
             try:
                 balance = float(balance)
@@ -191,7 +195,7 @@ class GmailBankSyncService:
             logger.info(f'Balance captured successfully for bank: {bank_key}')
 
         except Exception as ex:
-            logger.exception(f'Error parsing balance: {ex.message}')
+            logger.exception(f'Error parsing balance: {str(ex)}')
             # balance = 0.0
 
         return mapped_rule

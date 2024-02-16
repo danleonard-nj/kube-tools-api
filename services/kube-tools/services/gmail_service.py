@@ -59,7 +59,7 @@ class GmailService:
 
             tasks.add_task(self.process_rule(
                 process_request=process_request))
-        
+
         await tasks.run()
 
         return run_results
@@ -129,9 +129,13 @@ class GmailService:
             query=rule.query,
             max_results=rule.max_results)
 
-        logger.info(f'Result count: {len(query_result.messages or [])}')
-
         archived = 0
+
+        if query_result is None:
+            logger.info(f'No emails found for rule: {rule.name}')
+            return archived
+
+        logger.info(f'Result count: {len(query_result.messages or [])}')
         for message_id in query_result.message_ids or []:
             message = await self._gmail_client.get_message(
                 message_id=message_id)
