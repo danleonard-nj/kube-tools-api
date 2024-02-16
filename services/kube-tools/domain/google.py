@@ -62,10 +62,10 @@ class GmailQueryResult(Serializable):
         self.next_page_token = data.get('nextPageToken')
         self.result_size_estimate = data.get('resultSizeEstimate')
 
-        self.message_ids = self.__get_message_ids(
+        self.message_ids = self._get_message_ids(
             messages=self.messages)
 
-    def __get_message_ids(
+    def _get_message_ids(
         self,
         messages
     ):
@@ -73,6 +73,17 @@ class GmailQueryResult(Serializable):
             return [message_id.get('id')
                     for message_id in messages
                     if message_id is not None]
+        else:
+            return []
+
+    @staticmethod
+    def empty_result():
+        return GmailQueryResult(
+            data={
+                'messages': [],
+                'nextPageToken': None,
+                'resultSizeEstimate': 0
+            })
 
 
 class GmailEmail(Serializable):

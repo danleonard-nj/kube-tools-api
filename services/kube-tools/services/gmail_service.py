@@ -43,7 +43,7 @@ class GmailService:
 
         logger.info(f'Gathering rules for Gmail rule service')
 
-        run_results = dict()
+        run_results = []
 
         rules = await self._rule_service.get_rules()
         rules.reverse()
@@ -57,8 +57,16 @@ class GmailService:
                 'rule': rule.to_dict()
             })
 
-            tasks.add_task(self.process_rule(
-                process_request=process_request))
+            async def capture_response(req: ProcessGmailRuleRequest):
+                response = await self.process_rule(
+                    process_request=req)
+
+                run_results.append({
+                    'rule': rule,
+                    'results': response
+                })
+
+            tasks.add_task(capture_response(req=process_request))
 
         await tasks.run()
 

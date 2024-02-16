@@ -24,7 +24,7 @@ async def get_auth(container):
     return client.to_json()
 
 
-@ google_bp.configure('/api/google/gmail', methods=['POST'], auth_scheme='default')
+@google_bp.configure('/api/google/gmail', methods=['POST'], auth_scheme='default')
 async def post_gmail(container):
     service: GmailService = container.resolve(
         GmailService)
@@ -32,7 +32,7 @@ async def post_gmail(container):
     return await service.run_mail_service()
 
 
-@ google_bp.configure('/api/google/gmail/rule', methods=['GET'], auth_scheme='default')
+@google_bp.configure('/api/google/gmail/rule', methods=['GET'], auth_scheme='default')
 async def get_gmail_rules(container):
     service: GmailRuleService = container.resolve(
         GmailRuleService)
@@ -40,7 +40,7 @@ async def get_gmail_rules(container):
     return await service.get_rules()
 
 
-@ google_bp.configure('/api/google/gmail/rule/<rule_id>', methods=['GET'], auth_scheme='default')
+@google_bp.configure('/api/google/gmail/rule/<rule_id>', methods=['GET'], auth_scheme='default')
 async def get_gmail_rule(container, rule_id: str):
     service: GmailRuleService = container.resolve(
         GmailRuleService)
@@ -52,7 +52,7 @@ async def get_gmail_rule(container, rule_id: str):
         rule_id=rule_id)
 
 
-@ google_bp.configure('/api/google/gmail/rule/process', methods=['POST'], auth_scheme='execute')
+@google_bp.configure('/api/google/gmail/rule/process', methods=['POST'], auth_scheme='execute')
 async def post_gmail_rule_process(container):
     service: GmailService = container.resolve(
         GmailService)
@@ -69,7 +69,7 @@ async def post_gmail_rule_process(container):
         process_request=process_request)
 
 
-@ google_bp.configure('/api/google/gmail/rule/<rule_id>', methods=['DELETE'], auth_scheme='default')
+@google_bp.configure('/api/google/gmail/rule/<rule_id>', methods=['DELETE'], auth_scheme='default')
 async def delete_gmail_rule(container, rule_id: str):
     service: GmailRuleService = container.resolve(
         GmailRuleService)
@@ -81,7 +81,7 @@ async def delete_gmail_rule(container, rule_id: str):
         rule_id=rule_id)
 
 
-@ google_bp.configure('/api/google/gmail/rule', methods=['POST'], auth_scheme='default')
+@google_bp.configure('/api/google/gmail/rule', methods=['POST'], auth_scheme='default')
 async def post_gmail_rule(container):
     service: GmailRuleService = container.resolve(
         GmailRuleService)
@@ -95,7 +95,7 @@ async def post_gmail_rule(container):
         create_request=create_request)
 
 
-@ google_bp.configure('/api/google/gmail/rule', methods=['PUT'], auth_scheme='default')
+@google_bp.configure('/api/google/gmail/rule', methods=['PUT'], auth_scheme='default')
 async def put_gmail_rule(container):
     service: GmailRuleService = container.resolve(
         GmailRuleService)

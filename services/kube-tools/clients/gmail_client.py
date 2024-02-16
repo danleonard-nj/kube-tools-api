@@ -19,7 +19,8 @@ from services.google_auth_service import GoogleAuthService
 
 logger = get_logger(__name__)
 
-DEFAULT_CONCURRENCY=24
+DEFAULT_CONCURRENCY = 24
+
 
 class GmailClient:
     def __init__(
@@ -33,7 +34,7 @@ class GmailClient:
 
         self._base_url = configuration.gmail.get(
             'base_url')
-        
+
         concurrency = configuration.gmail.get(
             'concurrency', DEFAULT_CONCURRENCY)
         self._semaphore = asyncio.Semaphore(concurrency)
@@ -58,23 +59,32 @@ class GmailClient:
             'Authorization': f'Bearer {token}'
         }
 
+    async def assure_auth(
+        self
+    ):
+        # Fetch an auth token w/ Gmail scope
+
+        logger.info('Assuring Gmail auth')
+        await self._auth_service.get_auth_client(
+            scopes=GoogleClientScope.Gmail)
+
     async def get_message(
         self,
         message_id: str
     ) -> Dict:
-        
+
         logger.info(f'Fetching message: {message_id}')
-        
+
         # Build endpoint with message
         endpoint = f'{self._base_url}/v1/users/me/messages/{message_id}'
 
         auth_headers = await self._get_auth_headers()
         await self._semaphore.acquire()
-        
+
         message_response = await self._http_client.get(
             url=endpoint,
             headers=auth_headers)
-        
+
         self._semaphore.release()
 
         content = message_response.json()
@@ -167,9 +177,9 @@ class GmailClient:
 
         content = query_result.json()
 
-        if content is None:
+        if not any(content.get('messages', [])):
             logger.info(f'No results for query: {query}')
-            return
+            return GmailQueryResult.empty_result()
 
         response = GmailQueryResult(
             data=content)
