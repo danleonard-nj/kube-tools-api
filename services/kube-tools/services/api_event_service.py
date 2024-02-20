@@ -66,7 +66,7 @@ class ApiEventHistoryService:
         logger.info(
             f'Getting api event history from {start_timestamp} to {end_timestamp}')
 
-        records = self._repository.get_events(
+        records = await self._repository.get_events(
             start_timestamp=start_timestamp,
             end_timestamp=end_timestamp
         )
