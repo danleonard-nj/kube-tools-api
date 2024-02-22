@@ -42,15 +42,15 @@ class PodcastService:
 
     async def get_podcasts(
         self
-    ) -> List[dict]:
+    ) -> List[Show]:
         entities = await self._podcast_repository.get_all()
 
         shows = [Show.from_entity(x) for x in entities]
         logger.info(f'Found {len(shows)} shows')
 
-        results = [show.to_dict() for show in shows]
+        # results = [show.to_dict() for show in shows]
 
-        return results
+        return show
 
     async def sync(
         self
