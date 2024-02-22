@@ -50,7 +50,7 @@ class PodcastService:
 
         # results = [show.to_dict() for show in shows]
 
-        return show
+        return shows
 
     async def sync(
         self
