@@ -73,7 +73,7 @@ class GmailClient:
         message_id: str
     ) -> Dict:
 
-        logger.info(f'Fetching message: {message_id}')
+        logger.debug(f'Fetching message: {message_id}')
 
         # Build endpoint with message
         endpoint = f'{self._base_url}/v1/users/me/messages/{message_id}'
@@ -96,7 +96,7 @@ class GmailClient:
         message_ids: List[str]
     ) -> List[GmailEmail]:
 
-        logger.info(f'Fetching {len(message_ids)} messages')
+        logger.debug(f'Fetching {len(message_ids)} messages')
 
         get_messages = TaskCollection(*[
             self.get_message(message_id=message_id)
@@ -173,7 +173,7 @@ class GmailClient:
             url=endpoint,
             headers=auth_headers)
 
-        logger.info(f'Query inbox result: {query_result.status_code}')
+        logger.debug(f'Query inbox result: {query_result.status_code}')
 
         content = query_result.json()
 
