@@ -52,19 +52,16 @@ class GmailService:
 
         tasks = TaskCollection()
 
+        async def capture_response(req: ProcessGmailRuleRequest):
+            response = await self.process_rule(
+                process_request=req)
+
+            run_results.append(response)
+
         for rule in rules:
             process_request = ProcessGmailRuleRequest({
                 'rule': rule.to_dict()
             })
-
-            async def capture_response(req: ProcessGmailRuleRequest):
-                response = await self.process_rule(
-                    process_request=req)
-
-                run_results.append({
-                    'rule': rule,
-                    'results': response
-                })
 
             tasks.add_task(capture_response(req=process_request))
 

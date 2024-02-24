@@ -7,11 +7,81 @@ from framework.crypto.hashing import sha256
 from framework.logger import get_logger
 from framework.serialization import Serializable
 
-from domain.enums import (PlaidPaymentChannel, PlaidTransactionCategory,
+from domain.enums import (BankKey, PlaidPaymentChannel, PlaidTransactionCategory,
                           PlaidTransactionType, SyncActionType)
 from utilities.utils import DateTimeUtil, parse, parse_timestamp
 
 logger = get_logger(__name__)
+
+
+PROMPT_PREFIX = 'Get the current available bank balance (if present) from this string'
+PROMPT_SUFFIX = 'Respond with only the balance or "N/A"'
+
+CAPITAL_ONE_SAVOR = 'savor'
+CAPITAL_ONE_QUICKSILVER = 'quicksilver'
+CAPITAL_ONE_VENTURE = 'venture'
+
+SYNCHRONY_AMAZON = 'prime store card'
+SYNCHRONY_GUITAR_CENTER = 'guitar center'
+SYNCHRONY_SWEETWATER = 'sweetwater sound'
+
+DEFAULT_BALANCE = 'undefined'
+
+BALANCE_EMAIL_INCLUSION_KEYWORDS = [
+    'balance',
+    'bank',
+    'wells',
+    'fargo',
+    'chase',
+    'discover',
+    'account',
+    'summary'
+    'activity',
+    'transactions',
+    'credit',
+    'card'
+]
+
+BALANCE_EMAIL_EXCLUSION_KEYWORDS = [
+]
+
+BALANCE_EMAIL_RECIPIENT = 'dcl525@gmail.com'
+BALANCE_EMAIL_SUBJECT = 'Bank Balance Captured'
+BALANCE_CAPTURE_EMAILS_FEATURE_KEY = 'banking-balance-capture-emails'
+
+
+# Unsupported bank keys for balance captures
+BALANCE_BANK_KEY_EXCLUSIONS = [
+    BankKey.CapitalOne,
+    BankKey.Ally,
+    BankKey.Synchrony,
+    BankKey.WellsFargoActiveCash,
+    BankKey.WellsFargoChecking,
+    BankKey.WellsFargoPlatinum,
+    BankKey.Discover
+]
+
+
+def format_datetime(dt):
+    logger.info(f'Formatting datetime: {dt}')
+    return dt.strftime('%Y-%m-%d')
+
+
+def strip_special_chars(value: str) -> str:
+    return (
+        value
+        .strip()
+        .replace('\n', ' ')
+        .replace('\t', ' ')
+        .replace('\r', ' ')
+    )
+
+
+def log_truncate(segment):
+    if len(segment) < 100:
+        return segment
+
+    return f'{segment[:50]}...{segment[-50:]}'
 
 
 class PlaidTransaction(Serializable):
@@ -270,7 +340,6 @@ class PlaidWebhookData(Serializable):
         self.request_id = request_id
         self.data = data
         self.timestamp = timestamp
-
 
 
 class ChatGptBalanceCompletion(Serializable):

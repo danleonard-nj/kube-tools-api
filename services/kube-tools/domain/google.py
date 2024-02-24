@@ -322,25 +322,20 @@ def parse_gmail_body(
     payload = data.get('payload')
 
     if 'body' in payload:
-        logger.info(f'Found body in first layer payload')
         top_body = payload.get('body')
 
         if 'data' in top_body:
-            logger.info(f'Found data in first layer body')
             top_data = top_body.get('data')
             results.append(top_data)
 
     if 'parts' in payload:
-        logger.info(f'Handling parts')
         parts = payload.get('parts')
         if any(parts):
             for part in parts:
                 if 'body' in part:
-                    logger.info(f'Found body in part')
                     part_body = part.get('body')
 
                     if 'data' in part_body:
-                        logger.info(f'Found data in part body')
                         part_data = part_body.get('data')
                         results.append(part_data)
 
@@ -349,14 +344,10 @@ def parse_gmail_body(
                         if any(level_two_parts):
                             for level_two_part in level_two_parts:
                                 if 'body' in level_two_part:
-                                    logger.info(
-                                        f'Found body in level two part')
                                     level_two_part_body = level_two_part.get(
                                         'body')
 
                                     if 'data' in level_two_part_body:
-                                        logger.info(
-                                            f'Found data in level two part body')
                                         level_two_part_data = level_two_part_body.get(
                                             'data')
                                         results.append(level_two_part_data)
@@ -367,14 +358,10 @@ def parse_gmail_body(
                                         if any(level_three_parts):
                                             for level_three_part in level_three_parts:
                                                 if 'body' in level_three_part:
-                                                    logger.info(
-                                                        f'Found body in level three part')
                                                     level_three_part_body = level_three_part.get(
                                                         'body')
 
                                                     if 'data' in level_three_part_body:
-                                                        logger.info(
-                                                            f'Found data in level three part body')
                                                         level_three_part_data = level_three_part_body.get(
                                                             'data')
                                                         results.append(

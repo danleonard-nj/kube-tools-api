@@ -4,7 +4,7 @@ from typing import List
 from clients.email_gateway_client import EmailGatewayClient
 from clients.plaid_client import PlaidClient
 from data.bank_repository import BankBalanceRepository
-from domain.bank import BankBalance, PlaidAccount, PlaidBalance
+from domain.bank import BALANCE_BANK_KEY_EXCLUSIONS, BALANCE_CAPTURE_EMAILS_FEATURE_KEY, BALANCE_EMAIL_RECIPIENT, BALANCE_EMAIL_SUBJECT, BankBalance, PlaidAccount, PlaidBalance
 from domain.enums import BankKey, SyncType
 from domain.rest import GetBalancesResponse
 from framework.clients.feature_client import FeatureClientAsync
@@ -14,29 +14,9 @@ from framework.logger import get_logger
 from framework.utilities.iter_utils import first
 from services.event_service import EventService
 from utilities.utils import DateTimeUtil
+from framework.concurrency import TaskCollection
 
 logger = get_logger(__name__)
-
-EMAIL_RECIPIENT = 'dcl525@gmail.com'
-EMAIL_SUBJECT = 'Bank Balance Captured'
-BALANCE_CAPTURE_EMAILS_FEATURE_KEY = 'banking-balance-capture-emails'
-
-
-# Unsupported bank keys for balance captures
-BALANCE_BANK_KEY_EXCLUSIONS = [
-    BankKey.CapitalOne,
-    BankKey.Ally,
-    BankKey.Synchrony,
-    BankKey.WellsFargoActiveCash,
-    BankKey.WellsFargoChecking,
-    BankKey.WellsFargoPlatinum,
-    BankKey.Discover
-]
-
-
-def format_datetime(dt):
-    logger.info(f'Formatting datetime: {dt}')
-    return dt.strftime('%Y-%m-%d')
 
 
 class BalanceSyncService:
@@ -103,44 +83,56 @@ class BalanceSyncService:
     ):
         balances = list()
 
-        for account in self._plaid_accounts:
-            logger.info(f'Syncing plaid account: {account}')
-
-            config = PlaidAccount.from_dict(account)
-
-            # Fetch the balance from Plaid
-            balance_response = await self._plaid_client.get_balance(
-                access_token=config.access_token)
-
-            accounts = balance_response.get('accounts', list())
-            logger.info(
-                f'Accounts fetched for bank: {config.bank_key}: {len(accounts)}')
-
-            target_account = first(
-                accounts,
-                lambda x: x.get('account_id') == config.account_id)
-
-            if target_account is None:
-                logger.info(
-                    f'Could not find target account: {config.bank_key}: {config.account_id}')
-
-                continue
-
-            balance = PlaidBalance(
-                data=target_account)
-
+        async def handle_account(account: dict):
+            balance = await self.sync_plaid_account(account)
             balances.append(balance)
 
-            logger.info(
-                f'Captured balance from plaid: {balance.to_dict()}')
+        tasks = TaskCollection(*[handle_account(account)
+                                 for account in self._plaid_accounts])
 
-            # Store the captured balance
-            await self.capture_account_balance(
-                bank_key=config.bank_key,
-                balance=balance.available_balance,
-                sync_type=str(SyncType.Plaid))
+        await tasks.run()
 
         return balances
+
+    async def sync_plaid_account(
+        self,
+        account: dict
+    ) -> PlaidBalance:
+        logger.info(f'Syncing plaid account: {account}')
+
+        # Parse the account configuration
+        config = PlaidAccount.from_dict(account)
+
+        # Fetch the balance from Plaid
+        balance_response = await self._plaid_client.get_balance(
+            access_token=config.access_token)
+
+        accounts = balance_response.get('accounts', list())
+
+        target_account = first(
+            accounts,
+            lambda x: x.get('account_id') == config.account_id)
+
+        if target_account is None:
+            logger.info(
+                f'Could not find target account: {config.bank_key}: {config.account_id}')
+
+            return
+
+        # Parse the balance from the response
+        balance = PlaidBalance(
+            data=target_account)
+
+        logger.info(
+            f'Captured balance from plaid: {balance.to_dict()}')
+
+        # Store the captured balance
+        await self.capture_account_balance(
+            bank_key=config.bank_key,
+            balance=balance.available_balance,
+            sync_type=str(SyncType.Plaid))
+
+        return balance
 
     async def _handle_balance_capture_alert_email(
         self,
@@ -159,8 +151,8 @@ class BalanceSyncService:
 
         # Send an alert email when a bank balance has been
         email_request, endpoint = self._email_client.get_json_email_request(
-            recipient=EMAIL_RECIPIENT,
-            subject=f'{EMAIL_SUBJECT} - {balance.bank_key}',
+            recipient=BALANCE_EMAIL_RECIPIENT,
+            subject=f'{BALANCE_EMAIL_SUBJECT} - {balance.bank_key}',
             json=balance.to_dict())
 
         logger.info(f'Email request: {endpoint}: {email_request.to_dict()}')
@@ -207,7 +199,7 @@ class BalanceSyncService:
         keys = [key.value for key in BankKey
                 if key not in BALANCE_BANK_KEY_EXCLUSIONS]
 
-        for key in keys:
+        async def handle_balance(key: str):
             result = await self.get_balance(
                 bank_key=str(key))
 
@@ -215,6 +207,11 @@ class BalanceSyncService:
                 missing.append(key)
             else:
                 results.append(result)
+
+        tasks = TaskCollection(*[handle_balance(key)
+                                 for key in keys])
+
+        await tasks.run()
 
         return GetBalancesResponse(
             balances=results,

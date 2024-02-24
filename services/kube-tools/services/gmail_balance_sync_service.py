@@ -5,7 +5,14 @@ from typing import Dict, List
 from bs4 import BeautifulSoup
 from clients.chat_gpt_service_client import (ChatGptException,
                                              ChatGptServiceClient)
-from domain.bank import BankRuleConfiguration, ChatGptBalanceCompletion
+from domain.bank import (BALANCE_EMAIL_EXCLUSION_KEYWORDS,
+                         BALANCE_EMAIL_INCLUSION_KEYWORDS,
+                         CAPITAL_ONE_QUICKSILVER, CAPITAL_ONE_SAVOR,
+                         CAPITAL_ONE_VENTURE, DEFAULT_BALANCE, PROMPT_PREFIX,
+                         PROMPT_SUFFIX, SYNCHRONY_AMAZON,
+                         SYNCHRONY_GUITAR_CENTER, SYNCHRONY_SWEETWATER,
+                         BankRuleConfiguration, ChatGptBalanceCompletion,
+                         strip_special_chars)
 from domain.cache import CacheKey
 from domain.enums import BankKey, SyncType
 from domain.google import GmailEmail, GmailEmailRule, parse_gmail_body
@@ -15,48 +22,8 @@ from framework.logger import get_logger
 from framework.validators.nulls import none_or_whitespace
 from services.bank_service import BankService
 from services.gmail_rule_service import GmailRuleService
-from sympy import Q
 
 logger = get_logger(__name__)
-
-
-PROMPT_PREFIX = 'Get the current available bank balance (if present) from this string'
-PROMPT_SUFFIX = 'Respond with only the balance or "N/A"'
-
-CAPITAL_ONE_SAVOR = 'savor'
-CAPITAL_ONE_QUICKSILVER = 'quicksilver'
-CAPITAL_ONE_VENTURE = 'venture'
-
-SYNCHRONY_AMAZON = 'prime store card'
-SYNCHRONY_GUITAR_CENTER = 'guitar center'
-SYNCHRONY_SWEETWATER = 'sweetwater sound'
-
-DEFAULT_BALANCE = 'undefined'
-
-BALANCE_EMAIL_INCLUSION_KEYWORDS = [
-    'balance',
-    'bank',
-    'wells',
-    'fargo',
-    'chase',
-    'discover',
-    'account',
-    'summary'
-    'activity',
-    'transactions',
-    'credit',
-    'card'
-]
-
-BALANCE_EMAIL_EXCLUSION_KEYWORDS = [
-]
-
-
-def log_truncate(segment):
-    if len(segment) < 100:
-        return segment
-
-    return f'{segment[:50]}...{segment[-50:]}'
 
 
 class GmailBankSyncService:
@@ -87,7 +54,7 @@ class GmailBankSyncService:
         # Lazy load the bank rule mapping
         if self._bank_rule_mapping is None:
             logger.info(f'Fetching bank rule mapping')
-            self._bank_rule_mapping = await self.__generate_bank_rule_mapping()
+            self._bank_rule_mapping = await self._generate_bank_rule_mapping()
 
         if rule.rule_id in self._bank_rule_mapping:
             logger.info('Bank rule detected')
@@ -122,6 +89,7 @@ class GmailBankSyncService:
             # Look at each segment of the email
             # body
             for segment in email_body_segments:
+
                 # If the email text does not contain more than the
                 # threshold number of banking keywords it doesn't
                 # meet the criteria for a banking email
@@ -141,7 +109,7 @@ class GmailBankSyncService:
                 balance_prompt = self._get_chat_gpt_balance_prompt(
                     message=segment)
 
-                logger.info(f'Balance prompt: {log_truncate(balance_prompt)}')
+                logger.info(f'Balance prompt: {balance_prompt}')
 
                 gpt_result = await self._get_chat_gpt_balance_completion(
                     balance_prompt=balance_prompt)
@@ -163,6 +131,7 @@ class GmailBankSyncService:
 
             balance = self._format_balance_result(balance)
 
+            # If the balance is N/A then bail out
             if 'N/A' in balance:
                 logger.info(f'Balance is N/A')
                 return
@@ -177,9 +146,11 @@ class GmailBankSyncService:
 
             logger.info(f'Balance: {balance}')
 
+            # Get the bank key from the rule
             bank_key = mapped_rule.bank_key
             logger.info(f'Bank key: {bank_key}')
 
+            # Determine the bank key based on the email body
             bank_key = self._handle_account_specific_balance_sync(
                 bank_key=bank_key,
                 email_body_segments=email_body_segments)
@@ -298,7 +269,7 @@ class GmailBankSyncService:
             balance=balance,
             usage=usage)
 
-    async def __generate_bank_rule_mapping(
+    async def _generate_bank_rule_mapping(
         self
     ):
         logger.info(f'Generating bank rule mapping')
@@ -381,15 +352,6 @@ class GmailBankSyncService:
             if none_or_whitespace(body):
                 logger.info(f'No text found in body segment: {body}')
                 continue
-
-            def strip_special_chars(value: str) -> str:
-                return (
-                    value
-                    .strip()
-                    .replace('\n', ' ')
-                    .replace('\t', ' ')
-                    .replace('\r', ' ')
-                )
 
             # Get the text content of the body and strip
             # any newlines, tabs, or carriage returns
