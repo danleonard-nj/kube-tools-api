@@ -313,64 +313,29 @@ class EmailRuleLog(Serializable):
 
 
 def parse_gmail_body(
-        message: GmailEmail
+    message: GmailEmail
 ):
-    # TODO: Use recursion to handle nested parts
+    # Recursively parse the message parts
+    def parse_part(part):
+        results = []
+        parts_count = 0
+        if 'body' in part and 'data' in part['body']:
+            parts_count += 1
+            logger.info(f'Parsing part: {parts_count}')
+            results.append(part['body']['data'])
+        if 'parts' in part:
+            for subpart in part['parts']:
+                logger.info(f'Parsing subpart')
+                results.extend(parse_part(subpart))
+        return results
 
-    results = []
     data = message.raw
-    payload = data.get('payload')
+    payload = data.get('payload', {})
+    results = parse_part(payload)
 
-    if 'body' in payload:
-        top_body = payload.get('body')
-
-        if 'data' in top_body:
-            top_data = top_body.get('data')
-            results.append(top_data)
-
-    if 'parts' in payload:
-        parts = payload.get('parts')
-        if any(parts):
-            for part in parts:
-                if 'body' in part:
-                    part_body = part.get('body')
-
-                    if 'data' in part_body:
-                        part_data = part_body.get('data')
-                        results.append(part_data)
-
-                    if 'parts' in part:
-                        level_two_parts = part.get('parts')
-                        if any(level_two_parts):
-                            for level_two_part in level_two_parts:
-                                if 'body' in level_two_part:
-                                    level_two_part_body = level_two_part.get(
-                                        'body')
-
-                                    if 'data' in level_two_part_body:
-                                        level_two_part_data = level_two_part_body.get(
-                                            'data')
-                                        results.append(level_two_part_data)
-
-                                    if 'parts' in part:
-                                        level_three_parts = part.get(
-                                            'parts')
-                                        if any(level_three_parts):
-                                            for level_three_part in level_three_parts:
-                                                if 'body' in level_three_part:
-                                                    level_three_part_body = level_three_part.get(
-                                                        'body')
-
-                                                    if 'data' in level_three_part_body:
-                                                        level_three_part_data = level_three_part_body.get(
-                                                            'data')
-                                                        results.append(
-                                                            level_three_part_data)
-
-    decoded = []
-    for result in results:
-        value = base64.urlsafe_b64decode(result.encode())
-        decoded.append(value.decode())
+    decoded = [base64.urlsafe_b64decode(
+        result.encode()).decode()
+        for result in results]
 
     return decoded
 

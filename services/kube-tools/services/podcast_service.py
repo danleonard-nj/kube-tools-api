@@ -14,6 +14,7 @@ from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration.configuration import Configuration
 from framework.logger.providers import get_logger
 from services.event_service import EventService
+from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
 
@@ -94,6 +95,9 @@ class PodcastService:
             return
 
         if not is_new:
+            # Update the show modified date
+            show.modified_date = DateTimeUtil.timestamp()
+            
             # Update the show with new episodes
             await self._podcast_repository.update(
                 selector=show.get_selector(),

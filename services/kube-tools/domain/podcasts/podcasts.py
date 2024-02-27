@@ -1,3 +1,4 @@
+from ast import mod
 import re
 from typing import Callable, Dict, List, OrderedDict
 
@@ -82,12 +83,13 @@ class Show(Serializable):
         show_id,
         show_title,
         episodes,
+        modified_date: int = None,
         **kwargs
     ):
         self.show_id = show_id
         self.show_title = show_title
-
         self.episodes = episodes
+        self.modified_date = modified_date
 
     @classmethod
     def from_entity(
@@ -97,6 +99,7 @@ class Show(Serializable):
         return Show(
             show_id=entity.get('show_id'),
             show_title=entity.get('show_title'),
+            modified_date=entity.get('modified_date'),
             episodes=cls.get_entity_episodes(
                 episodes=entity.get('episodes')))
 
