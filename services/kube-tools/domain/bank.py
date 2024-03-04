@@ -85,17 +85,6 @@ def log_truncate(segment):
 
 
 class PlaidTransaction(Serializable):
-    @property
-    def equality_comparison_exclusions(
-        self
-    ):
-        return [
-            'hash_key',
-            'timestamp',
-            'transaction_id',
-            'data'
-        ]
-
     def __init__(
         self,
         transaction_bk: str,
@@ -149,7 +138,7 @@ class PlaidTransaction(Serializable):
         self.pf_categories = pf_categories
 
         self.hash_key = (
-            hash_key or self.__generate_hash_key()
+            hash_key or self._generate_hash_key()
         )
 
         self.data = data or dict()
@@ -167,23 +156,10 @@ class PlaidTransaction(Serializable):
             'transaction_bk': self.transaction_bk
         }
 
-    def set_transaction_id(
-        self,
-        transaction_id: str = None
-    ):
-        self.transaction_id = (
-            transaction_id or str(uuid.uuid4())
-        )
-
-    def __generate_hash_key(
+    def _generate_hash_key(
         self
     ):
-        values = {
-            k: v for k, v in self.to_dict().items()
-            if k not in self.equality_comparison_exclusions
-        }
-
-        data = json.dumps(values, default=str)
+        data = json.dumps(self.to_dict(), default=str)
         return sha256(data)
 
     @staticmethod

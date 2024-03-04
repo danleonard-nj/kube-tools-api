@@ -20,7 +20,6 @@ DEFAULT_LOOKBACK_DAYS = 3
 
 
 def format_datetime(dt):
-    logger.info(f'Formatting datetime: {dt}')
     return dt.strftime('%Y-%m-%d')
 
 
@@ -61,6 +60,34 @@ class BankTransactionService:
 
         return transactions
 
+    async def sync_account_transactions(
+        self,
+        plaid_account: PlaidAccount,
+        days_back: int = None,
+        include_transactions: bool = False
+    ) -> dict:
+
+        # Sync the account transactions
+        transactions = await self._sync_account_transactions(
+            account=plaid_account,
+            days_back=days_back)
+
+        inserts = [x for x in transactions if x.action ==
+                   SyncActionType.Insert]
+        updates = [x for x in transactions if x.action ==
+                   SyncActionType.Update]
+
+        result = {
+            'updates': len(updates),
+            'inserts': len(inserts),
+        }
+
+        # Optionally include the entire transaction
+        if include_transactions:
+            result['transactions'] = transactions
+
+        return result
+
     async def sync_transactions(
         self,
         days_back: int = None,
@@ -71,33 +98,17 @@ class BankTransactionService:
             # Parse the account info from config
             plaid_account = PlaidAccount.from_dict(account)
 
-            # Sync the account transactions
-            transactions = await self.__sync_account_transactions(
-                account=plaid_account,
-                days_back=days_back)
+            logger.info(
+                f'Parsed Plaid account: {plaid_account.bank_key}-{plaid_account.account_id}')
 
-            # Bank / account result key
-            key = f'{plaid_account.bank_key}-{plaid_account.account_id}'
-
-            inserts = [x for x in transactions if x.action ==
-                       SyncActionType.Insert]
-            updates = [x for x in transactions if x.action ==
-                       SyncActionType.Update]
-
-            result = {
-                'updates': len(updates),
-                'inserts': len(inserts),
-            }
-
-            # Optionally include the entire transaction
-            if include_transactions:
-                result['transactions'] = transactions
-
-            sync_results[key] = result
+            sync_results[plaid_account.bank_key] = await self.sync_account_transactions(
+                plaid_account,
+                days_back=days_back,
+                include_transactions=include_transactions)
 
         return sync_results
 
-    async def __get_transaction_lookup(
+    async def _get_transaction_lookup(
         self,
         transactions: List[PlaidTransaction],
         account: PlaidAccount
@@ -119,7 +130,7 @@ class BankTransactionService:
             x.transaction_bk: x for x in existing_transactions
         }
 
-    async def __sync_account_transactions(
+    async def _sync_account_transactions(
         self,
         account: PlaidAccount,
         days_back: int = None
@@ -154,7 +165,7 @@ class BankTransactionService:
                 f'No transactions found to sync for account: {account.bank_key}')
             return list()
 
-        transaction_lookup = await self.__get_transaction_lookup(
+        transaction_lookup = await self._get_transaction_lookup(
             transactions=transactions,
             account=account)
 
@@ -184,7 +195,7 @@ class BankTransactionService:
         if existing_transaction is None:
             logger.info(f'Insert: {transaction.transaction_bk}')
 
-            transaction.set_transaction_id()
+            transaction.transaction_id = str(uuid.uuid4())
             transaction.last_operation = SyncActionType.Insert
 
             await self._transaction_repository.insert(
@@ -197,14 +208,6 @@ class BankTransactionService:
         # Transactio hash key mismatch indicates an update
         if existing_transaction.hash_key != transaction.hash_key:
             logger.info(f'Updating: {transaction.transaction_bk}')
-
-            transaction_id = (
-                existing_transaction.transaction_id
-                or str(uuid.uuid4())
-            )
-
-            transaction.set_transaction_id(
-                transaction_id=transaction_id)
 
             # Update the timestamp to the last modified date
             transaction.timestamp = DateTimeUtil.timestamp()
@@ -222,7 +225,7 @@ class BankTransactionService:
                 original_transaction=existing_transaction)
 
         logger.info(
-            f'Transaction already synced: {transaction.transaction_id}')
+            f'No changes in transaction: {transaction.transaction_bk}')
 
         transaction.last_operation = SyncActionType.NoAction
         replace_result = await self._transaction_repository.replace(
