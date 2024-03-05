@@ -1,9 +1,8 @@
 import base64
 import io
 from datetime import datetime
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
-from domain.rest import UpdateEmailRuleRequest
 from framework.crypto.hashing import md5
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
@@ -13,6 +12,8 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaIoBaseUpload
 
 logger = get_logger(__name__)
+
+GMAIL_MESSAGE_URL = 'https://mail.google.com/mail/u/0/#inbox'
 
 
 def update(current_value, new_value):
@@ -28,10 +29,10 @@ class GmailEmailHeaders(Serializable):
         self,
         headers: List[Dict]
     ):
-        self.__headers = self.__build_index(
+        self.__headers = self._build_index(
             headers=headers)
 
-    def __build_index(
+    def _build_index(
         self,
         headers: List[Dict]
     ):
@@ -133,21 +134,35 @@ class GmailEmail(Serializable):
                 'headers_raw']
 
 
+class UpdateEmailRuleRequest(Serializable):
+    def __init__(
+        self,
+        data: Dict
+    ):
+        self.rule_id = data.get('rule_id')
+        self.name = data.get('name')
+        self.description = data.get('description')
+        self.query = data.get('query')
+        self.action = data.get('action')
+        self.data = data.get('data')
+        self.max_results = data.get('max_results')
+
+
 class GmailEmailRule(Serializable):
     DefaultMaxResults = 10
 
     def __init__(
         self,
-        rule_id,
-        name,
-        description,
-        max_results,
-        query,
-        action,
-        data,
-        created_date,
-        count_processed=0,
-        modified_date=None
+        rule_id: str,
+        name: str,
+        description: str,
+        max_results: int,
+        query: str,
+        action: str,
+        data: Any,
+        created_date: datetime,
+        count_processed: int = 0,
+        modified_date: Optional[datetime] = None
     ):
         self.rule_id = rule_id
         self.name = name
@@ -435,3 +450,92 @@ class AuthClient(Serializable):
         return Credentials.from_authorized_user_info(
             info=info,
             scopes=scopes)
+
+
+class ProcessGmailRuleResponse(Serializable):
+    def __init__(
+        self,
+        status: str,
+        rule: GmailEmailRule,
+        affected_count: int = None
+    ):
+        self.status = status
+        self.rule = rule
+
+        self.affected_count = (
+            affected_count or 0
+        )
+
+
+class GmailServiceRunResult(Serializable):
+    def __init__(
+        self,
+        rule_id: str,
+        rule_name: str,
+        affected_count: int
+    ):
+        self.rule_id = rule_id
+        self.rule_name = rule_name
+        self.affected_count = affected_count
+
+    @staticmethod
+    def from_response(
+        response: ProcessGmailRuleResponse
+    ):
+        return GmailServiceRunResult(
+            rule_id=response.rule.rule_id,
+            rule_name=response.rule.name,
+            affected_count=response.affected_count
+        )
+
+
+class ProcessGmailRuleRequest(Serializable):
+    def __init__(
+        self,
+        rule: GmailEmailRule
+    ):
+        self.rule = rule
+
+    @staticmethod
+    def from_rule(
+        rule
+    ):
+        return ProcessGmailRuleRequest(
+            rule=rule)
+
+
+class CreateEmailRuleRequest(Serializable):
+    def __init__(
+        self,
+        data: Dict
+    ):
+        self.name = data.get('name')
+        self.description = data.get('description')
+        self.query = data.get('query')
+        self.action = data.get('action')
+        self.data = data.get('data')
+        self.max_results = data.get('max_results')
+
+
+class DeleteGmailEmailRuleResponse(Serializable):
+    def __init__(
+        self,
+        result: bool
+    ):
+        self.result = result
+
+
+class GmailModifyEmailRequest(Serializable):
+    def __init__(
+        self,
+        add_label_ids: List = [],
+        remove_label_ids: List = []
+    ):
+        self.add_label_ids = add_label_ids
+        self.remove_label_ids = remove_label_ids
+
+    def to_dict(self) -> Dict:
+        return {
+            "addLabelIds": self.add_label_ids,
+            "removeLabelIds": self.remove_label_ids
+        }

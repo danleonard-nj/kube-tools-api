@@ -96,7 +96,7 @@ class BankTransactionService:
         sync_results = dict()
         for account in self._plaid_accounts:
             # Parse the account info from config
-            plaid_account = PlaidAccount.from_dict(account)
+            plaid_account = PlaidAccount.from_configuration(account)
 
             logger.info(
                 f'Parsed Plaid account: {plaid_account.bank_key}-{plaid_account.account_id}')

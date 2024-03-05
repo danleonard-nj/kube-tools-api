@@ -26,6 +26,10 @@ from services.gmail_rule_service import GmailRuleService
 logger = get_logger(__name__)
 
 
+class BankRuleMappingNotFoundException(Exception):
+    pass
+
+
 class GmailBankSyncService:
     def __init__(
         self,
@@ -45,16 +49,21 @@ class GmailBankSyncService:
 
         self._bank_rule_mapping: Dict[str, BankRuleConfiguration] = None
 
+    async def _lazy_load_bank_rule_mapping(
+        self
+    ) -> None:
+        # Lazy load the bank rule mapping
+        if self._bank_rule_mapping is None:
+            logger.info(f'Fetching bank rule mapping')
+            self._bank_rule_mapping = await self._generate_bank_rule_mapping()
+
     async def handle_balance_sync(
         self,
         rule: GmailEmailRule,
         message: GmailEmail
     ) -> BankRuleConfiguration:
 
-        # Lazy load the bank rule mapping
-        if self._bank_rule_mapping is None:
-            logger.info(f'Fetching bank rule mapping')
-            self._bank_rule_mapping = await self._generate_bank_rule_mapping()
+        await self._lazy_load_bank_rule_mapping()
 
         if rule.rule_id in self._bank_rule_mapping:
             logger.info('Bank rule detected')
@@ -63,7 +72,7 @@ class GmailBankSyncService:
         mapped_rule = self._bank_rule_mapping.get(rule.rule_id)
 
         if mapped_rule is None:
-            raise Exception(
+            raise BankRuleMappingNotFoundException(
                 f"No bank rule mapping found for rule ID '{rule.rule_id}'")
 
         logger.info(f'Mapped bank rule config: {mapped_rule.to_dict()}')

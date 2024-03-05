@@ -1,21 +1,8 @@
-from framework.abstractions.abstract_request import RequestContextProvider
-from framework.auth.azure import AzureAd
-from framework.auth.configuration import AzureAdConfiguration
-from framework.caching.memory_cache import MemoryCache
-from framework.clients.cache_client import CacheClientAsync
-from framework.clients.feature_client import FeatureClientAsync
-from framework.configuration.configuration import Configuration
-from framework.di.service_collection import ServiceCollection
-from framework.di.static_provider import ProviderBase
-from httpx import AsyncClient
-from motor.motor_asyncio import AsyncIOMotorClient
-from quart import Quart
-
 from clients.azure_gateway_client import AzureGatewayClient
 from clients.chat_gpt_service_client import ChatGptServiceClient
 from clients.email_gateway_client import EmailGatewayClient
 from clients.event_client import EventClient
-from clients.gmail_client import GmailClient, GmailRuleService
+from clients.gmail_client import GmailClient
 from clients.google_drive_client import GoogleDriveClient
 from clients.google_maps_client import GoogleMapsClient
 from clients.identity_client import IdentityClient
@@ -24,8 +11,7 @@ from clients.plaid_client import PlaidClient
 from clients.storage_client import StorageClient
 from clients.torrent_client import TorrentClient
 from clients.twilio_gateway import TwilioGatewayClient
-from data.api_event_repository import (ApiEventAlertRepository,
-                                       ApiEventRepository)
+from data.api_event_repository import ApiEventRepository
 from data.bank_repository import (BankBalanceRepository,
                                   BankTransactionsRepository,
                                   BankWebhooksRepository)
@@ -41,11 +27,21 @@ from data.google.google_reverse_geocode_repository import \
 from data.location_repository import (WeatherStationRepository,
                                       ZipLatLongRepository)
 from data.mongo_export_repository import MongoExportRepository
-from data.nest_repository import (NestDeviceRepository, NestLogRepository,
-                                  NestSensorRepository)
 from data.podcast_repository import PodcastRepository
 from data.weather_repository import WeatherRepository
 from domain.auth import AdRole, AuthPolicy
+from framework.abstractions.abstract_request import RequestContextProvider
+from framework.auth.azure import AzureAd
+from framework.auth.configuration import AzureAdConfiguration
+from framework.caching.memory_cache import MemoryCache
+from framework.clients.cache_client import CacheClientAsync
+from framework.clients.feature_client import FeatureClientAsync
+from framework.configuration.configuration import Configuration
+from framework.di.service_collection import ServiceCollection
+from framework.di.static_provider import ProviderBase
+from httpx import AsyncClient
+from motor.motor_asyncio import AsyncIOMotorClient
+from quart import Quart
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
 from services.api_event_service import ApiEventHistoryService
@@ -55,6 +51,7 @@ from services.bank_transaction_service import BankTransactionService
 from services.calendar_service import CalendarService
 from services.event_service import EventService
 from services.gmail_balance_sync_service import GmailBankSyncService
+from services.gmail_rule_service import GmailRuleService
 from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
 from services.location_history_service import LocationHistoryService
@@ -154,11 +151,8 @@ def register_repositories(
     descriptors.add_singleton(GoogleLocationHistoryRepository)
     descriptors.add_singleton(GoogleReverseGeocodingRepository)
     descriptors.add_singleton(GoogleEmailRuleRepository)
-    descriptors.add_singleton(NestSensorRepository)
-    descriptors.add_singleton(NestDeviceRepository)
     descriptors.add_singleton(MongoExportRepository)
     descriptors.add_singleton(ChatGptRepository)
-    descriptors.add_singleton(NestLogRepository)
     descriptors.add_singleton(ApiEventRepository)
     descriptors.add_singleton(GoogleEmailLogRepository)
     descriptors.add_singleton(BankBalanceRepository)
@@ -166,7 +160,6 @@ def register_repositories(
     descriptors.add_singleton(BankTransactionsRepository)
     descriptors.add_singleton(BankWebhooksRepository)
     descriptors.add_singleton(WeatherRepository)
-    descriptors.add_singleton(ApiEventAlertRepository)
     descriptors.add_singleton(GooleCalendarEventRepository)
 
 

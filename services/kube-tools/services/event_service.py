@@ -14,8 +14,8 @@ class EventService:
         event_client: EventClient,
         identity_client: IdentityClient
     ):
-        self.__event_client = event_client
-        self.__identity_client = identity_client
+        self._event_client = event_client
+        self._identity_client = identity_client
 
     async def dispatch_event(
         self,
@@ -25,7 +25,7 @@ class EventService:
 
         logger.info(f'Emit event: {event.endpoint}')
 
-        self.__event_client.send_message(
+        self._event_client.send_message(
             event.to_service_bus_message())
 
     async def dispatch_email_event(
@@ -39,7 +39,7 @@ class EventService:
 
         logger.info(f'Emit email notification event: {endpoint}')
 
-        token = await self.__identity_client.get_token(
+        token = await self._identity_client.get_token(
             client_name=AuthClient.KubeToolsApi,
             scope=ClientScope.EmailGatewayApi)
 
@@ -50,5 +50,5 @@ class EventService:
 
         logger.info(f'Email event message: {event.to_dict()}')
 
-        self.__event_client.send_message(
+        self._event_client.send_message(
             event.to_service_bus_message())

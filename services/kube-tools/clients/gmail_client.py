@@ -1,7 +1,9 @@
 import asyncio
 from typing import Dict, List
 
-from framework.caching.memory_cache import MemoryCache
+from constants.google import GoogleEmailLabel
+from domain.google import (GmailEmail, GmailModifyEmailRequest,
+                           GmailQueryResult, GoogleClientScope)
 from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
 from framework.logger import get_logger
@@ -9,12 +11,6 @@ from framework.uri import build_url
 from framework.validators.nulls import none_or_whitespace
 from google.auth.transport.requests import Request
 from httpx import AsyncClient
-
-from constants.google import GoogleEmailLabel
-from domain.cache import CacheKey
-from domain.google import GmailEmail, GmailQueryResult, GoogleClientScope
-from domain.rest import GmailModifyEmailRequest
-from services.gmail_rule_service import GmailRuleService
 from services.google_auth_service import GoogleAuthService
 
 logger = get_logger(__name__)

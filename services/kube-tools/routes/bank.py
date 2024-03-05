@@ -11,6 +11,7 @@ logger = get_logger(__name__)
 
 bank_bp = MetaBlueprint('bank_bp', __name__)
 
+
 def get_transactions_query_params() -> Dict:
     start_timestamp = request.args.get('start_timestamp')
     end_timestamp = request.args.get('end_timestamp')
@@ -35,6 +36,13 @@ def get_balance_history_query_params() -> Dict:
         'end_timestamp': parse_timestamp(end_timestamp) if end_timestamp is not None else None,
         'bank_keys': bank_keys if bank_keys is not None else list(),
         'group_institutions': request.args.get('group_institutions', 'false').lower() == 'true'
+    }
+
+
+def get_transaction_sync_query_params() -> dict:
+    return {
+        'days_back': int(request.args.get('days_back', 7)),
+        'include_transactions': request.args.get('include_transactions', '').lower() == 'true'
     }
 
 
@@ -74,14 +82,10 @@ async def post_sync(container):
 async def post_transactions_sync(container):
     service: BankService = container.resolve(BankService)
 
-    days_back = request.args.get('days_back', 7)
-
-    include_transactions = request.args.get(
-        'include_transactions', '').lower() == 'true'
+    params = get_transaction_sync_query_params()
 
     return await service.run_transaction_sync(
-        days_back=int(days_back),
-        include_transactions=include_transactions)
+        **params)
 
 
 @bank_bp.configure('/api/bank/transactions', methods=['GET'], auth_scheme=AuthPolicy.Default)

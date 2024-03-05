@@ -5,7 +5,7 @@ from typing import Callable, Dict, List, OrderedDict
 from framework.logger import get_logger
 from framework.serialization import Serializable
 
-TITLE_FILENAME_REGEX='[^A-Za-z0-9 ]+'
+TITLE_FILENAME_REGEX = '[^A-Za-z0-9 ]+'
 
 logger = get_logger(__name__)
 
@@ -48,11 +48,11 @@ class Episode(Serializable):
     ) -> str:
         show = re.sub(TITLE_FILENAME_REGEX, '', show_title)
         name = re.sub(TITLE_FILENAME_REGEX, '', self.episode_title)
-        
+
         return (
-            show.replace(' ', '_') 
-            + '_' 
-            + name.replace(' ', '_') 
+            show.replace(' ', '_')
+            + '_'
+            + name.replace(' ', '_')
             + '.mp3'
         )
 
@@ -168,4 +168,13 @@ class DownloadedEpisode(Serializable):
             'episode': self.episode.to_dict(),
             'show': self.show.to_dict(),
             'size': self.size
+        }
+
+    def to_result(
+        self
+    ):
+        return {
+            'Show': self.show.show_title,
+            'Episode': self.episode.episode_title,
+            'Size': f'{self.size} mb'
         }

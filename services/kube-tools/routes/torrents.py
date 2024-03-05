@@ -1,9 +1,8 @@
+from domain.auth import AuthPolicy
+from domain.torrents import TorrentSource
 from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
-
-from domain.auth import AuthPolicy
-from domain.torrents import TorrentSource
 from services.torrent_service import TorrentService
 
 logger = get_logger(__name__)

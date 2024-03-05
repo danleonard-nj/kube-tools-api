@@ -1,7 +1,6 @@
+from domain.auth import AuthPolicy
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
-
-from domain.auth import AuthPolicy
 from services.calendar_service import CalendarService
 
 calendar_bp = MetaBlueprint('calendar_bp', __name__)

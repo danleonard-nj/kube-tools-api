@@ -1,13 +1,19 @@
-from domain.rest import (CreateEmailRuleRequest, ProcessGmailRuleRequest,
-                         UpdateEmailRuleRequest)
+from domain.google import (CreateEmailRuleRequest, ProcessGmailRuleRequest,
+                           UpdateEmailRuleRequest)
 from framework.exceptions.nulls import ArgumentNullException
 from framework.rest.blueprints.meta import MetaBlueprint
-from quart import Response, request
+from quart import request
 from services.gmail_rule_service import GmailRuleService
 from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
 
 google_bp = MetaBlueprint('google_bp', __name__)
+
+
+def get_google_auth_query_params(body: dict) -> dict:
+    return {
+        'scopes': body.get('scopes', [])
+    }
 
 
 @google_bp.configure('/api/google/auth', methods=['POST'], auth_scheme='default')
@@ -16,10 +22,9 @@ async def get_auth(container):
         GoogleAuthService)
 
     body = await request.get_json()
-    scopes = body.get('scopes', [])
 
     client = await service.get_auth_client(
-        scopes=scopes)
+        **get_google_auth_query_params(body))
 
     return client.to_json()
 

@@ -1,6 +1,6 @@
 from typing import Dict, List
 
-from domain.mongo import Queryable
+from domain.mongo import MongoQuery, Queryable
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -49,6 +49,55 @@ class GetBalanceHistoryQuery(Queryable):
             }
 
         return query_filter
+
+
+class GetTransactionsQuery(MongoQuery):
+    def __init__(
+        self,
+        start_timestamp: int,
+        end_timestamp: int,
+        bank_keys: List[str] = None
+    ):
+        self.start_timestamp = start_timestamp
+        self.end_timestamp = end_timestamp
+        self.bank_keys = bank_keys
+
+    def get_query(
+        self
+    ):
+        query_filter = {
+            'transaction_date': {
+                '$gte': self.start_timestamp,
+                '$lte': self.end_timestamp
+            }
+        }
+
+        if self.bank_keys is not None:
+            query_filter['bank_key'] = {
+                '$in': self.bank_keys
+            }
+
+        return query_filter
+
+
+class GetTransactionsByTransactionBksQuery(MongoQuery):
+    def __init__(
+        self,
+        bank_key: str,
+        transaction_bks: List[str]
+    ):
+        self.bank_key = bank_key
+        self.transaction_bks = transaction_bks
+
+    def get_query(
+        self
+    ):
+        return {
+            'bank_key': self.bank_key,
+            'transaction_bk': {
+                '$in': self.transaction_bks
+            }
+        }
 
 
 class BankBalanceRepository(MongoRepositoryAsync):
@@ -108,21 +157,15 @@ class BankTransactionsRepository(MongoRepositoryAsync):
         end_timestamp: int,
         bank_keys: List[str] = None
     ):
-        query_filter = {
-            'transaction_date': {
-                '$gte': start_timestamp,
-                '$lte': end_timestamp
-            }
-        }
-
-        if bank_keys is not None:
-            query_filter['bank_key'] = {
-                '$in': bank_keys
-            }
+        query = GetTransactionsQuery(
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
+            bank_keys=bank_keys
+        )
 
         return await (
             self.collection
-            .find(filter=query_filter)
+            .find(filter=query.get_query())
             .to_list(length=None)
         )
 
@@ -131,16 +174,14 @@ class BankTransactionsRepository(MongoRepositoryAsync):
         bank_key: str,
         transaction_bks: str
     ):
-        query_filter = {
-            'bank_key': bank_key,
-            'transaction_bk': {
-                '$in': transaction_bks
-            }
-        }
+        query = GetTransactionsByTransactionBksQuery(
+            bank_key=bank_key,
+            transaction_bks=transaction_bks
+        )
 
         return await (
             self.collection
-            .find(filter=query_filter)
+            .find(filter=query.get_query())
             .to_list(length=None)
         )
 

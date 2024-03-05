@@ -11,10 +11,6 @@ from utilities.utils import DateTimeUtil
 logger = get_logger(__name__)
 
 
-def format_datetime(dt):
-    return dt.strftime('%Y-%m-%d')
-
-
 class BankService:
     def __init__(
         self,

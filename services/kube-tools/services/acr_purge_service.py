@@ -8,9 +8,11 @@ from clients.email_gateway_client import EmailGatewayClient
 from dateutil import parser
 from framework.configuration import Configuration
 from framework.logger.providers import get_logger
+from domain.acr import format_result_row, format_row
 from services.acr_service import AcrImage, AcrService
 from services.event_service import EventService
 from utilities.utils import ValueConverter
+from framework.exceptions.nulls import ArgumentNullException
 
 logger = get_logger(__name__)
 
@@ -33,12 +35,16 @@ class AcrPurgeService:
 
     async def purge_images(
         self,
-        days_back,
-        top_count
+        days_back: str | int,
+        top_count: str | int
     ):
+        ArgumentNullException.if_none_or_whitespace(days_back, 'days_back')
+        ArgumentNullException.if_none_or_whitespace(top_count, 'top_count')
+
         logger.info(f'Days back: {days_back}')
         logger.info(f'Keep top image count by repo: {top_count}')
 
+        # Parse the days back and top count
         days_back = int(days_back)
         top_count = int(top_count)
 
@@ -48,11 +54,6 @@ class AcrPurgeService:
         # Get a list of all the active images running
         # in the cluster to be excluded from the purge
         active_images = await self._azure_gateway_client.get_pod_images()
-
-        def format_row(data): return {
-            'active_image': data,
-            'is_active': True
-        }
 
         active_image_pods = active_images.get(
             'pods', [])
@@ -68,7 +69,7 @@ class AcrPurgeService:
             # Verify the repo is not excluded by
             # evaluating the exclusion rules defined
             # in the service configuration
-            if self.__is_excluded(
+            if self._is_excluded(
                     repository_name=repo):
                 continue
 
@@ -80,16 +81,8 @@ class AcrPurgeService:
 
             logger.info(f'Purge images for repo: {repo}: {len(purged_images)}')
 
-            def format_result_row(data): return (
-                data.to_dict() | {
-                    'repo_name': repo,
-                    'size_mb': ValueConverter.bytes_to_megabytes(
-                        bytes=data.image_size)
-                }
-            )
-
             processed_images.extend([
-                format_result_row(image)
+                format_result_row(image, repo)
                 for image in purged_images
             ])
 
@@ -112,6 +105,10 @@ class AcrPurgeService:
         days_back: Union[str, int] = 3,
         top_count: Union[str, int] = 3,
     ) -> List[AcrImage]:
+
+        ArgumentNullException.if_none_or_whitespace(repo_name, 'repo_name')
+        ArgumentNullException.if_none(active_images, 'active_images')
+        ArgumentNullException.if_none_or_whitespace(days_back, 'days_back')
 
         logger.info(f'Get images for repo: {repo_name}')
 
@@ -169,9 +166,9 @@ class AcrPurgeService:
 
         return processed_images
 
-    def __is_excluded(
+    def _is_excluded(
         self,
-        repository_name
+        repository_name: str
     ):
         for exclusion in self._exclusions:
             logger.info(f"Rule: [{exclusion}]: evaluating rule")

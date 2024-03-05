@@ -3,6 +3,7 @@ from typing import Dict
 
 from framework.logger import get_logger
 from framework.serialization import Serializable
+from utilities.utils import ValueConverter
 
 logger = get_logger(__name__)
 
@@ -46,3 +47,18 @@ class AcrImage(Serializable):
             tag=tag,
             image_size=data.get('imageSize'),
             created_date=data.get('createdTime'))
+
+
+def format_row(data): return {
+    'active_image': data,
+    'is_active': True
+}
+
+
+def format_result_row(data, repo): return (
+    data.to_dict() | {
+        'repo_name': repo,
+        'size_mb': ValueConverter.bytes_to_megabytes(
+            bytes=data.image_size)
+    }
+)

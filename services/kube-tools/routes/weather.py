@@ -1,8 +1,7 @@
+from domain.auth import AuthPolicy
 from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
-
-from domain.auth import AuthPolicy
 from services.weather_service import WeatherService
 
 logger = get_logger(__name__)

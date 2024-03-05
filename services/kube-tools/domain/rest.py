@@ -4,100 +4,6 @@ from framework.serialization import Serializable
 from quart import Response
 
 
-class GmailModifyEmailRequest(Serializable):
-    def __init__(
-        self,
-        add_label_ids: List = [],
-        remove_label_ids: List = []
-    ):
-        self.add_label_ids = add_label_ids
-        self.remove_label_ids = remove_label_ids
-
-    def to_dict(self) -> Dict:
-        return {
-            "addLabelIds": self.add_label_ids,
-            "removeLabelIds": self.remove_label_ids
-        }
-
-
-class CreateEmailRuleRequest(Serializable):
-    def __init__(
-        self,
-        data: Dict
-    ):
-        self.name = data.get('name')
-        self.description = data.get('description')
-        self.query = data.get('query')
-        self.action = data.get('action')
-        self.data = data.get('data')
-        self.max_results = data.get('max_results')
-
-
-class UpdateEmailRuleRequest(Serializable):
-    def __init__(
-        self,
-        data: Dict
-    ):
-        self.rule_id = data.get('rule_id')
-        self.name = data.get('name')
-        self.description = data.get('description')
-        self.query = data.get('query')
-        self.action = data.get('action')
-        self.data = data.get('data')
-        self.max_results = data.get('max_results')
-
-class DeleteGmailEmailRuleResponse(Serializable):
-    def __init__(
-        self,
-        result: bool
-    ):
-        self.result = result
-
-
-class SaveNestAuthCredentialRequest(Serializable):
-    def __init__(
-        self,
-        data: Dict
-    ):
-        self.client_id = data.get('client_id')
-        self.client_secret = data.get('client_secret')
-        self.refresh_token = data.get('refresh_token')
-
-
-class NestSensorDataRequest(Serializable):
-    def __init__(
-        self,
-        data: Dict
-    ):
-        self.sensor_id = data.get('sensor_id')
-
-        degrees_celsius = data.get('degrees_celsius', 0)
-        humidity_percent = data.get('humidity_percent', 0)
-
-        self.degrees_celsius = round(degrees_celsius or 0, 2)
-        self.humidity_percent = round(humidity_percent or 0, 2)
-        self.diagnostics = data.get('diagnostics')
-
-
-class NestCommandRequest(Serializable):
-    def __init__(
-        self,
-        data: Dict
-    ):
-        self.command_type = data.get('command_type')
-        self.params = data.get('params')
-
-
-class NestSensorLogRequest(Serializable):
-    def __init__(
-        self,
-        data: Dict
-    ):
-        self.device_id = data.get('device_id')
-        self.log_level = data.get('log_level')
-        self.message = data.get('message')
-
-
 class ChatGptResponse(Serializable):
     def __init__(
         self,
@@ -246,33 +152,9 @@ class GetBalancesResponse(Serializable):
     def __init__(
         self,
         balances: List[Dict],
-        missing: List[str]
     ):
         self.balances = balances
-        self.no_data = missing
 
-
-class ProcessGmailRuleRequest(Serializable):
-    def __init__(
-        self,
-        data: Dict
-    ):
-        self.rule = data.get('rule')
-
-
-class ProcessGmailRuleResponse(Serializable):
-    def __init__(
-        self,
-        status: str,
-        rule,
-        affected_count: int = None
-    ):
-        self.status = status
-        self.rule = rule
-
-        self.affected_count = (
-            affected_count or 0
-        )
 
 class ChatGptCompletionRequest(Serializable):
     def __init__(

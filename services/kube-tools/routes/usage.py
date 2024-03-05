@@ -1,9 +1,8 @@
+from domain.features import Feature
+from domain.usage import UsageArgs
 from framework.clients.feature_client import FeatureClientAsync
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
-
-from domain.features import Feature
-from domain.usage import UsageArgs
 from services.usage_service import UsageService
 
 usage_bp = MetaBlueprint('usage_bp', __name__)

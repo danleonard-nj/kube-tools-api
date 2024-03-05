@@ -1,14 +1,12 @@
 import json
-import uuid
 from datetime import datetime
 from typing import Dict, List
 
+from domain.enums import (BankKey, PlaidPaymentChannel, PlaidTransactionType,
+                          SyncActionType)
 from framework.crypto.hashing import sha256
 from framework.logger import get_logger
 from framework.serialization import Serializable
-
-from domain.enums import (BankKey, PlaidPaymentChannel, PlaidTransactionCategory,
-                          PlaidTransactionType, SyncActionType)
 from utilities.utils import DateTimeUtil, parse, parse_timestamp
 
 logger = get_logger(__name__)
@@ -277,14 +275,24 @@ class BankBalance(Serializable):
 class PlaidBalance(Serializable):
     def __init__(
         self,
+        account_name: str,
+        current_balance: float,
+        available_balance: float
+    ):
+        self.account_name = account_name
+        self.current_balance = current_balance
+        self.available_balance = available_balance
+
+    @staticmethod
+    def from_plaid_response(
         data: Dict
     ):
-        self.account_name = data.get('name')
-
         balances = data.get('balances')
 
-        self.current_balance = balances.get('current')
-        self.available_balance = balances.get('available')
+        return PlaidBalance(
+            account_name=data.get('name'),
+            current_balance=balances.get('current'),
+            available_balance=balances.get('available'))
 
 
 class PlaidAccount:
@@ -299,7 +307,7 @@ class PlaidAccount:
         self.account_id = account_id
 
     @staticmethod
-    def from_dict(data):
+    def from_configuration(data):
         return PlaidAccount(
             bank_key=data.get('bank_key'),
             access_token=data.get('access_token'),

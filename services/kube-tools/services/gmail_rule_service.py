@@ -7,15 +7,16 @@ from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from domain.exceptions import (EmailRuleExistsException,
                                EmailRuleNotFoundException)
 from domain.features import Feature
-from domain.google import EmailRuleLog, GmailEmailRule
-from domain.rest import (CreateEmailRuleRequest, DeleteGmailEmailRuleResponse,
-                         UpdateEmailRuleRequest)
+from domain.google import (CreateEmailRuleRequest,
+                           DeleteGmailEmailRuleResponse, EmailRuleLog,
+                           GmailEmailRule, UpdateEmailRuleRequest)
 from framework.clients.feature_client import FeatureClientAsync
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
+
 
 class GmailRuleService:
     def __init__(

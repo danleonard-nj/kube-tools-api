@@ -1,8 +1,7 @@
 import time
 from typing import Dict, List
 
-from data.api_event_repository import (ApiEventAlertRepository,
-                                       ApiEventRepository)
+from data.api_event_repository import ApiEventRepository
 from domain.api_events import ApiEventAlert
 from framework.logger import get_logger
 from framework.serialization import Serializable
@@ -16,10 +15,8 @@ class ApiEventHistoryService:
     def __init__(
         self,
         repository: ApiEventRepository,
-        alert_repostory: ApiEventAlertRepository
     ):
         self._repository = repository
-        self._alert_repository = alert_repostory
 
     async def poll_event_alerts(
         self,

@@ -4,17 +4,20 @@ from typing import List
 from clients.email_gateway_client import EmailGatewayClient
 from clients.plaid_client import PlaidClient
 from data.bank_repository import BankBalanceRepository
-from domain.bank import BALANCE_BANK_KEY_EXCLUSIONS, BALANCE_CAPTURE_EMAILS_FEATURE_KEY, BALANCE_EMAIL_RECIPIENT, BALANCE_EMAIL_SUBJECT, BankBalance, PlaidAccount, PlaidBalance
+from domain.bank import (BALANCE_BANK_KEY_EXCLUSIONS,
+                         BALANCE_CAPTURE_EMAILS_FEATURE_KEY,
+                         BALANCE_EMAIL_RECIPIENT, BALANCE_EMAIL_SUBJECT,
+                         BankBalance, PlaidAccount, PlaidBalance)
 from domain.enums import BankKey, SyncType
 from domain.rest import GetBalancesResponse
 from framework.clients.feature_client import FeatureClientAsync
+from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from framework.utilities.iter_utils import first
 from services.event_service import EventService
 from utilities.utils import DateTimeUtil
-from framework.concurrency import TaskCollection
 
 logger = get_logger(__name__)
 
@@ -87,6 +90,7 @@ class BalanceSyncService:
             balance = await self.sync_plaid_account(account)
             balances.append(balance)
 
+        # Sync all plaid accounts asynchronously
         tasks = TaskCollection(*[handle_account(account)
                                  for account in self._plaid_accounts])
 
@@ -101,7 +105,7 @@ class BalanceSyncService:
         logger.info(f'Syncing plaid account: {account}')
 
         # Parse the account configuration
-        config = PlaidAccount.from_dict(account)
+        config = PlaidAccount.from_configuration(account)
 
         # Fetch the balance from Plaid
         balance_response = await self._plaid_client.get_balance(
@@ -120,7 +124,7 @@ class BalanceSyncService:
             return
 
         # Parse the balance from the response
-        balance = PlaidBalance(
+        balance = PlaidBalance.from_plaid_response(
             data=target_account)
 
         logger.info(
@@ -164,17 +168,13 @@ class BalanceSyncService:
 
     async def get_balance(
         self,
-        bank_key: str
+        bank_key: BankKey
     ) -> BankBalance:
 
         ArgumentNullException.if_none_or_whitespace(bank_key, 'bank_key')
 
-        # Parse the bank key, this will throw if an
-        # invalid key is provided
-        key = BankKey(value=bank_key)
-
         entity = await self._balance_repository.get_balance_by_bank_key(
-            bank_key=str(key))
+            bank_key=bank_key)
 
         if entity is None:
             logger.info(f'Could not find balance for bank {bank_key}')
@@ -193,19 +193,16 @@ class BalanceSyncService:
 
         logger.info(f'Getting balances for all banks')
 
-        results = list()
-        missing = list()
+        keys = [key for key in BankKey
+                if key.value not in BALANCE_BANK_KEY_EXCLUSIONS]
 
-        keys = [key.value for key in BankKey
-                if key not in BALANCE_BANK_KEY_EXCLUSIONS]
+        results = []
 
-        async def handle_balance(key: str):
+        async def handle_balance(key: BankKey):
             result = await self.get_balance(
-                bank_key=str(key))
+                bank_key=key)
 
-            if result is None:
-                missing.append(key)
-            else:
+            if result is not None:
                 results.append(result)
 
         tasks = TaskCollection(*[handle_balance(key)
@@ -213,9 +210,10 @@ class BalanceSyncService:
 
         await tasks.run()
 
+        results.sort(key=lambda x: x.bank_key)
+
         return GetBalancesResponse(
-            balances=results,
-            missing=missing)
+            balances=results)
 
     async def get_balance_history(
         self,

@@ -12,13 +12,12 @@ from domain.podcasts.handlers import (AcastFeedHandler, FeedHandler,
 from domain.podcasts.podcasts import DownloadedEpisode, Episode, Feed, Show
 from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration.configuration import Configuration
+from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
 from services.event_service import EventService
 from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
-
-DRY_RUN = False
 
 
 class PodcastService:
@@ -41,6 +40,8 @@ class PodcastService:
         self._feature_client = feature_client
         self._event_service = event_service
 
+        self.dry_run = False
+
     async def get_podcasts(
         self
     ) -> List[Show]:
@@ -48,8 +49,6 @@ class PodcastService:
 
         shows = [Show.from_entity(x) for x in entities]
         logger.info(f'Found {len(shows)} shows')
-
-        # results = [show.to_dict() for show in shows]
 
         return shows
 
@@ -84,6 +83,8 @@ class PodcastService:
         self,
         feed: Feed
     ):
+        ArgumentNullException.if_none(feed, 'feed')
+
         logger.info(f'Handling RSS feed: {feed.name}')
 
         # Get episodes to download and show model
@@ -97,7 +98,7 @@ class PodcastService:
         if not is_new:
             # Update the show modified date
             show.modified_date = DateTimeUtil.timestamp()
-            
+
             # Update the show with new episodes
             await self._podcast_repository.update(
                 selector=show.get_selector(),
@@ -118,6 +119,10 @@ class PodcastService:
         '''
 
         configuration = self._configuration.podcasts
+
+        if configuration is None:
+            raise Exception('No podcast configuration found')
+
         return [
             Feed(x) for x in configuration.get('feeds')
         ]
@@ -130,6 +135,9 @@ class PodcastService:
         '''
         Upload podcast audio to Google Drive
         '''
+
+        ArgumentNullException.if_none(episode, 'episode')
+        ArgumentNullException.if_none(audio, 'audio')
 
         logger.info(f'{episode.get_filename()}: Upload started')
 
@@ -149,17 +157,9 @@ class PodcastService:
         Get sync result table for email notification
         '''
 
-        def format_result(
-            episode: Episode
-        ) -> Dict:
-            return {
-                'Show': episode.show.show_title,
-                'Episode': episode.episode.episode_title,
-                'Size': f'{episode.size} mb'
-            }
+        ArgumentNullException.if_none(episodes, 'episodes')
 
-        return [format_result(episode)
-                for episode in episodes]
+        return [episode.to_result() for episode in episodes]
 
     async def _wait_random_delay(
         self
@@ -180,6 +180,8 @@ class PodcastService:
         self,
         episodes: list[DownloadedEpisode]
     ):
+        ArgumentNullException.if_none(episodes, 'episodes')
+
         logger.info(f'Sending email for saved episodes')
 
         is_enabled = await self._feature_client.is_enabled(
@@ -210,6 +212,8 @@ class PodcastService:
         Fetch the RSS feed
         '''
 
+        ArgumentNullException.if_none(rss_feed, 'rss_feed')
+
         async with httpx.AsyncClient(timeout=None) as client:
             return await client.get(
                 url=rss_feed.feed,
@@ -219,6 +223,8 @@ class PodcastService:
         self,
         episode: Episode
     ):
+        ArgumentNullException.if_none(episode, 'episode')
+
         async with httpx.AsyncClient(timeout=None) as client:
             return await client.get(
                 url=episode.audio,
@@ -231,6 +237,7 @@ class PodcastService:
         '''
         Get the saved show record
         '''
+        ArgumentNullException.if_none(show, 'show')
 
         logger.info(f'Get show entity: {show.show_id}')
 
@@ -264,6 +271,9 @@ class PodcastService:
         handler_type: str
     ) -> FeedHandler:
 
+        ArgumentNullException.if_none_or_whitespace(
+            handler_type, 'handler_type')
+
         if handler_type == 'rss-acast':
             return AcastFeedHandler()
         elif handler_type == 'rss-generic':
@@ -275,6 +285,8 @@ class PodcastService:
         self,
         rss_feed: Feed
     ) -> Tuple[List[DownloadedEpisode], Show]:
+
+        ArgumentNullException.if_none(rss_feed, 'rss_feed')
 
         await self._wait_random_delay()
 
@@ -308,7 +320,7 @@ class PodcastService:
 
                 logger.info(f'Save episode: {episode.episode_title}')
 
-                if not DRY_RUN:
+                if not self.dry_run:
                     audio_data = await self._get_episode_audio(
                         episode=episode)
 
@@ -317,11 +329,11 @@ class PodcastService:
                 downloaded_episode = DownloadedEpisode(
                     episode=episode,
                     show=show,
-                    size=len(audio_data.content) if not DRY_RUN else 0)
+                    size=len(audio_data.content) if not self.dry_run else 0)
 
                 download_queue.append(downloaded_episode)
 
-                if not DRY_RUN:
+                if not self.dry_run:
                     await self._upload_file(
                         episode=downloaded_episode,
                         audio=audio_data.content)

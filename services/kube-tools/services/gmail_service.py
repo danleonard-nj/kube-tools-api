@@ -6,18 +6,17 @@ from constants.google import (GmailRuleAction, GoogleEmailHeader,
                               GoogleEmailLabel)
 from domain.bank import BankRuleConfiguration
 from domain.enums import ProcessGmailRuleResultType
-from domain.google import GmailEmail, GmailEmailRule
-from domain.rest import ProcessGmailRuleRequest, ProcessGmailRuleResponse
+from domain.google import (GMAIL_MESSAGE_URL, GmailEmail, GmailEmailRule,
+                           GmailServiceRunResult, ProcessGmailRuleRequest,
+                           ProcessGmailRuleResponse)
 from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
 from framework.logger import get_logger
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
+from framework.exceptions.nulls import ArgumentNullException
 
 logger = get_logger(__name__)
-
-
-GMAIL_MESSAGE_URL = 'https://mail.google.com/mail/u/0/#inbox'
 
 
 class GmailService:
@@ -56,14 +55,19 @@ class GmailService:
             response = await self.process_rule(
                 process_request=req)
 
-            run_results.append(response)
+            run_results.append(
+                GmailServiceRunResult.from_response(
+                    response=response)
+            )
 
         for rule in rules:
-            process_request = ProcessGmailRuleRequest({
-                'rule': rule.to_dict()
-            })
+            process_request = ProcessGmailRuleRequest.from_rule(
+                rule=rule)
 
-            tasks.add_task(capture_response(req=process_request))
+            tasks.add_task(
+                capture_response(
+                    req=process_request)
+            )
 
         await tasks.run()
 
@@ -73,6 +77,8 @@ class GmailService:
         self,
         process_request: ProcessGmailRuleRequest
     ):
+        ArgumentNullException.if_none(process_request, 'process_request')
+
         try:
             logger.info(
                 f'Parsing rule to process: {process_request.to_dict()}')
@@ -80,8 +86,7 @@ class GmailService:
             if process_request.rule is None:
                 raise Exception('No rule provided to process')
 
-            rule = GmailEmailRule.from_request_body(
-                data=process_request.rule)
+            rule = process_request.rule
 
             logger.info(f'Processing rule: {rule.rule_id}: {rule.name}')
 
@@ -129,6 +134,8 @@ class GmailService:
         rule: GmailEmailRule
     ) -> List[str]:
 
+        ArgumentNullException.if_none(rule, 'rule')
+
         # Query the inbox w/ the defined rule query
         query_result = await self._gmail_client.search_inbox(
             query=rule.query,
@@ -162,6 +169,8 @@ class GmailService:
         self,
         rule: GmailEmailRule
     ):
+        ArgumentNullException.if_none(rule, 'rule')
+
         logger.info(f'Processing bank sync rule: {rule.name}')
 
         # Query the inbox w/ the defined rule query
@@ -220,6 +229,10 @@ class GmailService:
         message: GmailEmail,
         bank_rule_config: BankRuleConfiguration,
     ):
+        ArgumentNullException.if_none(rule, 'rule')
+        ArgumentNullException.if_none(message, 'message')
+        ArgumentNullException.if_none(bank_rule_config, 'bank_rule_config')
+
         # Send a normal alert if configured in addition
         # to syncing the balance
         if (bank_rule_config is None
@@ -259,6 +272,8 @@ class GmailService:
         self,
         rule: GmailEmailRule
     ):
+        ArgumentNullException.if_none(rule, 'rule')
+
         logger.info(f'Processing SMS rule: {rule.name}')
 
         # Query the inbox w/ the defined rule query
@@ -314,6 +329,9 @@ class GmailService:
         rule: GmailEmailRule,
         message: GmailEmail
     ):
+        ArgumentNullException.if_none(rule, 'rule')
+        ArgumentNullException.if_none(message, 'message')
+
         body = f'From: {message.headers[GoogleEmailHeader.From]}'
         body = f'Rule: {rule.name} ({rule.rule_id})'
         body += '\n'
