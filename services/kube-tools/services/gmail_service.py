@@ -80,9 +80,6 @@ class GmailService:
         ArgumentNullException.if_none(process_request, 'process_request')
 
         try:
-            logger.info(
-                f'Parsing rule to process: {process_request.to_dict()}')
-
             if process_request.rule is None:
                 raise GmailRuleProcessingException(
                     'No rule provided to process')
@@ -96,21 +93,15 @@ class GmailService:
 
             # Process an archival rule
             if rule.action == GmailRuleAction.Archive:
-                logger.info(f'Rule type: {GmailRuleAction.Archive}')
-
                 affected_count = await self.process_archive_rule(
                     rule=rule)
 
             # Process an SMS rule
             if rule.action == GmailRuleAction.SMS:
-                logger.info(f'Rule type: {GmailRuleAction.SMS}')
-
                 affected_count = await self.process_sms_rule(
                     rule=rule)
 
             if rule.action == GmailRuleAction.BankSync:
-                logger.info(f'Rule type: {GmailRuleAction.BankSync}')
-
                 affected_count = await self.process_bank_sync_rule(
                     rule=rule)
 

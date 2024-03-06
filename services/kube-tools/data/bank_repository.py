@@ -1,6 +1,6 @@
 from typing import Dict, List
 
-from domain.mongo import MongoQuery, Queryable
+from domain.mongo import Queryable
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -51,7 +51,7 @@ class GetBalanceHistoryQuery(Queryable):
         return query_filter
 
 
-class GetTransactionsQuery(MongoQuery):
+class GetTransactionsQuery(Queryable):
     def __init__(
         self,
         start_timestamp: int,
@@ -80,7 +80,7 @@ class GetTransactionsQuery(MongoQuery):
         return query_filter
 
 
-class GetTransactionsByTransactionBksQuery(MongoQuery):
+class GetTransactionsByTransactionBksQuery(Queryable):
     def __init__(
         self,
         bank_key: str,

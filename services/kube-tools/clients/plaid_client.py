@@ -1,12 +1,11 @@
 from typing import List
 
+from domain.bank import (PlaidBalanceRequest, PlaidTransactionRequestOptions,
+                         PlaidTransactionsRequest)
 from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from httpx import AsyncClient
-
-from domain.rest import (PlaidBalanceRequest, PlaidTransactionRequestOptions,
-                         PlaidTransactionsRequest)
 
 logger = get_logger(__name__)
 

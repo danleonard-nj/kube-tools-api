@@ -5,11 +5,12 @@ from clients.identity_client import IdentityClient
 from domain.auth import AuthClient, ClientScope
 from domain.cache import CacheKey
 from domain.exceptions import ChatGptException
-from domain.rest import ChatGptCompletionRequest
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from framework.logger import get_logger
 from httpx import AsyncClient
+
+from domain.gpt import ChatGptCompletionRequest
 
 logger = get_logger(__name__)
 

@@ -146,7 +146,14 @@ class GmailEmail(Serializable):
         self.internal_date = data.get('internalDate')
 
         self.raw = data
-        self.body_raw = data.get('payload').get('body').get('data')
+
+        self.body_raw = (
+            data
+            .get('payload', dict())
+            .get('body', dict())
+            .get('data', dict())
+        )
+
         self.headers_raw = data.get('payload').get('headers')
 
         self.headers = GmailEmailHeaders(

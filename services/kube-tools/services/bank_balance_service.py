@@ -5,12 +5,11 @@ from clients.email_gateway_client import EmailGatewayClient
 from clients.plaid_client import PlaidClient
 from data.bank_repository import BankBalanceRepository
 from domain.bank import (BALANCE_BANK_KEY_EXCLUSIONS, BALANCE_EMAIL_RECIPIENT,
-                         BALANCE_EMAIL_SUBJECT, BankBalance, PlaidAccount,
+                         BALANCE_EMAIL_SUBJECT, BankBalance, GetBalancesResponse, PlaidAccount,
                          PlaidBalance)
 from domain.enums import BankKey, SyncType
 from domain.exceptions import InvalidBankKeyException
 from domain.features import Feature
-from domain.rest import GetBalancesResponse
 from framework.clients.feature_client import FeatureClientAsync
 from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
