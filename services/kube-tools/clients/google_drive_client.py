@@ -1,10 +1,9 @@
 from typing import Any
 
-from framework.logger.providers import get_logger
-from googleapiclient.discovery import build
-
 from domain.google import (GoogleClientScope, GoogleDriveDirectory,
                            GoogleDriveFilePermission, GoogleDriveFileUpload)
+from framework.logger.providers import get_logger
+from googleapiclient.discovery import build
 from services.google_auth_service import GoogleAuthService
 
 logger = get_logger(__name__)
@@ -15,7 +14,7 @@ class GoogleDriveClient:
         self,
         auth_service: GoogleAuthService
     ):
-        self.__auth_service = auth_service
+        self._auth_service = auth_service
 
     async def upload_file(
         self,
@@ -53,7 +52,7 @@ class GoogleDriveClient:
     ) -> Any:
         logger.info('Creating Google Drive client')
 
-        auth_client = await self.__auth_service.get_auth_client(
+        auth_client = await self._auth_service.get_auth_client(
             scopes=GoogleClientScope.Drive)
 
         client = build(

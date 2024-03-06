@@ -6,6 +6,7 @@ import httpx
 from clients.email_gateway_client import EmailGatewayClient
 from clients.google_drive_client import GoogleDriveClient
 from data.podcast_repository import PodcastRepository
+from domain.exceptions import PodcastConfigurationException
 from domain.features import Feature
 from domain.podcasts.handlers import (AcastFeedHandler, FeedHandler,
                                       GenericFeedHandler)
@@ -121,7 +122,8 @@ class PodcastService:
         configuration = self._configuration.podcasts
 
         if configuration is None:
-            raise Exception('No podcast configuration found')
+            raise PodcastConfigurationException(
+                'No podcast configuration found')
 
         return [
             Feed(x) for x in configuration.get('feeds')
@@ -279,7 +281,8 @@ class PodcastService:
         elif handler_type == 'rss-generic':
             return GenericFeedHandler()
         else:
-            raise Exception(f'Unsupported feed type: {handler_type}')
+            raise PodcastConfigurationException(
+                f'Unsupported feed type: {handler_type}')
 
     async def _sync_feed(
         self,

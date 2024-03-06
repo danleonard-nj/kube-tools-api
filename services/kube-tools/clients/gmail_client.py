@@ -1,21 +1,18 @@
 import asyncio
-from typing import Dict, List
 
-from constants.google import GoogleEmailLabel
 from domain.google import (GmailEmail, GmailModifyEmailRequest,
-                           GmailQueryResult, GoogleClientScope)
+                           GmailQueryResult, GoogleClientScope,
+                           GoogleEmailLabel)
 from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
+from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from framework.uri import build_url
 from framework.validators.nulls import none_or_whitespace
-from google.auth.transport.requests import Request
 from httpx import AsyncClient
 from services.google_auth_service import GoogleAuthService
 
 logger = get_logger(__name__)
-
-DEFAULT_CONCURRENCY = 24
 
 
 class GmailClient:
@@ -31,9 +28,14 @@ class GmailClient:
         self._base_url = configuration.gmail.get(
             'base_url')
 
+        # Use 24 as default concurrency
         concurrency = configuration.gmail.get(
-            'concurrency', DEFAULT_CONCURRENCY)
+            'concurrency', 24)
+
         self._semaphore = asyncio.Semaphore(concurrency)
+
+        ArgumentNullException.if_none_or_whitespace(
+            self._base_url, 'base_url')
 
     async def _get_token(
         self
@@ -47,7 +49,7 @@ class GmailClient:
 
     async def _get_auth_headers(
         self
-    ) -> Dict:
+    ) -> dict:
 
         token = await self._get_token()
 
@@ -67,7 +69,7 @@ class GmailClient:
     async def get_message(
         self,
         message_id: str
-    ) -> Dict:
+    ) -> dict:
 
         logger.debug(f'Fetching message: {message_id}')
 
@@ -89,8 +91,8 @@ class GmailClient:
 
     async def get_messages(
         self,
-        message_ids: List[str]
-    ) -> List[GmailEmail]:
+        message_ids: list[str]
+    ) -> list[GmailEmail]:
 
         logger.debug(f'Fetching {len(message_ids)} messages')
 
@@ -104,9 +106,12 @@ class GmailClient:
     async def modify_tags(
         self,
         message_id: str,
-        to_add: List[str] = [],
-        to_remove: List[str] = []
-    ) -> Dict:
+        to_add: list[str] = [],
+        to_remove: list[str] = []
+    ) -> dict:
+
+        ArgumentNullException.if_none_or_whitespace(
+            message_id, 'message_id')
 
         logger.info(f'Tags: add + {to_add} | remove - {to_remove}')
 
@@ -131,7 +136,11 @@ class GmailClient:
     async def archive_message(
         self,
         message_id: str
-    ):
+    ) -> dict:
+
+        ArgumentNullException.if_none_or_whitespace(
+            message_id, 'message_id')
+
         logger.info(f'Gmail archive message: {message_id}')
 
         remove_labels = [
@@ -149,6 +158,9 @@ class GmailClient:
         max_results: int = None,
         page_token: str = None
     ) -> GmailQueryResult:
+
+        ArgumentNullException.if_none_or_whitespace(
+            query, 'query')
 
         # Build the inbox query endpoint
         endpoint = build_url(

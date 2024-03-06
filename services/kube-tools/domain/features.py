@@ -6,3 +6,4 @@ class Feature:
     PodcastSyncEmailNotify = 'podcast-sync-email-notify'
     EmailRuleLogIngestion = 'email-rule-log-ingestion'
     NestSensorDataIngestion = 'nest-sensor-data-ingestion'
+    BankingBalanceCaptureEmailNotify = 'banking-balance-capture-emails'

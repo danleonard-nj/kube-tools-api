@@ -22,7 +22,7 @@ class ChatGptServiceClient:
         identity_client: IdentityClient,
         cache_client: CacheClientAsync
     ):
-        self.__http_client = http_client
+        self._http_client = http_client
         self._identity_client = identity_client
         self._cache_client = cache_client
 
@@ -66,7 +66,7 @@ class ChatGptServiceClient:
 
         req = ChatGptCompletionRequest(prompt=prompt)
 
-        response = await self.__http_client.post(
+        response = await self._http_client.post(
             url=f'{self.__base_url}/api/tools/chatgpt/internal/chat/completions',
             headers=headers,
             json=req.to_dict())

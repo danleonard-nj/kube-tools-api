@@ -6,10 +6,12 @@ from framework.serialization import Serializable
 
 logger = get_logger(__name__)
 
+
 def str_concat(series):
     def func(x, y): return f'{x}, {y}' if y not in x else x
 
     return reduce(func, series)
+
 
 FORECAST_COLUMN_EXCLUSIONS = [
     'timestamp'
@@ -26,6 +28,8 @@ FORECAST_AGGREGATE_MAPPING = {
 }
 
 FORECAST_AGGREGATE_KEY = 'date'
+DEAULT_TIMEZONE = 'America/Phoenix'
+
 
 class TemperatureResult(Serializable):
     def __init__(
@@ -86,6 +90,7 @@ class GetWeatherQueryParams(Serializable):
             'appid': self.__api_key,
             'units': 'imperial'
         }
+
 
 class ForecastRecord:
     def __init__(

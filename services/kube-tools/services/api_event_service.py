@@ -4,7 +4,6 @@ from typing import Dict, List
 from data.api_event_repository import ApiEventRepository
 from domain.api_events import ApiEventAlert
 from framework.logger import get_logger
-from framework.serialization import Serializable
 
 DEFAULT_ALERT_LOOKBACK_HOURS = 1
 

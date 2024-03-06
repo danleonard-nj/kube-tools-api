@@ -15,6 +15,7 @@ from domain.bank import (BALANCE_EMAIL_EXCLUSION_KEYWORDS,
                          strip_special_chars)
 from domain.cache import CacheKey
 from domain.enums import BankKey, SyncType
+from domain.exceptions import GmailBalanceSyncException
 from domain.google import GmailEmail, GmailEmailRule, parse_gmail_body
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
@@ -24,10 +25,6 @@ from services.bank_service import BankService
 from services.gmail_rule_service import GmailRuleService
 
 logger = get_logger(__name__)
-
-
-class BankRuleMappingNotFoundException(Exception):
-    pass
 
 
 class GmailBankSyncService:
@@ -72,7 +69,7 @@ class GmailBankSyncService:
         mapped_rule = self._bank_rule_mapping.get(rule.rule_id)
 
         if mapped_rule is None:
-            raise BankRuleMappingNotFoundException(
+            raise GmailBalanceSyncException(
                 f"No bank rule mapping found for rule ID '{rule.rule_id}'")
 
         logger.info(f'Mapped bank rule config: {mapped_rule.to_dict()}')
@@ -151,7 +148,8 @@ class GmailBankSyncService:
                 logger.info(f'Balance successfully parsed as float: {balance}')
             except Exception as ex:
                 logger.info(f'Balance is not a float: {balance}')
-                raise Exception(f'Failed to parse balance: {balance}') from ex
+                raise GmailBalanceSyncException(
+                    f'Failed to parse balance: {balance}') from ex
 
             logger.info(f'Balance: {balance}')
 

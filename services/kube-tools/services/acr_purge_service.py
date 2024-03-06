@@ -6,13 +6,12 @@ import pytz
 from clients.azure_gateway_client import AzureGatewayClient
 from clients.email_gateway_client import EmailGatewayClient
 from dateutil import parser
-from framework.configuration import Configuration
-from framework.logger.providers import get_logger
 from domain.acr import format_result_row, format_row
+from framework.configuration import Configuration
+from framework.exceptions.nulls import ArgumentNullException
+from framework.logger.providers import get_logger
 from services.acr_service import AcrImage, AcrService
 from services.event_service import EventService
-from utilities.utils import ValueConverter
-from framework.exceptions.nulls import ArgumentNullException
 
 logger = get_logger(__name__)
 

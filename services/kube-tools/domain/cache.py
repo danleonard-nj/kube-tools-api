@@ -12,10 +12,6 @@ def generate_uuid(data: Any):
     return str(uuid.UUID(hashed.hexdigest()))
 
 
-def create_key(**kwargs):
-    return generate_uuid(kwargs)
-
-
 class CacheKey:
     @staticmethod
     def azure_gateway_usage_key(
@@ -46,12 +42,12 @@ class CacheKey:
         return 'kube-tools-gmail-oauth-token'
 
     @staticmethod
-    def google_drive_token() -> str:
-        return 'kube-tools-google-drive-oauth-token'
+    def google_auth_client() -> str:
+        return 'kube-tools-google-auth-client'
 
     @staticmethod
-    def google_nest_auth_token() -> str:
-        return 'kube-tools-google-nest-auth-token'
+    def google_drive_token() -> str:
+        return 'kube-tools-google-drive-oauth-token'
 
     @staticmethod
     def nest_device_grouped_sensor_data(

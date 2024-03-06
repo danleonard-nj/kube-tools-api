@@ -163,18 +163,6 @@ class ValueConverter:
         )
 
 
-def sort_by(items, key):
-    if any(items):
-        logger.info(f'Sort type: {type(items[0]).__name__}: Key: {key}')
-        return sorted(items, key=lambda x: get_sort_key(x, key))
-
-
-def get_sort_key(obj, key):
-    if isinstance(obj, dict):
-        return obj[key]
-    return getattr(obj, key)
-
-
 def parse_bool(value):
     return value == 'true'
 
@@ -201,6 +189,13 @@ def create_uuid(data):
 def first(items):
     for item in items:
         return item
+
+
+def element_at(_list, index):
+    try:
+        return _list[index]
+    except:
+        return None
 
 
 deprecate_logger = build_deprecate_logger()

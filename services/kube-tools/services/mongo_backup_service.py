@@ -3,22 +3,16 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
 
 import aiofiles
-from framework.configuration import Configuration
-from framework.exceptions.nulls import ArgumentNullException
-from framework.logger import get_logger
-
 from clients.email_gateway_client import EmailGatewayClient
 from clients.storage_client import StorageClient
 from data.mongo_export_repository import MongoExportRepository
 from domain.mongo import (MongoBackupConstants, MongoExportBlob,
                           MongoExportHistoryRecord, MongoExportPurgeResult,
                           MongoExportResult)
-
-EMAIL_SUBJECT = 'MongoDB Backup Service'
-EMAIL_RECIPIENT = 'dcl525@gmai.com'
-
-MONGO_TOOLS_CWD = '/app/utilities/mongotools/bin'
-MONGO_TOOLS_ARG = '--archive=dump.gz --gzip'
+from domain.mongo_backup import MONGO_TOOLS_ARG, MONGO_TOOLS_CWD
+from framework.configuration import Configuration
+from framework.exceptions.nulls import ArgumentNullException
+from framework.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -31,11 +25,11 @@ class MongoBackupService:
         configuration: Configuration,
         email_client: EmailGatewayClient
     ):
-        self.__storage_client = storage_client
-        self.__email_gateway_client = email_client
-        self.__export_repository = export_repository
+        self._storage_client = storage_client
+        self._email_gateway_client = email_client
+        self._export_repository = export_repository
 
-        self.__connection_string = configuration.mongo.get(
+        self._connection_string = configuration.mongo.get(
             'connection_string')
 
     async def export_backup(
@@ -101,7 +95,7 @@ class MongoBackupService:
         self
     ) -> Tuple[str, str]:
 
-        mongodump = f"./mongodump '{self.__connection_string}' {MONGO_TOOLS_ARG}"
+        mongodump = f"./mongodump '{self._connection_string}' {MONGO_TOOLS_ARG}"
         logger.info(f'Running mongodump shell command: {mongodump}')
 
         process = await asyncio.create_subprocess_shell(
@@ -139,7 +133,7 @@ class MongoBackupService:
         ArgumentNullException.if_none(days, 'days')
 
         # Existing backups
-        storage_blobs = await self.__storage_client.get_blobs(
+        storage_blobs = await self._storage_client.get_blobs(
             container_name=MongoBackupConstants.ContainerName)
 
         blobs = [MongoExportBlob(data=blob)
@@ -178,7 +172,7 @@ class MongoBackupService:
                 logger.info(f'Deleting blob: {purge_blob}')
 
                 # Delete the blob
-                await self.__storage_client.delete_blob(
+                await self._storage_client.delete_blob(
                     container_name=MongoBackupConstants.ContainerName,
                     blob_name=purge_blob)
 
@@ -197,7 +191,7 @@ class MongoBackupService:
             blob_data = await dump.read()
             logger.info(f'Dump file loaded successfully')
 
-            result = await self.__storage_client.upload_blob(
+            result = await self._storage_client.upload_blob(
                 container_name=MongoBackupConstants.ContainerName,
                 blob_name=blob_name,
                 blob_data=blob_data)
@@ -237,7 +231,7 @@ class MongoBackupService:
 
         logger.info('Sending notification email')
 
-        await self.__email_gateway_client.send_email(
+        await self._email_gateway_client.send_email(
             subject='MongoDB Backup Service',
             recipient='dcl525@gmail.com',
             message=f'MongoDB backup completed successfully: {blob_name}')
@@ -260,5 +254,5 @@ class MongoBackupService:
 
         logger.info(f'Writing history record: {record.to_dict()}')
 
-        await self.__export_repository.insert(
+        await self._export_repository.insert(
             document=record.to_dict())

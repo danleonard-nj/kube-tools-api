@@ -4,11 +4,12 @@ from typing import List
 from clients.email_gateway_client import EmailGatewayClient
 from clients.plaid_client import PlaidClient
 from data.bank_repository import BankBalanceRepository
-from domain.bank import (BALANCE_BANK_KEY_EXCLUSIONS,
-                         BALANCE_CAPTURE_EMAILS_FEATURE_KEY,
-                         BALANCE_EMAIL_RECIPIENT, BALANCE_EMAIL_SUBJECT,
-                         BankBalance, PlaidAccount, PlaidBalance)
+from domain.bank import (BALANCE_BANK_KEY_EXCLUSIONS, BALANCE_EMAIL_RECIPIENT,
+                         BALANCE_EMAIL_SUBJECT, BankBalance, PlaidAccount,
+                         PlaidBalance)
 from domain.enums import BankKey, SyncType
+from domain.exceptions import InvalidBankKeyException
+from domain.features import Feature
 from domain.rest import GetBalancesResponse
 from framework.clients.feature_client import FeatureClientAsync
 from framework.concurrency import TaskCollection
@@ -145,7 +146,7 @@ class BalanceSyncService:
         ArgumentNullException.if_none(balance, 'balance')
 
         is_enabled = await self._feature_client.is_enabled(
-            feature_key=BALANCE_CAPTURE_EMAILS_FEATURE_KEY)
+            feature_key=Feature.BankingBalanceCaptureEmailNotify)
 
         if not is_enabled:
             logger.info(f'Balance capture emails are disabled')
@@ -230,7 +231,8 @@ class BalanceSyncService:
         # Validate provided bank keys
         for bank_key in bank_keys:
             if bank_key not in BankKey.values():
-                raise Exception(f"'{bank_key}' is not a valid bank key")
+                raise InvalidBankKeyException(
+                    f"'{bank_key}' is not a valid bank key")
 
         entities = await self._balance_repository.get_balance_history(
             start_timestamp=start_timestamp,

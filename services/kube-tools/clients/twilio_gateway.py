@@ -3,7 +3,7 @@ from framework.logger.providers import get_logger
 from httpx import AsyncClient
 
 from clients.identity_client import IdentityClient
-from domain.auth import ClientScope
+from domain.auth import AuthClient, ClientScope
 
 logger = get_logger(__name__)
 
@@ -25,7 +25,7 @@ class TwilioGatewayClient:
         logger.info(f'Fetching Twilio gateway auth token')
 
         token = await self.__identity_client.get_token(
-            client_name='kube-tools-api',
+            client_name=AuthClient.KubeToolsApi,
             scope=ClientScope.TwilioGatewayApi)
 
         logger.info(f'Twilio gateway token: {token}')

@@ -14,15 +14,15 @@ class StorageClient:
         self,
         configuration: Configuration
     ):
-        self.__connection_string = configuration.storage.get(
+        self._connection_string = configuration.storage.get(
             'connection_string')
 
-    def __get_blob_service_client(
+    def _get_blob_service_client(
         self
     ) -> BlobServiceClient:
 
         return BlobServiceClient.from_connection_string(
-            conn_str=self.__connection_string)
+            conn_str=self._connection_string)
 
     async def upload_blob(
         self,
@@ -40,7 +40,7 @@ class StorageClient:
 
         logger.info(f'Uploading blob: {container_name}: {blob_name}')
 
-        async with self.__get_blob_service_client() as client:
+        async with self._get_blob_service_client() as client:
             logger.info(
                 f'Getting blob container client for container: {container_name}')
             container_client: ContainerClient = client.get_container_client(
@@ -61,7 +61,7 @@ class StorageClient:
         ArgumentNullException.if_none_or_whitespace(
             container_name, 'container_name')
 
-        async with self.__get_blob_service_client() as client:
+        async with self._get_blob_service_client() as client:
             logger.info(
                 f'Getting blob container client for container: {container_name}')
             container_client: ContainerClient = client.get_container_client(
@@ -87,7 +87,7 @@ class StorageClient:
 
         logger.info(f'Downloading blob: {container_name}: {blob_name}')
 
-        async with self.__get_blob_service_client() as client:
+        async with self._get_blob_service_client() as client:
             logger.info(
                 f'Getting blob container client for container: {container_name}')
             container_client: ContainerClient = client.get_container_client(
@@ -118,7 +118,7 @@ class StorageClient:
 
         logger.info(f'Deleting blob: {container_name}: {blob_name}')
 
-        async with self.__get_blob_service_client() as client:
+        async with self._get_blob_service_client() as client:
             logger.info(
                 f'Getting blob container client for container: {container_name}')
             container_client: ContainerClient = client.get_container_client(

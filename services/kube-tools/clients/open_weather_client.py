@@ -1,5 +1,6 @@
 from domain.weather import GetWeatherQueryParams
 from framework.configuration import Configuration
+from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from framework.uri import build_url
 from httpx import AsyncClient
@@ -13,15 +14,23 @@ class OpenWeatherClient:
         configuration: Configuration,
         http_client: AsyncClient
     ):
-        self.__base_url = configuration.openweather.get('base_url')
+        self._base_url = configuration.openweather.get('base_url')
         self._api_key = configuration.openweather.get('api_key')
 
         self._http_client = http_client
+
+        ArgumentNullException.if_none_or_whitespace(
+            self._base_url, 'base_url')
+        ArgumentNullException.if_none_or_whitespace(
+            self._api_key, 'api_key')
 
     async def get_weather_by_zip(
         self,
         zip_code: str
     ):
+        ArgumentNullException.if_none_or_whitespace(
+            zip_code, 'zip_code')
+
         logger.info(f'Getting weather for {zip_code}')
 
         # Weather request parameters
@@ -33,7 +42,7 @@ class OpenWeatherClient:
 
         # Build the weather forecast endpoint
         endpoint = build_url(
-            base=f'{self.__base_url}/data/2.5/weather',
+            base=f'{self._base_url}/data/2.5/weather',
             **query_params.to_dict())
 
         logger.info(f'Endpoint: {endpoint}')
@@ -50,13 +59,16 @@ class OpenWeatherClient:
         self,
         zip_code: str
     ):
+        ArgumentNullException.if_none_or_whitespace(
+            zip_code, 'zip_code')
+
         query_params = GetWeatherQueryParams(
             zip_code=zip_code,
             api_key=self._api_key)
 
         # Build endpoint for weather request
         endpoint = build_url(
-            base=f'{self.__base_url}/data/2.5/forecast',
+            base=f'{self._base_url}/data/2.5/forecast',
             **query_params.to_dict())
 
         logger.info(f'Getting forecast: {endpoint}: {query_params.to_dict()}')

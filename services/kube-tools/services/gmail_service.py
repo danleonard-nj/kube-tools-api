@@ -2,19 +2,19 @@ from typing import Dict, List
 
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
-from constants.google import (GmailRuleAction, GoogleEmailHeader,
-                              GoogleEmailLabel)
 from domain.bank import BankRuleConfiguration
 from domain.enums import ProcessGmailRuleResultType
+from domain.exceptions import GmailRuleProcessingException
 from domain.google import (GMAIL_MESSAGE_URL, GmailEmail, GmailEmailRule,
-                           GmailServiceRunResult, ProcessGmailRuleRequest,
-                           ProcessGmailRuleResponse)
+                           GmailRuleAction, GmailServiceRunResult,
+                           GoogleEmailHeader, GoogleEmailLabel,
+                           ProcessGmailRuleRequest, ProcessGmailRuleResponse)
 from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
+from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
-from framework.exceptions.nulls import ArgumentNullException
 
 logger = get_logger(__name__)
 
@@ -84,7 +84,8 @@ class GmailService:
                 f'Parsing rule to process: {process_request.to_dict()}')
 
             if process_request.rule is None:
-                raise Exception('No rule provided to process')
+                raise GmailRuleProcessingException(
+                    'No rule provided to process')
 
             rule = process_request.rule
 
@@ -265,7 +266,7 @@ class GmailService:
             logger.info(
                 f'Unsupported alert type: {bank_rule_config.alert_type}')
 
-            raise Exception(
+            raise GmailRuleProcessingException(
                 f"Alert type '{bank_rule_config.alert_type}' is not currently supported")
 
     async def process_sms_rule(

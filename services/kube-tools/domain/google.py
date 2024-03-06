@@ -24,6 +24,36 @@ def update(current_value, new_value):
     return current_value
 
 
+class GoogleEmailHeader:
+    Subject = 'Subject'
+    From = 'From'
+    To = 'To'
+
+
+class GoogleEmailLabel:
+    Inbox = 'INBOX'
+    Unread = 'UNREAD'
+    Starred = 'STARRED'
+
+
+class GmailRuleAction:
+    Archive = 'archive'
+    SMS = 'sms'
+    Event = 'send-http'
+    BankSync = 'bank-sync'
+    Undefined = 'none'
+
+
+class GoogleMapsException(Exception):
+    def __init__(
+        self,
+        longitude: int,
+        latitude: int
+    ):
+        super().__init__(
+            f'Failed to fetch reverse geocode data for coordinate pair: {latitude}, {longitude}')
+
+
 class GmailEmailHeaders(Serializable):
     def __init__(
         self,

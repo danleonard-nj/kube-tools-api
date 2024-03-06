@@ -3,22 +3,21 @@ from datetime import datetime
 
 import pandas as pd
 import pytz
-from framework.clients.cache_client import CacheClientAsync
-from framework.clients.feature_client import FeatureClientAsync
-from framework.configuration import Configuration
-from framework.logger import get_logger
-from framework.validators.nulls import none_or_whitespace
-
 from clients.open_weather_client import OpenWeatherClient
 from data.weather_repository import WeatherRepository
 from domain.cache import CacheKey
-from domain.weather import (FORECAST_AGGREGATE_KEY, FORECAST_AGGREGATE_MAPPING,
+from domain.weather import (DEAULT_TIMEZONE, FORECAST_AGGREGATE_KEY,
+                            FORECAST_AGGREGATE_MAPPING,
                             FORECAST_COLUMN_EXCLUSIONS, TemperatureResult)
+from framework.clients.cache_client import CacheClientAsync
+from framework.configuration import Configuration
+from framework.logger import get_logger
+from framework.validators.nulls import none_or_whitespace
 from utilities.utils import DateTimeUtil, KeyUtils
+from framework.exceptions.nulls import ArgumentNullException
 
 logger = get_logger(__name__)
 
-DEAULT_TIMEZONE = 'America/Phoenix'
 
 class WeatherService:
     def __init__(
@@ -41,6 +40,10 @@ class WeatherService:
         self,
         zip_code: str
     ):
+
+        ArgumentNullException.if_none_or_whitespace(
+            zip_code, 'zip_code')
+
         cache_key = CacheKey.weather_by_zip(
             zip_code=zip_code)
 
@@ -66,9 +69,12 @@ class WeatherService:
         self,
         zip_code: str
     ):
+        ArgumentNullException.if_none_or_whitespace(
+            zip_code, 'zip_code')
+
         logger.info(f'Getting weather for zip: {zip_code}')
 
-        if none_or_whitespace(zip_code) or len(zip_code) != 5:
+        if len(zip_code) != 5:
             return {
                 "error": f"Invalid zip code: '{zip_code}'"
             }
@@ -76,6 +82,7 @@ class WeatherService:
         data = await self._client.get_weather_by_zip(
             zip_code)
 
+        # TODO: Is this necessary?
         if 'dt' in data:
             logger.info(f'Removing dt from data to create cardinality key')
             del data['dt']
@@ -153,6 +160,10 @@ class WeatherService:
         self,
         zip_code: str
     ):
+
+        ArgumentNullException.if_none_or_whitespace(
+            zip_code, 'zip_code')
+
         cache_key = CacheKey.weather_forecast_by_zip(
             zip_code=zip_code)
 
@@ -178,6 +189,10 @@ class WeatherService:
         self,
         zip_code: str
     ):
+
+        ArgumentNullException.if_none_or_whitespace(
+            zip_code, 'zip_code')
+
         forecast_data = await self._client.get_forecast(
             zip_code=zip_code)
 
@@ -266,6 +281,9 @@ class WeatherService:
         self,
         record: TemperatureResult
     ):
+
+        ArgumentNullException.if_none(record, 'record')
+
         result = await self._repository.insert(
             document=record.to_dict())
 
@@ -277,6 +295,9 @@ class WeatherService:
         self,
         zip_code: str
     ) -> str:
+
+        ArgumentNullException.if_none_or_whitespace(
+            zip_code, 'zip_code')
 
         cache_key = CacheKey.weather_cardinality_by_zip(
             zip_code=zip_code)
@@ -292,6 +313,11 @@ class WeatherService:
         zip_code: str,
         cardinality_key: str
     ) -> str:
+
+        ArgumentNullException.if_none_or_whitespace(
+            zip_code, 'zip_code')
+        ArgumentNullException.if_none_or_whitespace(
+            cardinality_key, 'cardinality_key')
 
         cache_key = CacheKey.weather_cardinality_by_zip(
             zip_code=zip_code)

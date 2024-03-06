@@ -1,12 +1,11 @@
 from typing import Any, Dict, List
 
-from framework.configuration import Configuration
-from framework.logger.providers import get_logger
-from httpx import AsyncClient
-
 from clients.identity_client import IdentityClient
 from domain.auth import AuthClient, ClientScope
 from domain.email_gateway import EmailGatewayRequest
+from framework.configuration import Configuration
+from framework.logger.providers import get_logger
+from httpx import AsyncClient
 
 logger = get_logger(__name__)
 
@@ -18,10 +17,10 @@ class EmailGatewayClient:
         identity_client: IdentityClient,
         http_client: AsyncClient
     ):
-        self.__http_client = http_client
-        self.__identity_client = identity_client
+        self._http_client = http_client
+        self._identity_client = identity_client
 
-        self.__base_url = configuration.gateway.get(
+        self._base_url = configuration.gateway.get(
             'email_gateway_base_url')
 
     async def send_email(
@@ -30,7 +29,7 @@ class EmailGatewayClient:
         recipient: str,
         message: str
     ):
-        endpoint = f'{self.__base_url}/api/email/send'
+        endpoint = f'{self._base_url}/api/email/send'
         logger.info(f'Endpoint: {endpoint}')
 
         content = EmailGatewayRequest(
@@ -40,7 +39,7 @@ class EmailGatewayClient:
 
         headers = await self.__get_auth_headers()
 
-        response = await self.__http_client.post(
+        response = await self._http_client.post(
             url=endpoint,
             headers=headers,
             json=content.to_dict())
@@ -57,7 +56,7 @@ class EmailGatewayClient:
     ):
         logger.info(f'Sending datatable email')
 
-        endpoint = f'{self.__base_url}/api/email/datatable'
+        endpoint = f'{self._base_url}/api/email/datatable'
         logger.info(f'Endpoint: {endpoint}')
 
         content = EmailGatewayRequest(
@@ -82,7 +81,7 @@ class EmailGatewayClient:
         subject: str,
         data: List[dict]
     ):
-        endpoint = f'{self.__base_url}/api/email/datatable'
+        endpoint = f'{self._base_url}/api/email/datatable'
         logger.info(f'Endpoint: {endpoint}')
 
         content = EmailGatewayRequest(
@@ -98,7 +97,7 @@ class EmailGatewayClient:
         subject: str,
         json: Dict
     ):
-        endpoint = f'{self.__base_url}/api/email/json'
+        endpoint = f'{self._base_url}/api/email/json'
         logger.info(f'Endpoint: {endpoint}')
 
         content = EmailGatewayRequest(
@@ -114,7 +113,7 @@ class EmailGatewayClient:
         subject: str,
         body: str
     ):
-        endpoint = f'{self.__base_url}/api/email/send'
+        endpoint = f'{self._base_url}/api/email/send'
         logger.info(f'Endpoint: {endpoint}')
 
         content = EmailGatewayRequest(
@@ -132,7 +131,7 @@ class EmailGatewayClient:
         subject: str,
         data: Any
     ) -> Dict:
-        endpoint = f'{self.__base_url}/api/email/json'
+        endpoint = f'{self._base_url}/api/email/json'
         logger.info(f'Endpoint: {endpoint}')
 
         content = EmailGatewayRequest(
@@ -142,7 +141,7 @@ class EmailGatewayClient:
 
         headers = await self.__get_auth_headers()
 
-        response = await self.__http_client.post(
+        response = await self._http_client.post(
             url=endpoint,
             headers=headers,
             json=content.to_dict())
@@ -156,7 +155,7 @@ class EmailGatewayClient:
 
         logger.info(f'Fetching email gateway auth token')
 
-        token = await self.__identity_client.get_token(
+        token = await self._identity_client.get_token(
             client_name=AuthClient.KubeToolsApi,
             scope=ClientScope.EmailGatewayApi)
 

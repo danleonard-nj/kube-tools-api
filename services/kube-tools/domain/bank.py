@@ -45,7 +45,6 @@ BALANCE_EMAIL_EXCLUSION_KEYWORDS = [
 
 BALANCE_EMAIL_RECIPIENT = 'dcl525@gmail.com'
 BALANCE_EMAIL_SUBJECT = 'Bank Balance Captured'
-BALANCE_CAPTURE_EMAILS_FEATURE_KEY = 'banking-balance-capture-emails'
 
 
 # Unsupported bank keys for balance captures

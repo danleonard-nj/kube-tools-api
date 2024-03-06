@@ -1,17 +1,16 @@
 import asyncio
 from typing import Dict
 
+from domain.auth import AuthClientConfig, AuthRequest
+from domain.cache import CacheKey
+from domain.exceptions import (AuthClientNotFoundException,
+                               AuthTokenFailureException)
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
 from framework.validators.nulls import none_or_whitespace
 from httpx import AsyncClient
-
-from domain.auth import AuthClientConfig
-from domain.cache import CacheKey
-from domain.exceptions import (AuthClientNotFoundException,
-                               AuthTokenFailureException)
 
 logger = get_logger(__name__)
 
@@ -26,25 +25,27 @@ class IdentityClient:
         ArgumentNullException.if_none(configuration, 'configuration')
         ArgumentNullException.if_none(cache_client, 'cache_client')
 
-        self.__azure_ad = configuration.ad_auth
-        self.__http_client = http_client
-        self.__cache_client = cache_client
+        self._azure_ad = configuration.ad_auth
+        self._http_client = http_client
+        self._cache_client = cache_client
+        self._clients: dict[str, AuthClientConfig] = dict()
 
-        self.__register_clients()
+        self._register_clients()
 
-    def __register_clients(
+    def _register_clients(
         self
-    ):
+    ) -> None:
         logger.info(f'Registering auth client credential configs')
 
-        self.__clients = dict()
-        for client in self.__azure_ad.clients:
+        for client in self._azure_ad.clients:
             self.add_client(client)
 
     def add_client(
         self,
         config: Dict
     ) -> None:
+
+        ArgumentNullException.if_none(config, 'config')
 
         client_name = config.get('name')
         logger.info(f'Parsing auth client config: {client_name}')
@@ -53,8 +54,8 @@ class IdentityClient:
             data=config)
 
         # Register the auth client credentials
-        self.__clients.update({
-            client_name: auth_client.to_dict()
+        self._clients.update({
+            client_name: auth_client
         })
 
         logger.info(f'Client registered successfully: {client_name}')
@@ -73,7 +74,7 @@ class IdentityClient:
 
         logger.info(f'Auth token cache key: {cache_key}')
 
-        cached_token = await self.__cache_client.get_cache(
+        cached_token = await self._cache_client.get_cache(
             key=cache_key)
 
         # Return cached token
@@ -83,22 +84,19 @@ class IdentityClient:
             return cached_token
 
         # Get the client credential request config
-        client_credentials = self.__clients.get(client_name)
+        auth_client = self._clients.get(client_name)
 
-        if client_credentials is None:
+        if auth_client is None:
             raise AuthClientNotFoundException(
                 client_name=client_name)
 
-        # Set the scope on the request if it's provided
-        if not none_or_whitespace(scope):
-            logger.info(f'Client credential request scope: {scope}')
-            client_credentials |= {
-                'scope': scope
-            }
+        auth_request = AuthRequest.from_client(
+            client=auth_client,
+            scope=scope)
 
-        response = await self.__http_client.post(
-            url=self.__azure_ad.identity_url,
-            data=client_credentials)
+        response = await self._http_client.post(
+            url=self._azure_ad.identity_url,
+            data=auth_request.to_dict())
 
         logger.info(
             f'Client token status: {client_name}: {response.status_code}')
@@ -119,7 +117,7 @@ class IdentityClient:
         logger.info(f'Token fetched from client: {token}')
 
         asyncio.create_task(
-            self.__cache_client.set_cache(
+            self._cache_client.set_cache(
                 key=cache_key,
                 value=token,
                 ttl=50))
