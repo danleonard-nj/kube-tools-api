@@ -75,7 +75,9 @@ class ChatGptServiceClient:
 
         if not response.is_success:
             raise ChatGptException(
-                f'Failed to fetch internal chat completion: {response.status_code}')
+                f'Failed to fetch internal chat completion: {response.status_code}',
+                response.status_code,
+                'error')
 
         parsed = response.json()
 
