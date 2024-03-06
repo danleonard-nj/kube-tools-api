@@ -4,23 +4,15 @@ from typing import List
 
 from clients.plaid_client import PlaidClient
 from data.bank_repository import BankTransactionsRepository
-from domain.bank import (PlaidAccount, PlaidTransaction, SyncActionType,
-                         SyncResult)
-from domain.enums import BankKey, SyncType
+from domain.bank import (TRANSACTION_DEFAULT_LOOKBACK_DAYS, PlaidAccount,
+                         PlaidTransaction, SyncActionType, SyncResult,
+                         format_datetime)
 from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
-from framework.utilities.iter_utils import first
 from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
-
-
-DEFAULT_LOOKBACK_DAYS = 3
-
-
-def format_datetime(dt):
-    return dt.strftime('%Y-%m-%d')
 
 
 class BankTransactionService:
@@ -142,28 +134,30 @@ class BankTransactionService:
         account_ids = [account.account_id]
         end_date = datetime.now()
 
+        # Get the start date
         start_date = (
-            end_date - timedelta(days=days_back or DEFAULT_LOOKBACK_DAYS)
+            end_date -
+            timedelta(days=days_back or TRANSACTION_DEFAULT_LOOKBACK_DAYS)
         )
 
         logger.info(f'Date range: {start_date} - {end_date}')
 
-        results = await self._plaid_client.get_transactions(
+        # Fetch the transactions from Plaid
+        response = await self._plaid_client.get_transactions(
             access_token=account.access_token,
             start_date=format_datetime(start_date),
             end_date=format_datetime(end_date),
             account_ids=account_ids)
 
-        # Parse transaction domain models
-        transactions = [PlaidTransaction.from_plaid_transaction_item(
-            data=item,
-            bank_key=account.bank_key)
-            for item in results.get('transactions', list())]
+        results = response.get('transactions', list())
 
-        if not any(transactions):
-            logger.info(
-                f'No transactions found to sync for account: {account.bank_key}')
-            return list()
+        # Parse transaction domain models
+        transactions = [
+            PlaidTransaction.from_plaid_transaction_item(
+                data=item,
+                bank_key=account.bank_key)
+            for item in results
+        ]
 
         transaction_lookup = await self._get_transaction_lookup(
             transactions=transactions,
@@ -173,12 +167,10 @@ class BankTransactionService:
         sync_result = None
 
         for transaction in transactions:
-            logger.info(f'Syncing transaction: {transaction.transaction_bk}')
-
             existing_transaction = transaction_lookup.get(
                 transaction.transaction_bk)
 
-            sync_result = await self.__sync_transaction(
+            sync_result = await self._sync_transaction(
                 existing_transaction=existing_transaction,
                 transaction=transaction)
 
@@ -186,7 +178,7 @@ class BankTransactionService:
 
         return sync_results
 
-    async def __sync_transaction(
+    async def _sync_transaction(
         self,
         existing_transaction: PlaidTransaction,
         transaction: PlaidTransaction
@@ -213,19 +205,14 @@ class BankTransactionService:
             transaction.timestamp = DateTimeUtil.timestamp()
             transaction.last_operation = SyncActionType.Update
 
-            replace_result = await self._transaction_repository.replace(
+            await self._transaction_repository.replace(
                 selector=transaction.get_selector(),
                 document=transaction.to_dict())
-
-            logger.info(f'Replaced: {replace_result.modified_count}')
 
             return SyncResult(
                 transaction=transaction,
                 action=SyncActionType.Update,
                 original_transaction=existing_transaction)
-
-        logger.info(
-            f'No changes in transaction: {transaction.transaction_bk}')
 
         transaction.last_operation = SyncActionType.NoAction
         replace_result = await self._transaction_repository.replace(

@@ -45,6 +45,7 @@ BALANCE_EMAIL_EXCLUSION_KEYWORDS = [
 
 BALANCE_EMAIL_RECIPIENT = 'dcl525@gmail.com'
 BALANCE_EMAIL_SUBJECT = 'Bank Balance Captured'
+TRANSACTION_DEFAULT_LOOKBACK_DAYS = 3
 
 
 # Unsupported bank keys for balance captures
@@ -72,13 +73,6 @@ def strip_special_chars(value: str) -> str:
         .replace('\t', ' ')
         .replace('\r', ' ')
     )
-
-
-def log_truncate(segment):
-    if len(segment) < 100:
-        return segment
-
-    return f'{segment[:50]}...{segment[-50:]}'
 
 
 class PlaidBalanceRequest(Serializable):
