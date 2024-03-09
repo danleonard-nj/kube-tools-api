@@ -99,8 +99,6 @@ class WeatherService:
 
         response = OpenWeatherResponse(
             data=data)
-        # with open('weather.json', 'w') as f:
-        #     json.dump(data, f)
 
         if response.status_code != 200:
             logger.info(f'Error message: {response.message}')
@@ -119,21 +117,20 @@ class WeatherService:
         # If no changes have been made, return the last stored record
         if weather.cardinality_key == cardinality_key:
 
-            entity = await self._repository.get({
-                'location_zipcode': zip_code,
-                'cardinality_key': cardinality_key
-            })
+            logger.info('Cardinality key match, returning stored record')
 
-            logger.info(f'Entity: {entity}')
+            entity = await self._repository.get_weather_by_zip_cardinality_key(
+                zip_code=zip_code,
+                cardinality_key=cardinality_key)
 
-            stored_weather = TemperatureResult.from_dict(
+            stored_weather = TemperatureResult.from_entity(
                 entity)
 
             return GetWeatherByZipResponse(
                 cardinality_key=weather.cardinality_key,
                 is_captured=False,
                 weather=stored_weather.to_dict(),
-                record_bk=stored_weather.record_id)
+                captured_timestamp=stored_weather.timestamp)
 
         # If the cardinality key has changed, store the record
         logger.info('Cardinality key mismatch, storing record')
@@ -152,7 +149,7 @@ class WeatherService:
             cardinality_key=weather.cardinality_key,
             is_captured=True,
             weather=weather.to_dict(),
-            record_bk=weather.record_id)
+            captured_timestamp=weather.timestamp)
 
     async def get_forecast(
         self,

@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from functools import reduce
 from typing import Dict
 
@@ -208,12 +209,18 @@ class GetWeatherByZipResponse(Serializable):
         cardinality_key: str,
         is_captured: bool,
         weather: Dict,
-        record_bk: str
+        captured_timestamp: int
     ):
         self.cardinality_key = cardinality_key
         self.is_captured = is_captured
         self.weather = weather
-        self.record_bk = record_bk
+        self.captured_timestamp = captured_timestamp
+
+    def to_dict(self) -> Dict:
+        return super().to_dict() | {
+            'captured_timestamp': datetime.fromtimestamp(
+                self.captured_timestamp).isoformat()
+        }
 
 
 class OpenWeatherResponse:
