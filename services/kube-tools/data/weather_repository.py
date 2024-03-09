@@ -11,15 +11,3 @@ class WeatherRepository(MongoRepositoryAsync):
             client=client,
             database='Weather',
             collection='History')
-
-    async def get_last_record_by_zipcode(
-        self,
-        zip_code: str
-    ):
-        query_filter = {
-            'location_zipcode': zip_code
-        }
-
-        return self.collection.find_one(
-            filter=query_filter,
-            sort=[('timestamp', -1)])

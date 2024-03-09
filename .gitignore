@@ -5,3 +5,4 @@ services/kube-tools/oauth.json
 services/kube-tools/token.json
 services/kube-tools/gpt_workbook.ipynb
 services/kube-tools/scripts/esp8266_client/esp8266_client.ino
+services/kube-tools/wb.ipynb

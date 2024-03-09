@@ -8,15 +8,17 @@ from data.weather_repository import WeatherRepository
 from domain.cache import CacheKey
 from domain.weather import (DEAULT_TIMEZONE, FORECAST_AGGREGATE_KEY,
                             FORECAST_AGGREGATE_MAPPING,
-                            FORECAST_COLUMN_EXCLUSIONS, TemperatureResult)
+                            FORECAST_COLUMN_EXCLUSIONS,
+                            GetWeatherByZipResponse, OpenWeatherException,
+                            OpenWeatherResponse, TemperatureResult)
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
-from framework.logger import get_logger
-from framework.validators.nulls import none_or_whitespace
-from utilities.utils import DateTimeUtil, KeyUtils
 from framework.exceptions.nulls import ArgumentNullException
+from framework.logger import get_logger
 
 logger = get_logger(__name__)
+
+USE_CACHED_RESPONSE = False
 
 
 class WeatherService:
@@ -44,26 +46,41 @@ class WeatherService:
         ArgumentNullException.if_none_or_whitespace(
             zip_code, 'zip_code')
 
-        cache_key = CacheKey.weather_by_zip(
-            zip_code=zip_code)
+        if USE_CACHED_RESPONSE:
+            cache_key = CacheKey.weather_by_zip(
+                zip_code=zip_code)
 
-        result = await self._cache_client.get_json(
-            key=cache_key)
+            result = await self._cache_client.get_json(
+                key=cache_key)
 
-        if result is not None:
-            logger.info(f'Cache hit for key: {cache_key}')
-            return result
+            if result is not None:
+                logger.info(f'Cache hit for key: {cache_key}')
+                return result
 
         result = await self._fetch_weather_by_zip(
             zip_code=zip_code)
 
-        asyncio.create_task(
-            self._cache_client.set_json(
-                key=cache_key,
-                value=result,
-                ttl=10))
+        if USE_CACHED_RESPONSE:
+            asyncio.create_task(
+                self._cache_client.set_json(
+                    key=cache_key,
+                    value=result,
+                    ttl=10))
 
         return result
+
+    async def _fetch_weather_by_zip(
+        self,
+        zip_code: str
+    ):
+        ArgumentNullException.if_none_or_whitespace(
+            zip_code, 'zip_code')
+
+        if len(zip_code) != 5:
+            raise OpenWeatherException(f"Invalid zip code: '{zip_code}'")
+
+        data = await self._client.get_weather_by_zip(
+            zip_code)
 
     async def _fetch_weather_by_zip(
         self,
@@ -75,86 +92,67 @@ class WeatherService:
         logger.info(f'Getting weather for zip: {zip_code}')
 
         if len(zip_code) != 5:
-            return {
-                "error": f"Invalid zip code: '{zip_code}'"
-            }
+            raise OpenWeatherException(f"Invalid zip code: '{zip_code}'")
 
         data = await self._client.get_weather_by_zip(
             zip_code)
 
-        # TODO: Is this necessary?
-        if 'dt' in data:
-            logger.info(f'Removing dt from data to create cardinality key')
-            del data['dt']
+        response = OpenWeatherResponse(
+            data=data)
+        # with open('weather.json', 'w') as f:
+        #     json.dump(data, f)
 
-        key = KeyUtils.create_uuid(**data)
-        logger.info(f'Cardinality key: {key}')
+        if response.status_code != 200:
+            logger.info(f'Error message: {response.message}')
+            raise OpenWeatherException(response.message)
 
-        if data.get('cod') != 200:
-            error_message = data.get("message")
+        weather = TemperatureResult.from_open_weather_response(
+            zip_code=zip_code,
+            data=data)
 
-            return {
-                'error': error_message
-            }
-
-        # Extract relevant weather information
-        main = data.get('main')
-        weather = data.get('weather')[0]
-        sys = data.get('sys')
-        coord = data.get('coord')
-        wind = data.get('wind')
-
-        record = TemperatureResult(
-            location_zipcode=zip_code,
-            location_name=data.get('name'),
-            latitude=coord.get('lat'),
-            longitude=coord.get('lon'),
-            temperature=main.get('temp'),
-            feels_like=main.get('feels_like'),
-            temperature_max=main.get('temp_max'),
-            temperature_min=main.get('temp_min'),
-            pressure=main.get('pressure'),
-            humidity=main.get('humidity'),
-            weather_description=weather.get('description'),
-            sunrise=sys.get('sunrise'),
-            sunset=sys.get('sunset'),
-            wind_speed=wind.get('speed'),
-            wind_degrees=wind.get('deg'),
-            cardinality_key=key,
-            response=data,
-            timestamp=DateTimeUtil.timestamp())
-
-        logger.info(f'Record: {record.to_dict()}')
-
-        logger.info(
-            f'Capturing weather record for {record.location_zipcode}')
-
+        # Fetch the cached cardinality key
         cardinality_key = await self.get_last_synced_cardinality_key(
             zip_code=zip_code)
 
-        is_captured = False
-        record_bk = None
+        logger.info(f'Last cardinality key: {cardinality_key}')
 
-        if key != cardinality_key:
-            logger.info('Cardinality key mismatch, storing record')
+        # If no changes have been made, return the last stored record
+        if weather.cardinality_key == cardinality_key:
 
-            insert_result = await self.capture_weather_record(
-                record=record)
+            entity = await self._repository.get({
+                'location_zipcode': zip_code,
+                'cardinality_key': cardinality_key
+            })
 
-            is_captured = True
-            record_bk = insert_result.inserted_id
+            logger.info(f'Entity: {entity}')
 
-            logger.info(f'Setting cardinality key: {zip_code}: {key}')
-            await self.set_last_synced_cardinality_key(
-                zip_code=zip_code,
-                cardinality_key=key)
+            stored_weather = TemperatureResult.from_dict(
+                entity)
 
-        return {
-            'cardinality_key': key,
-            'is_captured': is_captured,
-            'weather': record.to_dict(),
-            'record_bk': record_bk
-        }
+            return GetWeatherByZipResponse(
+                cardinality_key=weather.cardinality_key,
+                is_captured=False,
+                weather=stored_weather.to_dict(),
+                record_bk=stored_weather.record_id)
+
+        # If the cardinality key has changed, store the record
+        logger.info('Cardinality key mismatch, storing record')
+
+        await self.capture_weather_record(
+            record=weather)
+
+        logger.info(
+            f'Setting cardinality key: {zip_code}: {weather.cardinality_key}')
+
+        await self.set_last_synced_cardinality_key(
+            zip_code=zip_code,
+            cardinality_key=weather.cardinality_key)
+
+        return GetWeatherByZipResponse(
+            cardinality_key=weather.cardinality_key,
+            is_captured=True,
+            weather=weather.to_dict(),
+            record_bk=weather.record_id)
 
     async def get_forecast(
         self,

@@ -180,8 +180,6 @@ class BalanceSyncService:
             logger.info(f'Could not find balance for bank {bank_key}')
             return
 
-        logger.info(f'Found balance for bank {bank_key}: {entity}')
-
         balance = BankBalance.from_entity(
             data=entity)
 
@@ -191,10 +189,10 @@ class BalanceSyncService:
         self
     ) -> List[BankBalance]:
 
-        logger.info(f'Getting balances for all banks')
-
         keys = [key for key in BankKey
                 if key.value not in BALANCE_BANK_KEY_EXCLUSIONS]
+
+        logger.info(f'Fetching balances for banks: {keys}')
 
         results = []
 
