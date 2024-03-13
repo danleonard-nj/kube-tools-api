@@ -1,23 +1,8 @@
 from typing import List
+
+from domain.queries import EmailRulesByNamesQuery
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
-
-
-class EmailRulesByNamesQuery:
-    def __init__(
-        self,
-        rule_names: List[str]
-    ):
-        self.rule_names = rule_names
-
-    def get_query(
-        self
-    ):
-        return {
-            'name': {
-                '$in': self.rule_names
-            }
-        }
 
 
 class GoogleEmailRuleRepository(MongoRepositoryAsync):

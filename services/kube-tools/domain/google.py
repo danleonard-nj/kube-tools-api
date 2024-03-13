@@ -59,7 +59,7 @@ class GmailEmailHeaders(Serializable):
         self,
         headers: List[Dict]
     ):
-        self.__headers = self._build_index(
+        self._headers = self._build_index(
             headers=headers)
 
     def _build_index(
@@ -78,10 +78,10 @@ class GmailEmailHeaders(Serializable):
         self,
         key
     ):
-        return self.__headers.get(key)
+        return self._headers.get(key)
 
     def to_dict(self) -> Dict:
-        return self.__headers
+        return self._headers
 
 
 class GmailQueryResult(Serializable):
@@ -290,15 +290,15 @@ class GoogleDriveFilePermission(Serializable):
 class GoogleDriveFileUpload:
     @property
     def data(self):
-        return self.__data
+        return self._data
 
     @property
     def metadata(self):
-        return self.__metadata
+        return self._metadata
 
     @property
     def media(self):
-        return self.__get_media_io()
+        return self._get_media_io()
 
     def __init__(
         self,
@@ -310,14 +310,14 @@ class GoogleDriveFileUpload:
     ):
         self.__mimetype = mimetype
         self.__resumable = resumable
-        self.__data = self.__get_stream(
+        self._data = self._get_stream(
             data=data)
 
-        self.__metadata = self.__get_metadata(
+        self._metadata = self._get_metadata(
             filename=filename,
             parent_directory=parent_directory)
 
-    def __get_stream(
+    def _get_stream(
         self,
         data: bytes
     ) -> io.BytesIO:
@@ -326,13 +326,13 @@ class GoogleDriveFileUpload:
 
         return file
 
-    def __get_media_io(self):
+    def _get_media_io(self):
         return MediaIoBaseUpload(
-            self.__data,
+            self._data,
             mimetype=self.__mimetype,
             resumable=self.__resumable)
 
-    def __get_metadata(
+    def _get_metadata(
         self,
         filename: str,
         parent_directory: str
@@ -348,8 +348,8 @@ class GoogleDriveFileUpload:
         return file_metadata
 
     def __exit__(self, *args, **kwargs):
-        if not self.__data.closed:
-            self.__data.close()
+        if not self._data.closed:
+            self._data.close()
 
 
 class EmailRuleLog(Serializable):

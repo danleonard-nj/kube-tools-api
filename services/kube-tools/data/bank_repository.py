@@ -4,100 +4,7 @@ from domain.mongo import Queryable
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
 
-
-class GetBalanceByBankKeyQuery(Queryable):
-    def __init__(
-        self,
-        bank_key: str
-    ):
-        self.bank_key = bank_key
-
-    def get_query(
-        self
-    ):
-        return {
-            'bank_key': self.bank_key
-        }
-
-
-class GetBalanceHistoryQuery(Queryable):
-    def __init__(
-        self,
-        start_timestamp: int,
-        end_timestamp: int,
-        bank_keys: List[str] = None
-    ):
-        self.start_timestamp = start_timestamp
-        self.end_timestamp = end_timestamp
-        self.bank_keys = bank_keys
-
-    def get_query(
-        self
-    ):
-        query_filter = {
-            'timestamp': {
-                '$gte': self.start_timestamp,
-                '$lte': self.end_timestamp
-            }
-        }
-
-        if (self.bank_keys is not None
-                and any(self.bank_keys)):
-
-            query_filter['bank_key'] = {
-                '$in': self.bank_keys
-            }
-
-        return query_filter
-
-
-class GetTransactionsQuery(Queryable):
-    def __init__(
-        self,
-        start_timestamp: int,
-        end_timestamp: int,
-        bank_keys: List[str] = None
-    ):
-        self.start_timestamp = start_timestamp
-        self.end_timestamp = end_timestamp
-        self.bank_keys = bank_keys
-
-    def get_query(
-        self
-    ):
-        query_filter = {
-            'transaction_date': {
-                '$gte': self.start_timestamp,
-                '$lte': self.end_timestamp
-            }
-        }
-
-        if self.bank_keys is not None:
-            query_filter['bank_key'] = {
-                '$in': self.bank_keys
-            }
-
-        return query_filter
-
-
-class GetTransactionsByTransactionBksQuery(Queryable):
-    def __init__(
-        self,
-        bank_key: str,
-        transaction_bks: List[str]
-    ):
-        self.bank_key = bank_key
-        self.transaction_bks = transaction_bks
-
-    def get_query(
-        self
-    ):
-        return {
-            'bank_key': self.bank_key,
-            'transaction_bk': {
-                '$in': self.transaction_bks
-            }
-        }
+from domain.queries import GetBalanceByBankKeyQuery, GetBalanceHistoryQuery, GetTransactionsByTransactionBksQuery, GetTransactionsQuery
 
 
 class BankBalanceRepository(MongoRepositoryAsync):
@@ -113,20 +20,20 @@ class BankBalanceRepository(MongoRepositoryAsync):
     async def get_balance_by_bank_key(
         self,
         bank_key: str
-    ) -> Dict:
+    ) -> dict:
 
         query = GetBalanceByBankKeyQuery(
             bank_key=bank_key)
 
         return await self.collection.find_one(
             filter=query.get_query(),
-            sort=[('timestamp', -1)])
+            sort=query.get_sort())
 
     async def get_balance_history(
         self,
         start_timestamp: int,
         end_timestamp: int,
-        bank_keys: List[str] = None
+        bank_keys: list[str] = None
     ):
         query = GetBalanceHistoryQuery(
             start_timestamp=start_timestamp,
@@ -155,7 +62,7 @@ class BankTransactionsRepository(MongoRepositoryAsync):
         self,
         start_timestamp: int,
         end_timestamp: int,
-        bank_keys: List[str] = None
+        bank_keys: list[str] = None
     ):
         query = GetTransactionsQuery(
             start_timestamp=start_timestamp,

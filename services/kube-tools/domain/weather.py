@@ -35,6 +35,15 @@ FORECAST_AGGREGATE_KEY = 'date'
 DEAULT_TIMEZONE = 'America/Phoenix'
 
 
+class OpenWeatherException(Exception):
+    def __init__(
+        self,
+        message: str
+    ):
+        self.message = message
+        super().__init__(message)
+
+
 class TemperatureResult(Serializable):
     def __init__(
         self,
@@ -54,7 +63,7 @@ class TemperatureResult(Serializable):
         weather_description: str,
         sunrise: int,
         sunset: int,
-        response: Dict,
+        response: dict,
         timestamp: int
     ):
         self.record_id = record_id
@@ -91,7 +100,8 @@ class TemperatureResult(Serializable):
             if key not in exclude_keys
         }
 
-        return sha256(json.dumps(data, sort_keys=True))
+        return sha256(json.dumps(
+            data, sort_keys=True))
 
     @staticmethod
     def from_entity(
@@ -157,50 +167,17 @@ class GetWeatherQueryParams(Serializable):
         zip_code: str,
         api_key: str
     ):
-        self.__zip_code = zip_code
-        self.__api_key = api_key
+        self.zip_code = zip_code
+        self.api_key = api_key
 
     def to_dict(
         self
     ) -> Dict:
         return {
-            'zip': f'{self.__zip_code},us',
-            'appid': self.__api_key,
+            'zip': f'{self.zip_code},us',
+            'appid': self.api_key,
             'units': 'imperial'
         }
-
-
-class ForecastRecord:
-    def __init__(
-        self,
-        date: str,
-        timestamp: int,
-        temperature: float,
-        feels_like: float,
-        temperature_min: float,
-        temperature_max: float,
-        pressure: int,
-        humidity: int,
-        weather_description: str
-    ):
-        self.date = date
-        self.temperature = temperature
-        self.feels_like = feels_like
-        self.temperature_min = temperature_min
-        self.temperature_max = temperature_max
-        self.pressure = pressure
-        self.humidity = humidity
-        self.weather_description = weather_description
-        self.timestamp = timestamp
-
-
-class OpenWeatherException(Exception):
-    def __init__(
-        self,
-        message: str
-    ):
-        self.message = message
-        super().__init__(message)
 
 
 class GetWeatherByZipResponse(Serializable):

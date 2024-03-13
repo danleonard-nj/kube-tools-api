@@ -6,16 +6,24 @@ from services.calendar_service import CalendarService
 calendar_bp = MetaBlueprint('calendar_bp', __name__)
 
 
+def get_calendar_events_params() -> dict:
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    return {
+        'start_date': start_date,
+        'end_date': end_date
+    }
+
+
 @calendar_bp.configure('/api/calendar/events', methods=['GET'], auth_scheme=AuthPolicy.Default)
 async def get_calendar_events(container):
     service: CalendarService = container.resolve(CalendarService)
 
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
+    params = get_calendar_events_params()
 
     result = await service.get_calendar_events(
-        start_date=start_date,
-        end_date=end_date)
+        **params)
 
     return result
 

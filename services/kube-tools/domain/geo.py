@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict
 
 
 class GeoQueryType:
@@ -14,47 +14,47 @@ class GeoSpatialPipeline:
         max_distance: int = None,
         limit: int = 50
     ):
-        self.__latitude = latitude
-        self.__longitude = longitude
-        self.__max_distance = max_distance
-        self.__limit = limit
+        self._latitude = latitude
+        self._longitude = longitude
+        self._max_distance = max_distance
+        self._limit = limit
 
     @property
     def coordinate_pair(
         self
-    ) -> List[float]:
+    ) -> list[float]:
         return [
-            self.__longitude,
-            self.__latitude
+            self._longitude,
+            self._latitude
         ]
 
     def get_pipeline(
         self
     ) -> Dict:
         return [
-            self.__get_max_distance_query(),
-            self.__get_limit()
+            self._get_max_distance_query(),
+            self._get_limit()
         ]
 
-    def __get_limit(
+    def _get_limit(
         self
-    ) -> Dict:
+    ) -> dict:
         return {
-            '$limit': self.__limit
+            '$limit': self._limit
         }
 
-    def __get_max_distance_query(
+    def _get_max_distance_query(
         self
-    ) -> Dict:
+    ) -> dict:
         return {
             GeoQueryType.GeoNear: {
                 'distanceField': "distance",
-                'maxDistance': self.__max_distance,
+                'maxDistance': self._max_distance,
                 'spherical': True,
                 'near': {
                     'coordinates': [
-                        self.__longitude,
-                        self.__latitude
+                        self._longitude,
+                        self._latitude
                     ]
                 }
             }

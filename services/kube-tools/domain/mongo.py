@@ -11,6 +11,10 @@ class Queryable:
     ) -> dict:
         raise NotImplementedError()
 
+    def get_sort(
+        self
+    ) -> list:
+        return []
 
 
 class MongoBackupConstants:

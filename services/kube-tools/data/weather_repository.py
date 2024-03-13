@@ -1,24 +1,6 @@
-from domain.mongo import Queryable
+from domain.queries import GetWeatherByZipCodeCardinalityKeyQuery
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
-
-
-class GetWeatherByZipCodeCardinalityKeyQuery(Queryable):
-    def __init__(
-        self,
-        location_zipcode: str,
-        cardinality_key: str
-    ):
-        self.location_zipcode = location_zipcode
-        self.cardinality_key = cardinality_key
-
-    def get_query(
-        self
-    ) -> dict:
-        return {
-            'location_zipcode': self.location_zipcode,
-            'cardinality_key': self.cardinality_key
-        }
 
 
 class WeatherRepository(MongoRepositoryAsync):

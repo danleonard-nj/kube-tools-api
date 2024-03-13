@@ -1,64 +1,7 @@
-from domain.mongo import MongoQuery
+from domain.queries import (GetApiEventsByLogIdsQuery, GetApiEventsQuery,
+                            GetErrorApiEventsQuery)
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
-
-
-class GetEventsQuery(MongoQuery):
-    def __init__(
-        self,
-        start_timestamp: int,
-        end_timestamp: int
-    ):
-        self.start_timestamp = start_timestamp
-        self.end_timestamp = end_timestamp
-
-    def get_query(
-        self
-    ):
-        return {
-            'timestamp': {
-                '$gte': self.start_timestamp,
-                '$lte': self.end_timestamp
-            }
-        }
-
-
-class GetEventsByLogIdsQuery(MongoQuery):
-    def __init__(
-        self,
-        cutoff_timestamp: int,
-        log_ids: list[str]
-    ):
-        self.cutoff_timestamp = cutoff_timestamp
-        self.log_ids = log_ids
-
-    def get_query(
-        self
-    ):
-        return {
-            'timestamp': {
-                '$gte': self.cutoff_timestamp
-            },
-            'log_id': {
-                '$nin': self.log_ids
-            }
-        }
-
-
-class GetErrorEventsQuery(MongoQuery):
-    def __init__(
-        self,
-    ):
-        pass
-
-    def get_query(
-        self
-    ):
-        return {
-            'status_code': {
-                '$ne': 200
-            }
-        }
 
 
 class ApiEventRepository(MongoRepositoryAsync):
@@ -76,7 +19,7 @@ class ApiEventRepository(MongoRepositoryAsync):
         start_timestamp: int,
         end_timestamp: int
     ):
-        query = GetEventsQuery(
+        query = GetApiEventsQuery(
             start_timestamp=start_timestamp,
             end_timestamp=end_timestamp)
 
@@ -91,7 +34,7 @@ class ApiEventRepository(MongoRepositoryAsync):
         cutoff_timestamp: int,
         log_ids: list[str]
     ):
-        query = GetEventsByLogIdsQuery(
+        query = GetApiEventsByLogIdsQuery(
             cutoff_timestamp=cutoff_timestamp,
             log_ids=log_ids)
 
@@ -104,7 +47,7 @@ class ApiEventRepository(MongoRepositoryAsync):
     async def get_error_events(
         self
     ):
-        query = GetErrorEventsQuery()
+        query = GetErrorApiEventsQuery()
 
         return await (
             self.collection

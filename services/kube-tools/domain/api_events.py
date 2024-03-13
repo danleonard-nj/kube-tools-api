@@ -17,7 +17,9 @@ class ApiEventAlert(Serializable):
         self.event_date = event_date
 
     @staticmethod
-    def from_event(data):
+    def from_event(
+        data: dict
+    ):
         return ApiEventAlert(
             event_id=data.get('log_id'),
             key=data.get('key'),
@@ -26,11 +28,12 @@ class ApiEventAlert(Serializable):
             event_date=data.get('timestamp'))
 
     @staticmethod
-    def from_entity(data):
+    def from_entity(
+        data: dict
+    ):
         return ApiEventAlert(
             event_id=data.get('event_id'),
             key=data.get('key'),
             endpoint=data.get('endpoint'),
             status_code=data.get('status_code'),
             event_date=data.get('event_date'))
-

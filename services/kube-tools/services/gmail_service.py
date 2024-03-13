@@ -6,7 +6,7 @@ from domain.bank import BankRuleConfiguration
 from domain.enums import ProcessGmailRuleResultType
 from domain.exceptions import GmailRuleProcessingException
 from domain.google import (GMAIL_MESSAGE_URL, GmailEmail, GmailEmailRule,
-                           GmailRuleAction, GmailServiceRunResult,
+                           GmailRuleAction, GmailServiceRunResult, GoogleClientScope,
                            GoogleEmailHeader, GoogleEmailLabel,
                            ProcessGmailRuleRequest, ProcessGmailRuleResponse)
 from framework.concurrency import TaskCollection
@@ -48,6 +48,8 @@ class GmailService:
         rules.reverse()
 
         logger.info(f'Rules gathered: {len(rules)}')
+
+        await self._gmail_client.assure_auth(scopes=GoogleClientScope.Gmail)
 
         tasks = TaskCollection()
 

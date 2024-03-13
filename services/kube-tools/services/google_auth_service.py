@@ -33,6 +33,10 @@ class GoogleAuthService:
         auth_client = AuthClient.from_client(
             client=client)
 
+        await self._cache_client.set_json(
+            key=CacheKey.google_auth_client(),
+            value=auth_client.to_dict())
+
         result = await self._repository.collection.replace_one(
             auth_client.get_selector(),
             auth_client.to_dict(),
@@ -60,19 +64,16 @@ class GoogleAuthService:
             # auth config
             entity = await self._repository.collection.find_one()
 
-            async def cache_client():
-                await self._cache_client.set_json(
-                    key=key,
-                    value=entity)
-
-            asyncio.create_task(cache_client())
-
         if entity is None:
             raise InvalidGoogleAuthClientException(
                 f'No Google auth client found')
 
         creds = AuthClient.from_entity(
             data=entity)
+
+        await self._cache_client.set_json(
+            key=key,
+            value=creds.to_dict())
 
         client = creds.get_credentials(
             scopes=scopes)
