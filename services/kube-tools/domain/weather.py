@@ -83,12 +83,16 @@ class TemperatureResult(Serializable):
         self.sunrise = sunrise
         self.sunset = sunset
         self.response = response
+
+        # Calculate the cardinality key before setting the timestamp
         self.cardinality_key = self.get_cardinality_key()
+
         self.timestamp = timestamp
 
     def get_cardinality_key(
         self
     ):
+        # Exclude certain parts of the model from the hash
         exclude_keys = ['response',
                         'cardinality_key',
                         'timestamp',

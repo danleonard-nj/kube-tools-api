@@ -57,6 +57,7 @@ from services.google_auth_service import GoogleAuthService
 from services.location_history_service import LocationHistoryService
 from services.mongo_backup_service import MongoBackupService
 from services.podcast_service import PodcastService
+from services.redis_service import RedisService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
 from services.torrent_service import TorrentService
 from services.usage_service import UsageService
@@ -186,6 +187,7 @@ def register_services(
     descriptors.add_singleton(BalanceSyncService)
     descriptors.add_singleton(TorrentService)
     descriptors.add_singleton(CalendarService)
+    descriptors.add_singleton(RedisService)
 
 
 class ContainerProvider(ProviderBase):
