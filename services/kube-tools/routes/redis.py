@@ -37,7 +37,7 @@ async def set_redis_key_value(container: ServiceProvider):
         body=body)
 
 
-@redis_bp.configure('/api/redis/delete', methods=['POST'], auth_scheme=AuthPolicy.Execute)
+@redis_bp.configure('/api/redis/delete', methods=['POST'], auth_scheme=AuthPolicy.Default)
 async def delete_redis_key(container: ServiceProvider):
     service = container.resolve(RedisService)
 
@@ -47,14 +47,14 @@ async def delete_redis_key(container: ServiceProvider):
         body=body)
 
 
-@redis_bp.configure('/api/redis/flush', methods=['POST'], auth_scheme=AuthPolicy.Execute)
+@redis_bp.configure('/api/redis/flush', methods=['POST'], auth_scheme=AuthPolicy.Default)
 async def flush_redis(container: ServiceProvider):
     service = container.resolve(RedisService)
 
     return await service.flush()
 
 
-@redis_bp.configure('/api/redis/diagnostics', methods=['GET'], auth_scheme=AuthPolicy.Execute)
+@redis_bp.configure('/api/redis/diagnostics', methods=['GET'], auth_scheme=AuthPolicy.Default)
 async def get_redis_diagnostics(container: ServiceProvider):
     service = container.resolve(RedisService)
 

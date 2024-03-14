@@ -1,4 +1,5 @@
 import json
+from typing import Dict
 
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
@@ -59,6 +60,18 @@ class RedisCacheValueResponse(Serializable):
         self.parse_json = parse_json
 
 
+class RedisSetCacheValueResponse(Serializable):
+    def __init__(
+        self,
+        key: str,
+        value: str | dict,
+        result: bool
+    ):
+        self.key = key
+        self.value = value
+        self.result = result
+
+
 class RedisGetCacheValueRequest:
     def __init__(
         self,
@@ -113,3 +126,38 @@ class RedisSetCacheValueRequest:
             return json.dumps(self.value)
 
         return self.value
+
+
+class RedisDiagnosticsResponse(Serializable):
+    def __init__(
+        self,
+        info,
+        memory_stats,
+        client_list,
+        client_info,
+        config
+    ):
+        self.memory_stats = memory_stats
+        self.client_list = client_list
+        self.client_info = client_info
+        self.config = config
+        self.info = info
+
+        for client in client_list:
+            client['current'] = str(client.get('id')) == str(
+                client_info.get('id'))
+
+    def to_dict(self) -> Dict:
+        return {
+            'stats': {
+                'memory': self.memory_stats,
+            },
+            'client': {
+                'current': self.client_info,
+                'list': self.client_list,
+            },
+            'server': {
+                'config': self.config,
+                'info': self.info
+            }
+        }

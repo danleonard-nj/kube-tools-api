@@ -1,5 +1,5 @@
-from domain.redis import (RedisCacheValueResponse, RedisGetCacheValueRequest,
-                          RedisSetCacheValueRequest)
+from domain.redis import (RedisCacheValueResponse, RedisDiagnosticsResponse, RedisGetCacheValueRequest,
+                          RedisSetCacheValueRequest, RedisSetCacheValueResponse)
 from framework.clients.cache_client import CacheClientAsync
 from framework.concurrency import TaskCollection
 from framework.exceptions.nulls import ArgumentNullException
@@ -42,10 +42,11 @@ class RedisService:
 
         tasks = TaskCollection(
             self._cache_client.client.get(req.key_name),
-            self._cache_client.client.ttl(req.key_name)
+            self._cache_client.client.ttl(req.key_name),
+            self._cache_client.client.memory_usage(req.key_name),
         )
 
-        value, ttl = await tasks.run()
+        value, ttl, memory_usage = await tasks.run()
 
         if value is None:
             logger.info(f'No value found for key: {req.key_name}')
@@ -59,12 +60,17 @@ class RedisService:
 
         logger.info(f'Value for key: {req.key_name}: {result}')
 
-        return result
+        return result.to_dict() | {
+            'memory_usage': memory_usage
+        }
 
     async def set_value(
         self,
         body: dict
-    ):
+    ) -> RedisSetCacheValueResponse:
+
+        ArgumentNullException.if_none(body, 'body')
+
         req = RedisSetCacheValueRequest.from_request_body(
             body=body)
 
@@ -80,11 +86,10 @@ class RedisService:
 
         logger.info(f'Set result for key: {req.key_name}: {result}')
 
-        return {
-            'key': req.key_name,
-            'value': value,
-            'result': result
-        }
+        return RedisSetCacheValueResponse(
+            key=req.key_name,
+            value=value,
+            result=result)
 
     async def delete_key(
         self,
@@ -122,4 +127,23 @@ class RedisService:
     ):
         logger.info(f'Getting diagnostics')
 
-        return await self._cache_client.client.info()
+        tasks = TaskCollection(
+            self._cache_client.client.info(),
+            self._cache_client.client.memory_stats(),
+            self._cache_client.client.client_list(),
+            self._cache_client.client.client_info(),
+            self._cache_client.client.config_get('*'))
+
+        (info,
+         memory_stats,
+         client_list,
+         client_info,
+         config
+         ) = await tasks.run()
+
+        return RedisDiagnosticsResponse(
+            info=info,
+            memory_stats=memory_stats,
+            client_list=client_list,
+            client_info=client_info,
+            config=config)
