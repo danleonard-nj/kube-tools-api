@@ -10,14 +10,14 @@ redis_bp = MetaBlueprint('redis_bp', __name__)
 logger = get_logger(__name__)
 
 
-@redis_bp.configure('/api/redis/keys', methods=['GET'], auth_scheme=AuthPolicy.Execute)
+@redis_bp.configure('/api/redis/keys', methods=['GET'], auth_scheme=AuthPolicy.Default)
 async def get_redis_keys(container: ServiceProvider):
-    service = container.resolve(RedisService)
+    service: RedisService = container.resolve(RedisService)
 
     return await service.get_keys()
 
 
-@redis_bp.configure('/api/redis/get', methods=['POST'], auth_scheme=AuthPolicy.Execute)
+@redis_bp.configure('/api/redis/get', methods=['POST'], auth_scheme=AuthPolicy.Default)
 async def get_redis_key_value(container: ServiceProvider):
     service: RedisService = container.resolve(RedisService)
 
@@ -27,7 +27,7 @@ async def get_redis_key_value(container: ServiceProvider):
         body=body)
 
 
-@redis_bp.configure('/api/redis/set', methods=['POST'], auth_scheme=AuthPolicy.Execute)
+@redis_bp.configure('/api/redis/set', methods=['POST'], auth_scheme=AuthPolicy.Default)
 async def set_redis_key_value(container: ServiceProvider):
     service: RedisService = container.resolve(RedisService)
 
