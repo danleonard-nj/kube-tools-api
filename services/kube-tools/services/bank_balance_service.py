@@ -194,12 +194,14 @@ class BalanceSyncService:
 
         logger.info(f'Fetching balances for banks: {keys}')
 
-        tasks = await TaskCollection(*[
+        tasks = TaskCollection(*[
             self.get_balance(key)
             for key in keys
         ])
 
         results = await tasks.run()
+
+        results = [x for x in results if x is not None]
 
         results.sort(key=lambda x: x.bank_key)
 
