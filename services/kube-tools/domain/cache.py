@@ -68,13 +68,3 @@ class CacheKey:
             balance_prompt=balance_prompt)
 
         return f'kube-tools-gpt-balance-prompt-{key}'
-
-    @staticmethod
-    def google_drive_list_files_query(
-        query: str
-    ) -> str:
-
-        key = KeyUtils.create_uuid(
-            balance_prompt=query)
-
-        return f'kube-tools-google-drive-list-files-query-{key}'

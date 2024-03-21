@@ -9,10 +9,6 @@ from services.google_auth_service import GoogleAuthService
 
 logger = get_logger(__name__)
 
-GOOGLE_DRIVE_QUERY = "'root' in parents"
-GOOGLE_DRIVE_REPORT_FIELDS = "nextPageToken, files(id, name, mimeType, modifiedTime, size)"
-CACHE_ENABLED = True
-
 
 class GoogleDriveClient:
     def __init__(
