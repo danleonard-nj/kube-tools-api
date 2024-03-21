@@ -1,8 +1,9 @@
+from turtle import st
 from domain.auth import AuthPolicy
 from framework.di.service_provider import ServiceProvider
 from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
-from quart import request
+from quart import request, stream_with_context, Response
 from services.redis_service import RedisService
 
 redis_bp = MetaBlueprint('redis_bp', __name__)
@@ -59,3 +60,15 @@ async def get_redis_diagnostics(container: ServiceProvider):
     service = container.resolve(RedisService)
 
     return await service.get_diagnostics()
+
+
+@redis_bp.configure('/api/redis/monitor', methods=['GET'], auth_scheme=AuthPolicy.Default)
+async def get_redis_monitor(container: ServiceProvider):
+    service: RedisService = container.resolve(RedisService)
+
+    client = service.get_client()
+    monitor = client.monitor()
+
+    while True:
+        msg = await monitor.next_command()
+        yield msg

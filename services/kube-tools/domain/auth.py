@@ -19,11 +19,13 @@ class ClientScope(enum.StrEnum):
 
 class AdRole(enum.StrEnum):
     Execute = 'KubeTools.Execute'
+    Banking = 'KubeTools.Banking'
 
 
 class AuthPolicy(enum.StrEnum):
     Default = 'default'
     Execute = 'execute'
+    Banking = 'banking'
 
 
 class AuthClientConfig(Serializable):

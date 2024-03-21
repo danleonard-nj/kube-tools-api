@@ -6,6 +6,7 @@ from quart import request
 from services.gmail_rule_service import GmailRuleService
 from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
+from services.google_drive_service import GoogleDriveService
 
 google_bp = MetaBlueprint('google_bp', __name__)
 
@@ -112,3 +113,11 @@ async def put_gmail_rule(container):
 
     return await service.update_rule(
         update_request=update_request)
+
+
+@google_bp.configure('/api/google/drive/report', methods=['GET'], auth_scheme='default')
+async def get_google_drive_report(container):
+    service: GoogleDriveService = container.resolve(
+        GoogleDriveService)
+
+    return await service.get_drive_report()

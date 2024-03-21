@@ -11,6 +11,8 @@ from framework.validators.nulls import none_or_whitespace
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaIoBaseUpload
 
+from utilities.utils import ValueConverter
+
 logger = get_logger(__name__)
 
 GMAIL_MESSAGE_URL = 'https://mail.google.com/mail/u/0/#inbox'
@@ -496,8 +498,9 @@ class ProcessGmailRuleResponse(Serializable):
         rule: GmailEmailRule,
         affected_count: int = None
     ):
+        self.rule_id = rule.rule_id
+        self.rule_name = rule.name
         self.status = status
-        self.rule = rule
 
         self.affected_count = (
             affected_count or 0
@@ -573,6 +576,34 @@ class GmailModifyEmailRequest(Serializable):
 
     def to_dict(self) -> Dict:
         return {
-            "addLabelIds": self.add_label_ids,
-            "removeLabelIds": self.remove_label_ids
+            'addLabelIds': self.add_label_ids,
+            'removeLabelIds': self.remove_label_ids
         }
+
+
+class GoogleDriveReportModel(Serializable):
+    def __init__(
+        self,
+        id: str,
+        name: str,
+        created_time: str,
+        modified_time: str,
+        size_bytes: int = 0
+    ):
+        self.id = id
+        self.name = name
+        self.created_time = created_time
+        self.modified_time = modified_time
+        self.size_mb = ValueConverter.bytes_to_megabytes(
+            int(size_bytes))
+
+    @staticmethod
+    def from_response(
+        data: dict
+    ):
+        return GoogleDriveReportModel(
+            id=data.get('id'),
+            name=data.get('name'),
+            created_time=data.get('createdTime'),
+            modified_time=data.get('modifiedTime'),
+            size_bytes=data.get('size'))

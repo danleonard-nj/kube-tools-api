@@ -57,7 +57,7 @@ class GmailClient:
             'Authorization': f'Bearer {token}'
         }
 
-    async def assure_auth(
+    async def ensure_auth(
         self,
         scopes=list[str]
     ):
@@ -70,7 +70,7 @@ class GmailClient:
     async def get_message(
         self,
         message_id: str
-    ) -> dict:
+    ) -> GmailEmail:
 
         logger.debug(f'Fetching message: {message_id}')
 
@@ -87,6 +87,7 @@ class GmailClient:
         self._semaphore.release()
 
         content = message_response.json()
+
         return GmailEmail(
             data=content)
 

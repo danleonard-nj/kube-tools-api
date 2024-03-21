@@ -42,70 +42,59 @@ class GmailService:
 
         logger.info(f'Gathering rules for Gmail rule service')
 
-        run_results = []
-
         rules = await self._rule_service.get_rules()
+
+        if not any(rules):
+            logger.info(f'No rules found to process')
+            return []
+
         rules.reverse()
 
         logger.info(f'Rules gathered: {len(rules)}')
 
-        await self._gmail_client.assure_auth(scopes=GoogleClientScope.Gmail)
+        # Ensure the client is authenticated before processing to
+        # prevent multiple threads from attempting to authenticate
+        # at the same time
+        await self._gmail_client.ensure_auth(
+            scopes=GoogleClientScope.Gmail)
 
-        tasks = TaskCollection()
+        # Process the rules asynchronously
+        process_rules = TaskCollection(*[
+            self.process_rule(rule=rule)
+            for rule in rules
+        ])
 
-        async def capture_response(req: ProcessGmailRuleRequest):
-            response = await self.process_rule(
-                process_request=req)
+        results = await process_rules.run()
 
-            run_results.append(
-                GmailServiceRunResult.from_response(
-                    response=response)
-            )
+        results.sort(key=lambda x: x.rule_name)
 
-        for rule in rules:
-            process_request = ProcessGmailRuleRequest.from_rule(
-                rule=rule)
-
-            tasks.add_task(
-                capture_response(
-                    req=process_request)
-            )
-
-        await tasks.run()
-
-        return run_results
+        return results
 
     async def process_rule(
         self,
-        process_request: ProcessGmailRuleRequest
+        rule: GmailEmailRule
     ):
-        ArgumentNullException.if_none(process_request, 'process_request')
+        ArgumentNullException.if_none(rule, 'process_request')
 
         try:
-            if process_request.rule is None:
-                raise GmailRuleProcessingException(
-                    'No rule provided to process')
-
-            rule = process_request.rule
-
             logger.info(f'Processing rule: {rule.rule_id}: {rule.name}')
 
-            # Default affected count
+            # Process the rule based on its action
             affected_count = 0
 
-            # Process an archival rule
-            if rule.action == GmailRuleAction.Archive:
-                affected_count = await self.process_archive_rule(
-                    rule=rule)
+            match rule.action:
+                case GmailRuleAction.Archive:
+                    affected_count = await self.process_archive_rule(rule=rule)
 
-            # Process an SMS rule
-            if rule.action == GmailRuleAction.SMS:
-                affected_count = await self.process_sms_rule(
-                    rule=rule)
+                case GmailRuleAction.SMS:
+                    affected_count = await self.process_sms_rule(rule=rule)
 
-            if rule.action == GmailRuleAction.BankSync:
-                affected_count = await self.process_bank_sync_rule(
-                    rule=rule)
+                case GmailRuleAction.BankSync:
+                    affected_count = await self.process_bank_sync_rule(rule=rule)
+
+                case _:
+                    raise GmailRuleProcessingException(
+                        f'Unsupported rule action: {rule.action}')
 
             logger.info(
                 f'Rule: {rule.name}: Emails affected: {affected_count}')
@@ -142,7 +131,7 @@ class GmailService:
             return archived
 
         logger.info(f'Result count: {len(query_result.messages or [])}')
-        for message_id in query_result.message_ids or []:
+        for message_id in query_result.message_ids:
             message = await self._gmail_client.get_message(
                 message_id=message_id)
 

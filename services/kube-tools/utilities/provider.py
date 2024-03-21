@@ -54,6 +54,7 @@ from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
 from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
+from services.google_drive_service import GoogleDriveService
 from services.location_history_service import LocationHistoryService
 from services.mongo_backup_service import MongoBackupService
 from services.podcast_service import PodcastService
@@ -82,6 +83,10 @@ def configure_azure_ad(container):
     azure_ad.add_authorization_policy(
         name=AuthPolicy.Execute,
         func=lambda t: AdRole.Execute in t.get('roles'))
+
+    azure_ad.add_authorization_policy(
+        name=AuthPolicy.Banking,
+        func=lambda t: AdRole.Banking in t.get('roles'))
 
     # TODO: Remove default auth policy
 
@@ -128,7 +133,7 @@ def register_clients(
     descriptors.add_singleton(MemoryCache)
     descriptors.add_singleton(CacheClientAsync)
     descriptors.add_singleton(TwilioGatewayClient)
-    descriptors.add_transient(GoogleDriveClient)
+    descriptors.add_singleton(GoogleDriveClient)
     descriptors.add_singleton(AzureGatewayClient)
     descriptors.add_singleton(FeatureClientAsync)
     descriptors.add_singleton(EmailGatewayClient)
@@ -188,6 +193,7 @@ def register_services(
     descriptors.add_singleton(TorrentService)
     descriptors.add_singleton(CalendarService)
     descriptors.add_singleton(RedisService)
+    descriptors.add_singleton(GoogleDriveService)
 
 
 class ContainerProvider(ProviderBase):

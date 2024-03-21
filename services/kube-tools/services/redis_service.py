@@ -16,6 +16,11 @@ class RedisService:
     ):
         self._cache_client = cache_client
 
+    def get_client(
+        self
+    ):
+        return self._cache_client.client
+
     async def get_keys(
         self,
         pattern: str = '*'

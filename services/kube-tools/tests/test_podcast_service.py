@@ -4,7 +4,7 @@ import uuid
 from data.podcast_repository import PodcastRepository
 from framework.configuration import Configuration
 from services.podcast_service import PodcastService
-from services.torrent_service import first
+from framework.utilities.iter_utils import first
 from utilities.provider import ContainerProvider
 
 
