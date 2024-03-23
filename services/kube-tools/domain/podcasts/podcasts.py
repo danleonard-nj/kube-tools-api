@@ -10,6 +10,14 @@ TITLE_FILENAME_REGEX = '[^A-Za-z0-9 ]+'
 logger = get_logger(__name__)
 
 
+class PodcastDownloadException(Exception):
+    def __init__(
+        self,
+        message: str
+    ):
+        super().__init__(message)
+
+
 class Episode(Serializable):
     def __init__(
         self,

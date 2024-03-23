@@ -83,7 +83,7 @@ class AuthRequest(Serializable):
     def from_client(
         client: AuthClientConfig,
         scope: str = None
-    ) -> Dict:
+    ) -> 'AuthRequest':
         return AuthRequest(
             client_id=client.client_id,
             client_secret=client.client_secret,

@@ -88,8 +88,6 @@ def configure_azure_ad(container):
         name=AuthPolicy.Banking,
         func=lambda t: AdRole.Banking in t.get('roles'))
 
-    # TODO: Remove default auth policy
-
     return azure_ad
 
 

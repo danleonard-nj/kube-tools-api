@@ -10,11 +10,13 @@ from domain.exceptions import PodcastConfigurationException
 from domain.features import Feature
 from domain.podcasts.handlers import (AcastFeedHandler, FeedHandler,
                                       GenericFeedHandler)
-from domain.podcasts.podcasts import DownloadedEpisode, Episode, Feed, Show
+from domain.podcasts.podcasts import (DownloadedEpisode, Episode, Feed,
+                                      PodcastDownloadException, Show)
 from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
+from httpx import AsyncClient, Response
 from services.event_service import EventService
 from utilities.utils import DateTimeUtil
 
@@ -29,7 +31,8 @@ class PodcastService:
         email_gateway_client: EmailGatewayClient,
         event_service: EventService,
         feature_client: FeatureClientAsync,
-        configuration: Configuration
+        configuration: Configuration,
+        http_client: AsyncClient
     ):
         self._configuration = configuration
         self._random_delay = self._configuration.podcasts.get(
@@ -40,6 +43,7 @@ class PodcastService:
         self._email_gateway_client = email_gateway_client
         self._feature_client = feature_client
         self._event_service = event_service
+        self._http_client = http_client
 
         self.dry_run = False
 
@@ -129,7 +133,7 @@ class PodcastService:
             Feed(x) for x in configuration.get('feeds')
         ]
 
-    async def _upload_file(
+    async def upload_file(
         self,
         episode: DownloadedEpisode,
         audio: bytes
@@ -142,6 +146,12 @@ class PodcastService:
         ArgumentNullException.if_none(audio, 'audio')
 
         logger.info(f'{episode.get_filename()}: Upload started')
+
+        # Throw if the audio file is less than 1KB - occasionally the
+        # response is an error message but we get a 200 status anyway
+        if len(audio) < 1024:
+            raise PodcastDownloadException(
+                f'Audio file is less than the threshold size to upload: {audio}')
 
         # Upload file to Google Drive
         await self._google_drive_client.upload_file(
@@ -221,16 +231,25 @@ class PodcastService:
                 url=rss_feed.feed,
                 follow_redirects=True)
 
-    async def _get_episode_audio(
+    async def get_episode_audio(
         self,
         episode: Episode
-    ):
+    ) -> Response:
+
         ArgumentNullException.if_none(episode, 'episode')
 
-        async with httpx.AsyncClient(timeout=None) as client:
-            return await client.get(
-                url=episode.audio,
-                follow_redirects=True)
+        logger.info(f'Fetching audio for episode: {episode.episode_title}: {episode.audio}')
+
+        response = await self._http_client.get(
+            url=episode.audio,
+            follow_redirects=True)
+
+        if response.is_error:
+            logger.info(f'Failed to fetch audio: {response.status_code}: {response.text}')
+            raise PodcastDownloadException(
+                f'Failed to fetch audio: {response.status_code}')
+
+        return response
 
     async def _get_saved_show(
         self,
@@ -324,7 +343,7 @@ class PodcastService:
                 logger.info(f'Save episode: {episode.episode_title}')
 
                 if not self.dry_run:
-                    audio_data = await self._get_episode_audio(
+                    audio_data = await self.get_episode_audio(
                         episode=episode)
 
                     logger.info(f'Bytes fetched: {len(audio_data.content)}')
@@ -334,12 +353,12 @@ class PodcastService:
                     show=show,
                     size=len(audio_data.content) if not self.dry_run else 0)
 
-                download_queue.append(downloaded_episode)
-
                 if not self.dry_run:
-                    await self._upload_file(
+                    await self.upload_file(
                         episode=downloaded_episode,
                         audio=audio_data.content)
+
+                download_queue.append(downloaded_episode)
 
         return (
             download_queue,

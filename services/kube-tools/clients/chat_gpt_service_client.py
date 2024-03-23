@@ -27,7 +27,7 @@ class ChatGptServiceClient:
         self._identity_client = identity_client
         self._cache_client = cache_client
 
-        self.__base_url = configuration.chatgpt.get('base_url')
+        self._base_url = configuration.chatgpt.get('base_url')
 
     async def get_headers(
         self
@@ -68,7 +68,7 @@ class ChatGptServiceClient:
         req = ChatGptCompletionRequest(prompt=prompt)
 
         response = await self._http_client.post(
-            url=f'{self.__base_url}/api/tools/chatgpt/internal/chat/completions',
+            url=f'{self._base_url}/api/tools/chatgpt/internal/chat/completions',
             headers=headers,
             json=req.to_dict())
 

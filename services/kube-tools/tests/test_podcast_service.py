@@ -3,7 +3,8 @@ import uuid
 
 from data.podcast_repository import PodcastRepository
 from framework.configuration import Configuration
-from services.podcast_service import PodcastService
+from domain.podcasts.podcasts import DownloadedEpisode, Episode, Show
+from services.podcast_service import PodcastDownloadException, PodcastService
 from framework.utilities.iter_utils import first
 from utilities.provider import ContainerProvider
 
@@ -85,3 +86,40 @@ class TestPodcastService(unittest.IsolatedAsyncioTestCase):
         await repo.collection.insert_one(data)
 
         return show_id, episode_id
+
+    async def test_upload_file_given_invalid_length_throws_exception(self):
+        service: PodcastService = self.provider.resolve(PodcastService)
+
+        audio_data = b'error message'
+
+        episode = Episode(
+            episode_id=str(uuid.uuid4()),
+            episode_title=str(uuid.uuid4()),
+            audio='http://placeholder')
+
+        show = Show(
+            show_id=str(uuid.uuid4()),
+            show_title=str(uuid.uuid4()),
+            episodes=[])
+
+        downloaded_episode = DownloadedEpisode(
+            episode=episode,
+            show=show,
+            size=len(audio_data))
+
+        with self.assertRaises(Exception):
+            await service.upload_file(
+                downloaded_episode,
+                audio_data)
+
+    async def test_get_episode_audio_given_invalid_uri_throws_exception(self):
+        service: PodcastService = self.provider.resolve(PodcastService)
+
+        episode = Episode(
+            episode_id=str(uuid.uuid4()),
+            episode_title=str(uuid.uuid4()),
+            audio='https://api.dan-leonard.com/')
+
+        with self.assertRaises(PodcastDownloadException):
+            await service.get_episode_audio(
+                episode=episode)

@@ -81,8 +81,8 @@ class PlaidClient:
         # Create the request to fetch transactions for a
         # given institution as defined by the access token
         options = PlaidTransactionRequestOptions(
-            account_ids=account_ids,
             count=max_results,
+            account_ids=account_ids,
             include_personal_finance_category=include_personal_finance_category)
 
         transactions_request = PlaidTransactionsRequest(
