@@ -200,8 +200,7 @@ def element_at(_list, index):
 
 
 def fire_task(coroutine):
-    asyncio.create_task(
-        coroutine())
+    asyncio.create_task(coroutine)
 
 
 deprecate_logger = build_deprecate_logger()

@@ -20,7 +20,7 @@ from utilities.utils import fire_task
 
 logger = get_logger(__name__)
 
-USE_CACHED_RESPONSE = False
+USE_CACHED_RESPONSE = True
 
 
 class WeatherService:
