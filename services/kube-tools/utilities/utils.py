@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import logging
@@ -196,6 +197,11 @@ def element_at(_list, index):
         return _list[index]
     except:
         return None
+
+
+def fire_task(coroutine):
+    asyncio.create_task(
+        coroutine())
 
 
 deprecate_logger = build_deprecate_logger()

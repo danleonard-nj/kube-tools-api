@@ -11,6 +11,7 @@ from framework.logger import get_logger
 from httpx import AsyncClient
 
 from domain.gpt import ChatGptCompletionRequest
+from utilities.utils import fire_task
 
 logger = get_logger(__name__)
 
@@ -44,7 +45,7 @@ class ChatGptServiceClient:
                 client_name=AuthClient.KubeToolsApi,
                 scope=ClientScope.ChatGptApi)
 
-            asyncio.create_task(
+            fire_task(
                 self._cache_client.set_cache(
                     key=cache_key,
                     value=token))

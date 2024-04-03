@@ -12,6 +12,8 @@ from framework.logger.providers import get_logger
 from framework.validators.nulls import none_or_whitespace
 from httpx import AsyncClient
 
+from utilities.utils import fire_task
+
 logger = get_logger(__name__)
 
 
@@ -116,7 +118,7 @@ class IdentityClient:
 
         logger.info(f'Token fetched from client: {token}')
 
-        asyncio.create_task(
+        fire_task(
             self._cache_client.set_cache(
                 key=cache_key,
                 value=token,

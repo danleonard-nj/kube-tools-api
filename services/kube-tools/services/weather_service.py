@@ -16,6 +16,8 @@ from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 
+from utilities.utils import fire_task
+
 logger = get_logger(__name__)
 
 USE_CACHED_RESPONSE = False
@@ -61,7 +63,7 @@ class WeatherService:
             zip_code=zip_code)
 
         if USE_CACHED_RESPONSE:
-            asyncio.create_task(
+            fire_task(
                 self._cache_client.set_json(
                     key=cache_key,
                     value=result,
@@ -172,7 +174,7 @@ class WeatherService:
         result = await self._generate_forecast(
             zip_code=zip_code)
 
-        asyncio.create_task(
+        fire_task(
             self._cache_client.set_json(
                 key=cache_key,
                 value=result,

@@ -1,5 +1,6 @@
-from domain.redis import (RedisCacheValueResponse, RedisDiagnosticsResponse, RedisGetCacheValueRequest,
-                          RedisSetCacheValueRequest, RedisSetCacheValueResponse)
+from domain.redis import (RedisCacheValueResponse, RedisDiagnosticsResponse,
+                          RedisGetCacheValueRequest, RedisSetCacheValueRequest,
+                          RedisSetCacheValueResponse)
 from framework.clients.cache_client import CacheClientAsync
 from framework.concurrency import TaskCollection
 from framework.exceptions.nulls import ArgumentNullException

@@ -1,4 +1,3 @@
-import asyncio
 import re
 from typing import Dict, List
 
@@ -23,6 +22,7 @@ from framework.logger import get_logger
 from framework.validators.nulls import none_or_whitespace
 from services.bank_service import BankService
 from services.gmail_rule_service import GmailRuleService
+from utilities.utils import fire_task
 
 logger = get_logger(__name__)
 
@@ -46,13 +46,14 @@ class GmailBankSyncService:
 
         self._bank_rule_mapping: Dict[str, BankRuleConfiguration] = None
 
-    async def _lazy_load_bank_rule_mapping(
+    async def _get_bank_rule_mapping(
         self
-    ) -> None:
+    ):
         # Lazy load the bank rule mapping
         if self._bank_rule_mapping is None:
-            logger.info(f'Fetching bank rule mapping')
             self._bank_rule_mapping = await self._generate_bank_rule_mapping()
+
+        return self._bank_rule_mapping
 
     async def handle_balance_sync(
         self,
@@ -60,13 +61,13 @@ class GmailBankSyncService:
         message: GmailEmail
     ) -> BankRuleConfiguration:
 
-        await self._lazy_load_bank_rule_mapping()
+        bank_rule_mapping = await self._get_bank_rule_mapping()
 
-        if rule.rule_id in self._bank_rule_mapping:
+        if rule.rule_id in bank_rule_mapping:
             logger.info('Bank rule detected')
 
         # Get the bank rule config from the rule mapping
-        mapped_rule = self._bank_rule_mapping.get(rule.rule_id)
+        mapped_rule = bank_rule_mapping.get(rule.rule_id)
 
         if mapped_rule is None:
             raise GmailBalanceSyncException(
@@ -185,14 +186,19 @@ class GmailBankSyncService:
     ):
         match bank_key:
             case BankKey.CapitalOne:
+
                 # For CapitalOne emails, we need to determine the card type
                 # to store the balance against
+
                 logger.info(f'Parsing CapitalOne card type')
                 return self._get_capital_one_bank_key(
                     body_segments=email_body_segments)
 
             case BankKey.Synchrony:
+
                 # Same case for Synchrony bank email alerts
+
+                logger.info(f'Parsing Synchrony card type')
                 return self._get_synchrony_bank_key(
                     body_segments=email_body_segments)
 
@@ -226,48 +232,51 @@ class GmailBankSyncService:
         key = CacheKey.chat_gpt_response_by_balance_prompt(
             balance_prompt=balance_prompt)
 
+        logger.info(f'GPT balance completion prompt cache key: {key}')
+
         cached_response = await self._cache_client.get_json(
             key=key)
 
+        # Use cached balance completion if available
         if cached_response is not None:
-            logger.info(f'Using cached GPT: {cached_response}')
-            balance = cached_response.get('balance')
-            usage = cached_response.get('usage')
+            logger.info(f'Using cached GPT balance completion prompt: {cached_response}')
 
-        else:
+            return ChatGptBalanceCompletion.from_balance_response(
+                balance=cached_response.get('balance'),
+                usage=cached_response.get('usage'))
 
-            # Max 5 attempts to parse balance from string
-            for attempt in range(5):
-                try:
-                    logger.info(
-                        f'Parse balance from string w/ GPT: Attempt {attempt + 1}')
+        # Max 5 attempts to parse balance from string
+        for attempt in range(5):
+            try:
+                logger.info(
+                    f'Parse balance from string w/ GPT: Attempt {attempt + 1}')
 
-                    # Submit the prompt to GPT and get the response
-                    # and tokens used
-                    balance, usage = await self._chat_gpt_client.get_chat_completion(
-                        prompt=balance_prompt)
+                # Submit the prompt to GPT and get the response
+                # and tokens used
+                balance, usage = await self._chat_gpt_client.get_chat_completion(
+                    prompt=balance_prompt)
 
-                    logger.info(
-                        f'GPT response balance / usage: {balance} : {usage}')
+                logger.info(
+                    f'GPT response balance / usage: {balance} : {usage}')
 
-                    # Fire the cache task
-                    self._fire_cache_gpt_response(
-                        key=key,
-                        balance=balance,
-                        usage=usage)
+                # Fire the cache task
+                self._fire_cache_gpt_response(
+                    key=key,
+                    balance=balance,
+                    usage=usage)
 
-                    logger.info(f'Breaking from GPT loop')
+                logger.info(f'Breaking from GPT loop')
+                break
+
+            except ChatGptException as ex:
+                # Retryable errors
+                if ex.retry:
+                    logger.info(f'GPT retryable error: {ex.message}')
+                # Non-retryable errors
+                else:
+                    logger.info(f'GPT non-retryable error: {ex.message}')
+                    balance = 'N/A'
                     break
-
-                except ChatGptException as ex:
-                    # Retryable errors
-                    if ex.retry:
-                        logger.info(f'GPT retryable error: {ex.message}')
-                    # Non-retryable errors
-                    else:
-                        logger.info(f'GPT non-retryable error: {ex.message}')
-                        balance = 'N/A'
-                        break
 
         balance = (balance if balance != 'N/A'
                    else DEFAULT_BALANCE)
@@ -288,18 +297,17 @@ class GmailBankSyncService:
 
         if mapping is not None:
             logger.info(f'Cache hit: {cache_key}')
-            for key, value in mapping.items():
-                logger.info(
-                    f'Parsing cached bank rule mapping: {key}: {value}')
-                mapping[key] = BankRuleConfiguration.from_json_object(value)
+
+            # Parse the cached rule mapping (rule name to rule config)
+            for name, data in mapping.items():
+                logger.info(f'Parsing cached bank rule mapping: {name}: {data}')
+                mapping[name] = BankRuleConfiguration.from_json_object(data)
 
             return mapping
 
-        rules = self._bank_rules
-
         # Parse the rule configurations
         rule_configs = [BankRuleConfiguration.from_json_object(data=rule)
-                        for rule in rules]
+                        for rule in self._bank_rules]
 
         # Fetch given rules by rule name
         rules = await self._rule_service.get_rules_by_name(
@@ -320,6 +328,7 @@ class GmailBankSyncService:
             # the bank key and the rule name
             mapping[mapped_rule.rule_id] = rule_config
 
+        # Create the cache value for the rule mapping
         cache_values = {
             key: value.to_dict()
             for key, value in mapping.items()
@@ -327,7 +336,7 @@ class GmailBankSyncService:
 
         logger.info(f'Caching rule mapping: {cache_key}: {cache_values}')
 
-        asyncio.create_task(
+        fire_task(
             self._cache_client.set_json(
                 key=cache_key,
                 value=cache_values,
@@ -502,7 +511,7 @@ class GmailBankSyncService:
             usage=usage
         )
 
-        asyncio.create_task(
+        fire_task(
             self._cache_client.set_json(
                 key=key,
                 value=value,

@@ -5,10 +5,9 @@ from clients.twilio_gateway import TwilioGatewayClient
 from domain.bank import BankRuleConfiguration
 from domain.enums import ProcessGmailRuleResultType
 from domain.exceptions import GmailRuleProcessingException
-from domain.google import (GMAIL_MESSAGE_URL, GmailEmail, GmailEmailRule,
-                           GmailRuleAction, GmailServiceRunResult, GoogleClientScope,
-                           GoogleEmailHeader, GoogleEmailLabel,
-                           ProcessGmailRuleRequest, ProcessGmailRuleResponse)
+from domain.google import (GmailEmail, GmailEmailRule, GmailRuleAction,
+                           GoogleClientScope, GoogleEmailLabel,
+                           ProcessGmailRuleResponse)
 from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
@@ -229,7 +228,7 @@ class GmailService:
                 f'No alert type set for bank sync: {bank_rule_config.bank_key}')
             return
 
-        body = await self.__get_message_body(
+        body = self._get_message_body(
             rule=rule,
             message=message)
 
@@ -279,7 +278,7 @@ class GmailService:
 
             logger.info(f'Message eligible for notification: {message_id}')
 
-            body = await self.__get_message_body(
+            body = await self._get_message_body(
                 rule=rule,
                 message=message)
 
@@ -307,7 +306,7 @@ class GmailService:
 
         return notify_count
 
-    async def __get_message_body(
+    def _get_message_body(
         self,
         rule: GmailEmailRule,
         message: GmailEmail
@@ -315,8 +314,9 @@ class GmailService:
         ArgumentNullException.if_none(rule, 'rule')
         ArgumentNullException.if_none(message, 'message')
 
-        body = f'From: {message.headers[GoogleEmailHeader.From]}'
-        body = f'Rule: {rule.name} ({rule.rule_id})'
+        # body = f'From: {message.headers[GoogleEmailHeader.From]}'
+
+        body = f'Rule: {rule.name}'
         body += '\n'
         body += f'Date: {message.timestamp}'
         body += '\n'
@@ -324,6 +324,7 @@ class GmailService:
         body += message.snippet
         body += '\n'
         body += '\n'
-        body += f'{GMAIL_MESSAGE_URL}/{message.message_id}'
+
+        # body += f'{GMAIL_MESSAGE_URL}/{message.message_id}'
 
         return body

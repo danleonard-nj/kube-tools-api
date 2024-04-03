@@ -2,7 +2,6 @@ from typing import Any
 
 from domain.google import (GoogleClientScope, GoogleDriveDirectory,
                            GoogleDriveFilePermission, GoogleDriveFileUpload)
-from framework.clients.cache_client import CacheClientAsync
 from framework.logger.providers import get_logger
 from googleapiclient.discovery import build
 from services.google_auth_service import GoogleAuthService
@@ -13,11 +12,9 @@ logger = get_logger(__name__)
 class GoogleDriveClient:
     def __init__(
         self,
-        auth_service: GoogleAuthService,
-        cache_client: CacheClientAsync
+        auth_service: GoogleAuthService
     ):
         self._auth_service = auth_service
-        self._cache_client = cache_client
         self._client = None
 
     async def upload_file(

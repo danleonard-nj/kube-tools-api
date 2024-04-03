@@ -11,6 +11,8 @@ from framework.logger.providers import get_logger
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 
+from utilities.utils import fire_task
+
 logger = get_logger(__name__)
 
 
@@ -33,9 +35,11 @@ class GoogleAuthService:
         auth_client = AuthClient.from_client(
             client=client)
 
-        await self._cache_client.set_json(
-            key=CacheKey.google_auth_client(),
-            value=auth_client.to_dict())
+        # Cache the client
+        fire_task(
+            self._cache_client.set_json(
+                key=CacheKey.google_auth_client(),
+                value=auth_client.to_dict()))
 
         result = await self._repository.collection.replace_one(
             auth_client.get_selector(),
@@ -71,9 +75,11 @@ class GoogleAuthService:
         creds = AuthClient.from_entity(
             data=entity)
 
-        await self._cache_client.set_json(
-            key=key,
-            value=creds.to_dict())
+        # Cache the client
+        fire_task(
+            self._cache_client.set_json(
+                key=key,
+                value=creds.to_dict()))
 
         client = creds.get_credentials(
             scopes=scopes)
