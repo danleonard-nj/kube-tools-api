@@ -278,7 +278,7 @@ class GmailService:
 
             logger.info(f'Message eligible for notification: {message_id}')
 
-            body = await self._get_message_body(
+            body = self._get_message_body(
                 rule=rule,
                 message=message)
 
