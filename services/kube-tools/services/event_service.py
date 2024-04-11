@@ -48,7 +48,5 @@ class EventService:
             endpoint=endpoint,
             token=token)
 
-        logger.info(f'Email event message: {event.to_dict()}')
-
         self._event_client.send_message(
             event.to_service_bus_message())

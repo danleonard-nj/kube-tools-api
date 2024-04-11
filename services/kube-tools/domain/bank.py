@@ -258,27 +258,6 @@ class SyncResult(Serializable):
         self.transaction = transaction
 
 
-class BankRuleConfiguration(Serializable):
-    def __init__(
-        self,
-        rule_name: str,
-        bank_key: str,
-        alert_type: bool = 'none'
-    ):
-        self.rule_name = rule_name
-        self.bank_key = bank_key
-        self.alert_type = alert_type
-
-    @staticmethod
-    def from_json_object(
-        data: Dict
-    ):
-        return BankRuleConfiguration(
-            rule_name=data.get('rule_name'),
-            bank_key=data.get('bank_key'),
-            alert_type=data.get('alert_type'))
-
-
 class BankBalance(Serializable):
     def __init__(
         self,

@@ -17,6 +17,7 @@ from utilities.utils import ValueConverter, clean_unicode
 logger = get_logger(__name__)
 
 GMAIL_MESSAGE_URL = 'https://mail.google.com/mail/u/0/#inbox'
+DEFAULT_PROMPT_TEMPLATE = 'Summarize this email in a few sentences, including any cost info and relevant dates/times or other useful information'
 
 
 def update(current_value, new_value):

@@ -4,13 +4,12 @@ from typing import Dict, List
 from clients.chat_gpt_service_client import ChatGptServiceClient
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
-from domain.bank import BankRuleConfiguration
 from domain.enums import ProcessGmailRuleResultType
 from domain.exceptions import GmailRuleProcessingException
-from domain.google import (GmailEmail, GmailEmailRule, GmailRuleAction,
-                           GoogleClientScope, GoogleEmailHeader,
-                           GoogleEmailLabel, ProcessGmailRuleResponse,
-                           parse_gmail_body_text)
+from domain.google import (DEFAULT_PROMPT_TEMPLATE, GmailEmail, GmailEmailRule,
+                           GmailRuleAction, GoogleClientScope,
+                           GoogleEmailHeader, GoogleEmailLabel,
+                           ProcessGmailRuleResponse, parse_gmail_body_text)
 from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
@@ -21,8 +20,6 @@ from services.gmail_rule_service import GmailRuleService
 from utilities.utils import clean_unicode
 
 logger = get_logger(__name__)
-
-DEFAULT_PROMPT_TEMPLATE = 'Summarize this email in a few sentences, including any cost info and relevant dates/times or other useful information'
 
 
 class GmailService:
@@ -138,7 +135,7 @@ class GmailService:
             logger.info(f'No emails found for rule: {rule.name}')
             return archive_count
 
-        logger.info(f'Result count: {len(query_result.messages or [])}')
+        logger.info(f'Result count: {query_result.count}')
         for message_id in query_result.message_ids:
             message = await self._gmail_client.get_message(
                 message_id=message_id)
@@ -185,21 +182,16 @@ class GmailService:
 
             logger.info(f'Message eligible for bank sync: {message_id}')
 
-            # Mapped bank key for the email rule
+            # Mapped bank sync config data for the email rule
             bank_key = rule.data.get('bank_sync_bank_key')
-
-            # TODO: Send alerts on capture if configured
             alert_type = rule.data.get('bank_sync_alert_type')
 
             logger.info(f'Mapped bank key: {bank_key}')
 
-            # TODO: Throw if bank key is not defined
+            if none_or_whitespace(bank_key):
+                raise GmailRuleProcessingException(
+                    f'Bank key not defined for bank sync rule: {rule.name}')
 
-            # if none_or_whitespace(bank_key):
-            #     raise GmailRuleProcessingException(
-            #         f'Bank key not defined for bank sync rule: {rule.name}')
-
-            # TODO: Use rule config data to define bank sync
             await self._bank_sync_service.handle_balance_sync(
                 rule=rule,
                 message=message,
@@ -218,41 +210,30 @@ class GmailService:
 
             logger.info(f'Tags add/remove: {to_add}: {to_remove}')
 
-            # TODO: Send alert if configured
-            # try:
-            #     await self.send_balance_sync_alert(
-            #         rule=rule,
-            #         message=message,
-            #         bank_rule_config=bank_rule_config)
-            # except Exception as e:
-            #     logger.exception(
-            #         f'Failed to send balance sync alert: {str(e)}')
+            try:
+                await self._send_balance_sync_alert(
+                    rule=rule,
+                    message=message,
+                    alert_type=alert_type)
+            except Exception as e:
+                logger.exception(f'Failed to send balance sync alert: {str(e)}')
 
             sync_count += 1
 
         return sync_count
 
-    async def send_balance_sync_alert(
+    async def _send_balance_sync_alert(
         self,
         rule: GmailEmailRule,
         message: GmailEmail,
-        bank_rule_config: BankRuleConfiguration,
+        alert_type: str = 'none'
     ):
         ArgumentNullException.if_none(rule, 'rule')
         ArgumentNullException.if_none(message, 'message')
-        ArgumentNullException.if_none(bank_rule_config, 'bank_rule_config')
+        ArgumentNullException.if_none_or_whitespace(alert_type, 'alert_type')
 
-        # Send a normal alert if configured in addition
-        # to syncing the balance
-        if (bank_rule_config is None
-                or bank_rule_config.alert_type is None):
-            logger.info(
-                f'No bank rule config found: {rule.name}')
-            return
-
-        if bank_rule_config.alert_type == GmailRuleAction.Undefined:
-            logger.info(
-                f'No alert type set for bank sync: {bank_rule_config.bank_key}')
+        if alert_type == GmailRuleAction.Undefined:
+            logger.info(f'No alert type defined for bank sync rule: {rule.name}')
             return
 
         body = self._get_sms_message_text(
@@ -262,7 +243,7 @@ class GmailService:
         logger.info(f'Message body: {body}')
 
         # Currently the only notifications supported are SMS
-        if bank_rule_config.alert_type == GmailRuleAction.SMS:
+        if alert_type == GmailRuleAction.SMS:
             logger.info(f'Sending SMS alert for bank sync')
 
             # Send the email snippet in the message body
@@ -271,11 +252,8 @@ class GmailService:
                 message=body)
 
         else:
-            logger.info(
-                f'Unsupported alert type: {bank_rule_config.alert_type}')
-
             raise GmailRuleProcessingException(
-                f"Alert type '{bank_rule_config.alert_type}' is not currently supported")
+                f"Balance sync alert type '{alert_type}' is not currently supported")
 
     async def process_sms_rule(
         self,

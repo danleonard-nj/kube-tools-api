@@ -8,8 +8,7 @@ from domain.bank import (BALANCE_EMAIL_EXCLUSION_KEYWORDS,
                          CAPITAL_ONE_QUICKSILVER, CAPITAL_ONE_SAVOR,
                          CAPITAL_ONE_VENTURE, DEFAULT_BALANCE, PROMPT_PREFIX,
                          PROMPT_SUFFIX, SYNCHRONY_AMAZON,
-                         SYNCHRONY_GUITAR_CENTER, SYNCHRONY_SWEETWATER,
-                         BankRuleConfiguration, ChatGptBalanceCompletion)
+                         SYNCHRONY_GUITAR_CENTER, SYNCHRONY_SWEETWATER, ChatGptBalanceCompletion)
 from domain.cache import CacheKey
 from domain.enums import BankKey, SyncType
 from domain.exceptions import GmailBalanceSyncException
@@ -18,7 +17,6 @@ from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from framework.logger import get_logger
 from services.bank_service import BankService
-from services.gmail_rule_service import GmailRuleService
 from utilities.utils import fire_task
 
 logger = get_logger(__name__)
@@ -28,12 +26,10 @@ class GmailBankSyncService:
     def __init__(
         self,
         configuration: Configuration,
-        rule_service: GmailRuleService,
         bank_service: BankService,
         chat_gpt_service_client: ChatGptServiceClient,
         cache_client: CacheClientAsync,
     ):
-        self._rule_service = rule_service
         self._bank_service = bank_service
         self._chat_gpt_client = chat_gpt_service_client
         self._cache_client = cache_client
@@ -41,38 +37,12 @@ class GmailBankSyncService:
         self._bank_rules = configuration.banking.get(
             'rules')
 
-        self._bank_rule_mapping: Dict[str, BankRuleConfiguration] = None
-
-    async def _get_bank_rule_mapping(
-        self
-    ):
-        # Lazy load the bank rule mapping
-        if self._bank_rule_mapping is None:
-            self._bank_rule_mapping = await self._generate_bank_rule_mapping()
-
-        return self._bank_rule_mapping
-
     async def handle_balance_sync(
         self,
         rule: GmailEmailRule,
         message: GmailEmail,
         bank_key: str
-    ) -> BankRuleConfiguration:
-
-        # bank_rule_mapping = await self._get_bank_rule_mapping()
-
-        # if rule.rule_id in bank_rule_mapping:
-        #     logger.info('Bank rule detected')
-
-        # # Get the bank rule config from the rule mapping
-        # mapped_rule = bank_rule_mapping.get(rule.rule_id)
-
-        # if mapped_rule is None:
-        #     raise GmailBalanceSyncException(
-        #         f"No bank rule mapping found for rule ID '{rule.rule_id}'")
-
-        # logger.info(f'Mapped bank rule config: {mapped_rule.to_dict()}')
-
+    ):
         try:
             logger.info(f'Parsing Gmail body')
 
@@ -148,7 +118,7 @@ class GmailBankSyncService:
                 email_body_segments=email_body_segments)
 
             # Store the balance record
-            await self._bank_service.capture_balance(
+            captured = await self._bank_service.capture_balance(
                 bank_key=bank_key,
                 balance=float(balance),
                 tokens=total_tokens,
@@ -157,14 +127,10 @@ class GmailBankSyncService:
 
             logger.info(f'Balance captured successfully for bank: {bank_key}')
 
+            return captured
+
         except Exception as ex:
             logger.exception(f'Error parsing balance: {str(ex)}')
-
-        # TODO: Deprecate bank rule configuration object, use configuration
-        # from the email rule instead
-        return BankRuleConfiguration(
-            rule_name=rule.name,
-            bank_key=bank_key)
 
     def _handle_account_specific_balance_sync(
         self,
@@ -270,65 +236,6 @@ class GmailBankSyncService:
         return ChatGptBalanceCompletion.from_balance_response(
             balance=balance,
             usage=usage)
-
-    async def _generate_bank_rule_mapping(
-        self
-    ):
-        logger.info(f'Generating bank rule mapping')
-        cache_key = CacheKey.bank_rule_mapping()
-
-        logger.info(f'Mapping cache key: {cache_key}')
-        mapping = await self._cache_client.get_json(
-            key=cache_key)
-
-        if mapping is not None:
-            logger.info(f'Cache hit: {cache_key}')
-
-            # Parse the cached rule mapping (rule name to rule config)
-            for name, data in mapping.items():
-                logger.info(f'Parsing cached bank rule mapping: {name}: {data}')
-                mapping[name] = BankRuleConfiguration.from_json_object(data)
-
-            return mapping
-
-        # Parse the rule configurations
-        rule_configs = [BankRuleConfiguration.from_json_object(data=rule)
-                        for rule in self._bank_rules]
-
-        # Fetch given rules by rule name
-        rules = await self._rule_service.get_rules_by_name(
-            rule_names=[x.rule_name for x in rule_configs])
-
-        # Mapping to get the rule config from the name
-        rule_lookup = {
-            x.name: x for x in rules
-        }
-
-        mapping = dict()
-
-        # Generate the rule ID to rule config mapping
-        for rule_config in rule_configs:
-            mapped_rule = rule_lookup.get(rule_config.rule_name)
-
-            # Map the rule ID to the rule config which contains
-            # the bank key and the rule name
-            mapping[mapped_rule.rule_id] = rule_config
-
-        # Create the cache value for the rule mapping
-        cache_values = {
-            key: value.to_dict()
-            for key, value in mapping.items()
-        }
-
-        logger.info(f'Caching rule mapping: {cache_key}: {cache_values}')
-
-        fire_task(
-            self._cache_client.set_json(
-                key=cache_key,
-                value=cache_values,
-                ttl=5))
-
-        return mapping
 
     def _get_chat_gpt_balance_prompt(
         self,
