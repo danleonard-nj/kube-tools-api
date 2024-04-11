@@ -65,16 +65,6 @@ def format_datetime(dt):
     return dt.strftime('%Y-%m-%d')
 
 
-def strip_special_chars(value: str) -> str:
-    return (
-        value
-        .strip()
-        .replace('\n', ' ')
-        .replace('\t', ' ')
-        .replace('\r', ' ')
-    )
-
-
 class PlaidBalanceRequest(Serializable):
     def __init__(
         self,

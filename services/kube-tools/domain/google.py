@@ -1,8 +1,10 @@
 import base64
 import io
+import unicodedata
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from bs4 import BeautifulSoup
 from framework.crypto.hashing import md5
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
@@ -10,8 +12,7 @@ from framework.serialization import Serializable
 from framework.validators.nulls import none_or_whitespace
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaIoBaseUpload
-
-from utilities.utils import ValueConverter
+from utilities.utils import ValueConverter, clean_unicode
 
 logger = get_logger(__name__)
 
@@ -400,9 +401,57 @@ def parse_gmail_body(
     return decoded
 
 
+def strip_special_chars(value: str) -> str:
+    return (
+        value
+        .strip()
+        .replace('\n', ' ')
+        .replace('\t', ' ')
+        .replace('\r', ' ')
+    )
+
+
+def parse_gmail_body_text(
+    message: GmailEmail
+) -> List[str]:
+
+    segments = parse_gmail_body(
+        message=message)
+
+    results = []
+
+    for segment in segments:
+        if none_or_whitespace(segment):
+            continue
+
+        # Parse the segment as HTML
+        soup = BeautifulSoup(segment)
+
+        # Get the body of the email
+        body = soup.find('body')
+
+        # If there is no body in this HTML segment
+        # then skip it and move on to the next one
+        if none_or_whitespace(body):
+            continue
+
+        # Get the text content of the body and strip
+        # any newlines, tabs, or carriage returns
+        content = strip_special_chars(
+            clean_unicode(
+                unicodedata.normalize(
+                    'NFKD', body.get_text())))
+
+        results.append(content)
+
+    return results
+
+
 def get_key(
     client_id: str,
     scopes: List[str]
+
+
 ) -> str:
     scopes = '-'.join(scopes)
     return f'{client_id}-{scopes}'

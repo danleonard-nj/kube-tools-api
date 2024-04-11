@@ -5,7 +5,6 @@ services/kube-tools/oauth.json
 services/kube-tools/token.json
 services/kube-tools/gpt_workbook.ipynb
 services/kube-tools/scripts/esp8266_client/esp8266_client.ino
-services/kube-tools/wb.ipynb
 services/kube-tools/.VSCodeCounter/2024-03-23_22-46-40/details.md
 services/kube-tools/.VSCodeCounter/2024-03-23_22-46-40/diff-details.md
 services/kube-tools/.VSCodeCounter/2024-03-23_22-46-40/diff.csv
@@ -24,3 +23,5 @@ services/kube-tools/.VSCodeCounter/2024-04-03_14-41-04/results.csv
 services/kube-tools/.VSCodeCounter/2024-04-03_14-41-04/results.json
 services/kube-tools/.VSCodeCounter/2024-04-03_14-41-04/results.md
 services/kube-tools/.VSCodeCounter/2024-04-03_14-41-04/results.txt
+
+*.ipynb

@@ -75,6 +75,7 @@ class ChatGptServiceClient:
 
         logger.info(f'Response: {response.status_code}')
 
+        # TODO: Move this logic into service layer
         if not response.is_success:
             raise ChatGptException(
                 f'Failed to fetch internal chat completion: {response.status_code}',

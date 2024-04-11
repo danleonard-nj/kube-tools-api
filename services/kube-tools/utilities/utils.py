@@ -203,4 +203,8 @@ def fire_task(coroutine):
     asyncio.create_task(coroutine)
 
 
+def clean_unicode(unicode_str):
+    return unicode_str.encode('ascii', 'ignore').decode('utf-8')
+
+
 deprecate_logger = build_deprecate_logger()

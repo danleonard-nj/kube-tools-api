@@ -1,22 +1,28 @@
 import html
 from typing import Dict, List
 
+from clients.chat_gpt_service_client import ChatGptServiceClient
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
 from domain.bank import BankRuleConfiguration
 from domain.enums import ProcessGmailRuleResultType
 from domain.exceptions import GmailRuleProcessingException
 from domain.google import (GmailEmail, GmailEmailRule, GmailRuleAction,
-                           GoogleClientScope, GoogleEmailLabel,
-                           ProcessGmailRuleResponse)
+                           GoogleClientScope, GoogleEmailHeader,
+                           GoogleEmailLabel, ProcessGmailRuleResponse,
+                           parse_gmail_body_text)
 from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
+from framework.validators.nulls import none_or_whitespace
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
+from utilities.utils import clean_unicode
 
 logger = get_logger(__name__)
+
+DEFAULT_PROMPT_TEMPLATE = 'Summarize this email in a few sentences, including any cost info and relevant dates/times or other useful information'
 
 
 class GmailService:
@@ -26,12 +32,14 @@ class GmailService:
         gmail_client: GmailClient,
         rule_service: GmailRuleService,
         bank_sync_service: GmailBankSyncService,
-        twilio_gateway: TwilioGatewayClient
+        twilio_gateway: TwilioGatewayClient,
+        chat_gpt_client: ChatGptServiceClient
     ):
         self._gmail_client = gmail_client
         self._rule_service = rule_service
         self._twilio_gateway = twilio_gateway
         self._bank_sync_service = bank_sync_service
+        self._chat_gpt_client = chat_gpt_client
 
         self._sms_recipient = configuration.gmail.get(
             'sms_recipient')
@@ -177,9 +185,25 @@ class GmailService:
 
             logger.info(f'Message eligible for bank sync: {message_id}')
 
-            bank_rule_config = await self._bank_sync_service.handle_balance_sync(
+            # Mapped bank key for the email rule
+            bank_key = rule.data.get('bank_sync_bank_key')
+
+            # TODO: Send alerts on capture if configured
+            alert_type = rule.data.get('bank_sync_alert_type')
+
+            logger.info(f'Mapped bank key: {bank_key}')
+
+            # TODO: Throw if bank key is not defined
+
+            # if none_or_whitespace(bank_key):
+            #     raise GmailRuleProcessingException(
+            #         f'Bank key not defined for bank sync rule: {rule.name}')
+
+            # TODO: Use rule config data to define bank sync
+            await self._bank_sync_service.handle_balance_sync(
                 rule=rule,
-                message=message)
+                message=message,
+                bank_key=bank_key)
 
             # Mark read so we dont process this email again
             to_add = [GoogleEmailLabel.Starred]
@@ -194,14 +218,15 @@ class GmailService:
 
             logger.info(f'Tags add/remove: {to_add}: {to_remove}')
 
-            try:
-                await self.send_balance_sync_alert(
-                    rule=rule,
-                    message=message,
-                    bank_rule_config=bank_rule_config)
-            except Exception as e:
-                logger.exception(
-                    f'Failed to send balance sync alert: {str(e)}')
+            # TODO: Send alert if configured
+            # try:
+            #     await self.send_balance_sync_alert(
+            #         rule=rule,
+            #         message=message,
+            #         bank_rule_config=bank_rule_config)
+            # except Exception as e:
+            #     logger.exception(
+            #         f'Failed to send balance sync alert: {str(e)}')
 
             sync_count += 1
 
@@ -230,7 +255,7 @@ class GmailService:
                 f'No alert type set for bank sync: {bank_rule_config.bank_key}')
             return
 
-        body = self._get_message_body(
+        body = self._get_sms_message_text(
             rule=rule,
             message=message)
 
@@ -278,9 +303,9 @@ class GmailService:
 
             logger.info(f'Message eligible for notification: {message_id}')
 
-            body = self._get_message_body(
-                rule=rule,
-                message=message)
+            body = await self._get_sms_message_body(
+                message=message,
+                rule=rule)
 
             logger.info(f'Message body: {body}')
 
@@ -306,33 +331,92 @@ class GmailService:
 
         return notify_count
 
-    def _get_message_body(
+    async def _get_sms_message_body(
         self,
-        rule: GmailEmailRule,
-        message: GmailEmail
+        message: GmailEmail,
+        rule: GmailEmailRule
     ):
         ArgumentNullException.if_none(rule, 'rule')
         ArgumentNullException.if_none(message, 'message')
 
-        # body = f'From: {message.headers[GoogleEmailHeader.From]}'
+        # TODO: Define class for additional rule config data
+        chat_gpt_summary = rule.data.get('chat_gpt_include_summary', False)
 
-        snippet = (
-            html
-            .unescape(message.snippet)
-            .encode('ascii', 'ignore')
-            .decode('utf-8')
-            .strip()
-        )
+        if not chat_gpt_summary:
+            return self._get_sms_message_text(
+                rule=rule,
+                message=message)
+
+        # Get the custom prompt template if provided
+        prompt_template = rule.data.get('chat_gpt_prompt_template')
+
+        # Get the email summary using ChatGPT
+        summary = await self._get_chat_gpt_email_summary(
+            message=message,
+            prompt_template=prompt_template)
+
+        return self._get_sms_message_text(
+            rule=rule,
+            message=message,
+            summary=summary)
+
+    async def _get_chat_gpt_email_summary(
+        self,
+        message: GmailEmail,
+        prompt_template: str = None
+    ):
+        logger.info(f'Parsing email body')
+
+        # Parse the email body segments
+        body = parse_gmail_body_text(
+            message=message)
+
+        # Generate a prompt to summarize the email
+        prompt = f"{DEFAULT_PROMPT_TEMPLATE}: {' '.join(body)}"
+
+        # Use custom prompt template if provided
+        if not none_or_whitespace(prompt_template):
+            logger.info(f'Using custom prompt template: {prompt_template}')
+            prompt = f"{prompt_template}: {' '.join(body)}"
+
+        # Get the email summary from ChatGPT service
+        result, usage = await self._chat_gpt_client.get_chat_completion(
+            prompt=prompt)
+
+        logger.info(f'ChatGPT email summary usage tokens: {usage}')
+
+        return result
+
+    def _get_sms_message_text(
+        self,
+        rule: GmailEmailRule,
+        message: GmailEmail,
+        summary: str = None
+    ):
+        ArgumentNullException.if_none(rule, 'rule')
+        ArgumentNullException.if_none(message, 'message')
+
+        snippet = clean_unicode(
+            html.unescape(message.snippet)).strip()
 
         body = f'Rule: {rule.name}'
         body += '\n'
         body += f'Date: {message.timestamp}'
         body += '\n'
         body += '\n'
+
         body += snippet
         body += '\n'
         body += '\n'
 
+        if summary:
+            body += f'Summary: {summary}'
+            body += '\n'
+            body += '\n'
+
+        body += f'From: {message.headers[GoogleEmailHeader.From]}'
+
+        # body += '\n'
         # body += f'{GMAIL_MESSAGE_URL}/{message.message_id}'
 
         return body
