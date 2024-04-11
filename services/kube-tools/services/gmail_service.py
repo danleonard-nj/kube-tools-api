@@ -1,3 +1,4 @@
+import html
 from typing import Dict, List
 
 from clients.gmail_client import GmailClient
@@ -123,11 +124,11 @@ class GmailService:
             query=rule.query,
             max_results=rule.max_results)
 
-        archived = 0
+        archive_count = 0
 
         if query_result is None:
             logger.info(f'No emails found for rule: {rule.name}')
-            return archived
+            return archive_count
 
         logger.info(f'Result count: {len(query_result.messages or [])}')
         for message_id in query_result.message_ids:
@@ -141,11 +142,12 @@ class GmailService:
 
             logger.info(f'Rule: {rule.name}: Archiving email: {message_id}')
 
-            archived += 1
             await self._gmail_client.archive_message(
                 message_id=message_id)
 
-        return archived
+            archive_count += 1
+
+        return archive_count
 
     async def process_bank_sync_rule(
         self,
@@ -160,8 +162,8 @@ class GmailService:
             query=rule.query,
             max_results=rule.max_results)
 
-        logger.info(f'Query result count: {len(query_result.messages)}')
-        notify_count = 0
+        logger.info(f'Query result count: {query_result.count}')
+        sync_count = 0
 
         for message_id in query_result.message_ids:
             logger.debug(f'Get email message: {message_id}')
@@ -201,9 +203,9 @@ class GmailService:
                 logger.exception(
                     f'Failed to send balance sync alert: {str(e)}')
 
-            notify_count += 1
+            sync_count += 1
 
-        return notify_count
+        return sync_count
 
     async def send_balance_sync_alert(
         self,
@@ -263,12 +265,10 @@ class GmailService:
             query=rule.query,
             max_results=rule.max_results)
 
-        logger.info(f'Query result count: {len(query_result.messages)}')
+        logger.info(f'Query result count: {query_result.count}')
         notify_count = 0
 
         for message_id in query_result.message_ids:
-            logger.debug(f'Get email message: {message_id}')
-
             message = await self._gmail_client.get_message(
                 message_id=message_id)
 
@@ -316,12 +316,20 @@ class GmailService:
 
         # body = f'From: {message.headers[GoogleEmailHeader.From]}'
 
+        snippet = (
+            html
+            .unescape(message.snippet)
+            .encode('ascii', 'ignore')
+            .decode('utf-8')
+            .strip()
+        )
+
         body = f'Rule: {rule.name}'
         body += '\n'
         body += f'Date: {message.timestamp}'
         body += '\n'
         body += '\n'
-        body += message.snippet
+        body += snippet
         body += '\n'
         body += '\n'
 

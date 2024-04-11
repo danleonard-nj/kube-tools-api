@@ -87,6 +87,12 @@ class GmailEmailHeaders(Serializable):
 
 
 class GmailQueryResult(Serializable):
+    @property
+    def count(
+        self
+    ):
+        return len(self.message_ids)
+
     def __init__(
         self,
         data
