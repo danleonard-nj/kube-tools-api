@@ -1,10 +1,8 @@
-from typing import Dict, List
-
-from domain.mongo import Queryable
+from domain.queries import (GetBalanceByBankKeyQuery, GetBalanceHistoryQuery,
+                            GetTransactionsByTransactionBksQuery,
+                            GetTransactionsQuery)
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from motor.motor_asyncio import AsyncIOMotorClient
-
-from domain.queries import GetBalanceByBankKeyQuery, GetBalanceHistoryQuery, GetTransactionsByTransactionBksQuery, GetTransactionsQuery
 
 
 class BankBalanceRepository(MongoRepositoryAsync):
@@ -44,6 +42,7 @@ class BankBalanceRepository(MongoRepositoryAsync):
         return await (
             self.collection
             .find(filter=query.get_query())
+            .sort(query.get_sort())
             .to_list(length=None)
         )
 

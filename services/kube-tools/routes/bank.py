@@ -96,13 +96,3 @@ async def get_transactions(container):
 
     return await service.get_transactions(
         **params)
-
-
-@bank_bp.configure('/api/bank/webhook', methods=['POST'], auth_scheme=AuthPolicy.Default)
-async def post_bank_webhook(container):
-    service: BankService = container.resolve(BankService)
-
-    body = await request.get_json()
-
-    return await service.handle_webhook(
-        data=body)

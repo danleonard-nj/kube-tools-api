@@ -79,7 +79,7 @@ class GetBalanceHistoryQuery(Queryable):
 
     def get_query(
         self
-    ):
+    ) -> dict:
         query_filter = {
             'timestamp': {
                 '$gte': self.start_timestamp,
@@ -95,6 +95,11 @@ class GetBalanceHistoryQuery(Queryable):
             }
 
         return query_filter
+
+    def get_sort(
+        self
+    ) -> list:
+        return [('timestamp', -1)]
 
 
 class GetTransactionsQuery(Queryable):

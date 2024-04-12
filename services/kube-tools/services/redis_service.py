@@ -63,7 +63,7 @@ class RedisService:
             parse_json=req.parse_json,
             memory_usage=memory_usage)
 
-        logger.info(f'Value for key: {req.key_name}: {result}')
+        logger.info(f'Value for key: {req.key_name}: {result.to_dict()}')
 
         return result
 
