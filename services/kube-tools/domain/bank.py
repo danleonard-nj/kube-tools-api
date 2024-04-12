@@ -333,18 +333,6 @@ class PlaidAccount:
             account_id=data.get('account_id'))
 
 
-class PlaidWebhookData(Serializable):
-    def __init__(
-        self,
-        request_id: str,
-        data: Dict,
-        timestamp: int
-    ):
-        self.request_id = request_id
-        self.data = data
-        self.timestamp = timestamp
-
-
 class ChatGptBalanceCompletion(Serializable):
     def __init__(
         self,

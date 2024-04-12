@@ -45,7 +45,8 @@ class RedisCacheValueResponse(Serializable):
         key: str,
         value: bytes | str,
         ttl: int,
-        parse_json: bool = False
+        parse_json: bool = False,
+        memory_usage: int = 0
     ):
         self.key = key
         if isinstance(value, bytes):
@@ -58,6 +59,7 @@ class RedisCacheValueResponse(Serializable):
 
         self.ttl = ttl
         self.parse_json = parse_json
+        self.memory_usage = memory_usage
 
 
 class RedisSetCacheValueResponse(Serializable):
@@ -90,6 +92,21 @@ class RedisGetCacheValueRequest:
         return RedisGetCacheValueRequest(
             key_name=data.get('key_name'),
             parse_json=data.get('parse_json', False))
+
+
+class RedisDeleteCacheValueRequest:
+    def __init__(
+        self,
+        key_name: str
+    ):
+        self.key_name = key_name
+
+    @staticmethod
+    def from_request_body(
+        data: dict
+    ):
+        return RedisDeleteCacheValueRequest(
+            key_name=data.get('key_name'))
 
 
 class RedisSetCacheValueRequest:
@@ -161,3 +178,19 @@ class RedisDiagnosticsResponse(Serializable):
                 'info': self.info
             }
         }
+
+
+class RedisGetKeysResponse(Serializable):
+    def __init__(
+        self,
+        keys: list[str]
+    ):
+        self.keys = keys
+
+
+class RedisDeleteCacheValueResponse(Serializable):
+    def __init__(
+        self,
+        deleted_keys: int
+    ):
+        self.deleted_keys = deleted_keys

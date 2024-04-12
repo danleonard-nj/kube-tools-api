@@ -1,5 +1,8 @@
-from domain.redis import (RedisCacheValueResponse, RedisDiagnosticsResponse,
-                          RedisGetCacheValueRequest, RedisSetCacheValueRequest,
+from domain.redis import (RedisCacheValueResponse,
+                          RedisDeleteCacheValueRequest,
+                          RedisDeleteCacheValueResponse,
+                          RedisDiagnosticsResponse, RedisGetCacheValueRequest,
+                          RedisGetKeysResponse, RedisSetCacheValueRequest,
                           RedisSetCacheValueResponse)
 from framework.clients.cache_client import CacheClientAsync
 from framework.concurrency import TaskCollection
@@ -25,24 +28,19 @@ class RedisService:
     async def get_keys(
         self,
         pattern: str = '*'
-    ):
+    ) -> RedisGetKeysResponse:
+
         logger.info(f'Getting keys with pattern: {pattern}')
 
         keys = await self._cache_client.client.keys(pattern)
 
-        results = [x.decode() for x in keys]
-
-        return {
-            'keys': results
-        }
+        return RedisGetKeysResponse(
+            keys=[x.decode() for x in keys])
 
     async def get_value(
         self,
-        body: dict
+        req: RedisGetCacheValueRequest
     ) -> RedisCacheValueResponse:
-
-        req = RedisGetCacheValueRequest.from_request_body(
-            data=body)
 
         logger.info(f'Getting value for key: {req.key_name}')
 
@@ -62,23 +60,19 @@ class RedisService:
             key=req.key_name,
             value=value,
             ttl=ttl,
-            parse_json=req.parse_json)
+            parse_json=req.parse_json,
+            memory_usage=memory_usage)
 
         logger.info(f'Value for key: {req.key_name}: {result}')
 
-        return result.to_dict() | {
-            'memory_usage': memory_usage
-        }
+        return result
 
     async def set_value(
         self,
-        body: dict
+        req: RedisSetCacheValueRequest
     ) -> RedisSetCacheValueResponse:
 
-        ArgumentNullException.if_none(body, 'body')
-
-        req = RedisSetCacheValueRequest.from_request_body(
-            body=body)
+        ArgumentNullException.if_none(req, 'req')
 
         logger.info(f'Setting value for key: {req.key_name}')
 
@@ -99,27 +93,25 @@ class RedisService:
 
     async def delete_key(
         self,
-        body: dict
-    ):
-        ArgumentNullException.if_none(body, 'body')
+        req: RedisDeleteCacheValueRequest
+    ) -> RedisDeleteCacheValueResponse:
 
-        key_name = body.get('key_name')
+        ArgumentNullException.if_none(req, 'req')
 
-        if none_or_whitespace(key_name):
+        if none_or_whitespace(req.key_name):
             raise Exception('No key name provided')
 
-        logger.info(f'Deleting key: {key_name}')
+        logger.info(f'Deleting key: {req.key_name}')
 
-        result = await self._cache_client.client.delete(key_name)
+        result = await self._cache_client.client.delete(
+            req.key_name)
 
-        return {
-            'deleted_keys': result
-        }
+        return RedisDeleteCacheValueResponse(
+            deleted_keys=result)
 
     async def flush(
         self
-    ):
-        logger.info(f'Flushing cache')
+    ) -> dict:
 
         result = await self._cache_client.client.flushall()
         logger.info(f'Flush result: {result}')
@@ -130,7 +122,8 @@ class RedisService:
 
     async def get_diagnostics(
         self
-    ):
+    ) -> RedisDiagnosticsResponse:
+
         logger.info(f'Getting diagnostics')
 
         tasks = TaskCollection(

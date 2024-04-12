@@ -1,7 +1,5 @@
 import re
 from typing import List
-
-from clients.chat_gpt_service_client import ChatGptException
 from domain.bank import (BALANCE_EMAIL_EXCLUSION_KEYWORDS,
                          BALANCE_EMAIL_INCLUSION_KEYWORDS,
                          CAPITAL_ONE_QUICKSILVER, CAPITAL_ONE_SAVOR,

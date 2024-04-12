@@ -37,7 +37,6 @@ app.register_blueprint(torrent_bp)
 app.register_blueprint(redis_bp)
 
 provider = ContainerProvider.get_service_provider()
-InternalProvider.bind(provider)
 
 
 @app.before_serving

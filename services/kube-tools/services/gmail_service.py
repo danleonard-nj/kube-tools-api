@@ -1,7 +1,6 @@
 import html
 from typing import Dict, List
 
-from clients.chat_gpt_service_client import ChatGptServiceClient
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
 from domain.enums import ProcessGmailRuleResultType

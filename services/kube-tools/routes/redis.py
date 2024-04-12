@@ -4,6 +4,7 @@ from framework.di.service_provider import ServiceProvider
 from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request, stream_with_context, Response
+from domain.redis import RedisGetCacheValueRequest, RedisSetCacheValueRequest
 from services.redis_service import RedisService
 
 redis_bp = MetaBlueprint('redis_bp', __name__)
@@ -24,8 +25,11 @@ async def get_redis_key_value(container: ServiceProvider):
 
     body = await request.get_json()
 
+    req = RedisGetCacheValueRequest.from_request_body(
+        data=body)
+
     return await service.get_value(
-        body=body)
+        req=req)
 
 
 @redis_bp.configure('/api/redis/set', methods=['POST'], auth_scheme=AuthPolicy.Default)
@@ -34,8 +38,11 @@ async def set_redis_key_value(container: ServiceProvider):
 
     body = await request.get_json()
 
-    return await service.set_value(
+    req = RedisSetCacheValueRequest.from_request_body(
         body=body)
+
+    return await service.set_value(
+        req=req)
 
 
 @redis_bp.configure('/api/redis/delete', methods=['POST'], auth_scheme=AuthPolicy.Default)
