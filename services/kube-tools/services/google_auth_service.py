@@ -1,6 +1,3 @@
-import asyncio
-from typing import List
-
 from data.google.google_auth_repository import GoogleAuthRepository
 from domain.cache import CacheKey
 from domain.exceptions import InvalidGoogleAuthClientException
@@ -8,10 +5,8 @@ from domain.google import AuthClient
 from framework.clients.cache_client import CacheClientAsync
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
+from framework.validators.nulls import none_or_whitespace
 from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-
-from utilities.utils import fire_task
 
 logger = get_logger(__name__)
 
@@ -25,72 +20,67 @@ class GoogleAuthService:
         self._repository = repository
         self._cache_client = cache_client
 
-    async def save_auth_client(
+    async def get_credentials(
         self,
-        client: Credentials
-    ) -> None:
-
-        ArgumentNullException.if_none(client, 'client')
-
-        auth_client = AuthClient.from_client(
-            client=client)
-
-        # Cache the client
-        fire_task(
-            self._cache_client.set_json(
-                key=CacheKey.google_auth_client(),
-                value=auth_client.to_dict()))
-
-        result = await self._repository.collection.replace_one(
-            auth_client.get_selector(),
-            auth_client.to_dict(),
-            upsert=True
-        )
-
-        logger.info(f'Saved Google auth client: {result.raw_result}')
-
-    async def get_auth_client(
-        self,
-        scopes: List[str]
-    ) -> Credentials:
-
+        client_name: str,
+        scopes: list[str]
+    ):
+        ArgumentNullException.if_none_or_whitespace(client_name, 'client_name')
         ArgumentNullException.if_none(scopes, 'scopes')
 
-        key = CacheKey.google_auth_client()
+        # Fetch the client from database
+        client = await self._repository.get({
+            'client_name': client_name
+        })
 
-        entity = await self._cache_client.get_json(
-            key=key)
-
-        if entity is None:
-            logger.info(f'Fetching Google auth client from database')
-
-            # The only record in the collection should be the
-            # auth config
-            entity = await self._repository.collection.find_one()
-
-        if entity is None:
+        if client is None:
             raise InvalidGoogleAuthClientException(
-                f'No Google auth client found')
+                f"No client with the name '{client_name}' exists")
 
-        creds = AuthClient.from_entity(
-            data=entity)
+        client = AuthClient.from_entity(
+            data=client)
 
-        # Cache the client
-        fire_task(
-            self._cache_client.set_json(
-                key=key,
-                value=creds.to_dict()))
-
-        client = creds.get_credentials(
+        creds = client.get_credentials(
             scopes=scopes)
 
-        if creds.scopes == client.scopes and not client.expired:
-            return client
+        if creds.valid:
+            return creds
 
-        logger.info('Refreshing Google auth client')
-        client.refresh(Request())
+        # Refresh the credentials
+        logger.info(f'Refreshing Google auth client: {client_name}')
+        creds.refresh(Request())
 
-        logger.info(f'Saving Google auth client')
-        await self.save_auth_client(client)
+        # Update the stored client
+        await self._repository.replace(
+            selector=client.get_selector(),
+            document=client.to_dict())
 
-        return client
+        return creds
+
+    async def get_token(
+        self,
+        client_name: str,
+        scopes: list[str]
+    ) -> str:
+
+        cache_key = CacheKey.google_auth_client(
+            client_name=client_name,
+            scopes=scopes)
+
+        token = await self._cache_client.get_cache(
+            key=cache_key)
+
+        if not none_or_whitespace(token):
+            return token
+
+        client = await self.get_credentials(
+            client_name=client_name,
+            scopes=scopes)
+
+        # Cache the token for 30 minutes
+        await self._cache_client.set_cache(
+            key=cache_key,
+            value=client.token,
+            ttl=30)
+
+        return client.token

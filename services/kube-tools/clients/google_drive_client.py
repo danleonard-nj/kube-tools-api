@@ -65,7 +65,8 @@ class GoogleDriveClient:
     ) -> Any:
         logger.info('Creating Google Drive client')
 
-        auth_client = await self._auth_service.get_auth_client(
+        auth_client = await self._auth_service.get_credentials(
+            client_name='drive-client',
             scopes=GoogleClientScope.Drive)
 
         client = build(

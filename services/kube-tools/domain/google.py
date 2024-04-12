@@ -461,68 +461,53 @@ def get_key(
 class AuthClient(Serializable):
     def __init__(
         self,
-        client_key: str,
+        client_name: str,
         token: str,
         refresh_token: str,
         token_url: str,
         client_id: str,
         client_secret: str,
-        scopes: List[str],
         expiry: str,
         timestamp: str
     ):
-        self.client_key = client_key
+        self.client_name = client_name
         self.token = token
         self.refresh_token = refresh_token
         self.token_url = token_url
         self.client_id = client_id
         self.client_secret = client_secret
-        self.scopes = scopes
         self.expiry = expiry
         self.timestamp = timestamp
 
     @staticmethod
     def from_client(
-        client: Credentials
+        credentials: Credentials,
+        client_name: str
     ):
-        key = get_key(
-            client_id=client.client_id,
-            scopes=client.scopes)
-
-        logger.info(f'Creating auth client: {key}')
-
         return AuthClient(
-            client_key=key,
-            token=client.token,
-            refresh_token=client.refresh_token,
-            token_url=client.token_uri,
-            client_id=client.client_id,
-            client_secret=client.client_secret,
-            expiry=client.expiry.isoformat(),
-            timestamp=datetime.now().isoformat(),
-            scopes=client.scopes
+            client_name=client_name,
+            token=credentials.token,
+            refresh_token=credentials.refresh_token,
+            token_url=credentials.token_uri,
+            client_id=credentials.client_id,
+            client_secret=credentials.client_secret,
+            expiry=credentials.expiry.isoformat(),
+            timestamp=datetime.now().isoformat()
         )
 
     @staticmethod
     def from_entity(
         data: dict
     ):
-        client_key = data.get('client_key')
-
-        if client_key is None or client_key == '':
-            logger.info(f'No client key found, generating new key')
-            client_key = get_key(
-                client_id=data.get('client_id'),
-                scopes=data.get('scopes'))
-
         return AuthClient(
-            client_key=client_key,
+            client_name=data.get('client_name'),
+            # client_key=client_key,
             token=data.get('token'),
             refresh_token=data.get('refresh_token'),
             token_url=data.get('token_uri'),
             client_id=data.get('client_id'),
             client_secret=data.get('client_secret'),
-            scopes=data.get('scopes'),
+            # scopes=data.get('scopes'),
             expiry=data.get('expiry'),
             timestamp=data.get('timestamp')
         )
@@ -531,19 +516,15 @@ class AuthClient(Serializable):
         self
     ):
         return {
-            'client_id': self.client_id
+            'client_name': self.client_name
         }
 
     def get_credentials(
         self,
         scopes: List[str]
     ):
-        info = self.to_dict() | {
-            'scopes': scopes
-        }
-
         return Credentials.from_authorized_user_info(
-            info=info,
+            info=self.to_dict(),
             scopes=scopes)
 
 

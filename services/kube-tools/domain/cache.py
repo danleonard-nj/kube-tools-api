@@ -28,8 +28,11 @@ class CacheKey:
             return f'kube-tools-auth-{client}'
 
     @staticmethod
-    def google_auth_client() -> str:
-        return 'kube-tools-google-auth-client'
+    def google_auth_client(
+        client_name: str,
+        scopes: list[str]
+    ) -> str:
+        return f'kube-tools-google-auth-client-{client_name}-{generate_uuid(scopes)}'
 
     @staticmethod
     def chatgpt_service_token(

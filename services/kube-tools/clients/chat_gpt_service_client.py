@@ -1,10 +1,8 @@
-import asyncio
 from typing import Union
 
 from clients.identity_client import IdentityClient
 from domain.auth import AuthClient, ClientScope
 from domain.cache import CacheKey
-from domain.exceptions import ChatGptException
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from framework.logger import get_logger
@@ -75,59 +73,4 @@ class ChatGptServiceClient:
 
         logger.info(f'Response: {response.status_code}')
 
-        # TODO: Move this logic into service layer
-        if not response.is_success:
-            raise ChatGptException(
-                f'Failed to fetch internal chat completion: {response.status_code}',
-                response.status_code,
-                'error')
-
-        parsed = response.json()
-
-        internal_status = (
-            parsed
-            .get('response', dict())
-            .get('status_code', 0)
-        )
-
-        if internal_status != 200:
-            error = (
-                parsed
-                .get('response', dict())
-                .get('body', dict())
-                .get('error', dict())
-            )
-
-            if internal_status == 429:
-                raise ChatGptException(
-                    message=f'Internal chatgpt service is rate limited: {internal_status}',
-                    status_code=internal_status,
-                    gpt_error=error)
-
-            if internal_status == 503:
-                raise ChatGptException(
-                    f'Internal chatgpt service is unavailable: {internal_status}',
-                    status_code=internal_status,
-                    gpt_error=error)
-
-        result = (
-            parsed
-            .get('response', dict())
-            .get('body', dict())
-            .get('choices', list())[0]
-            .get('message', dict())
-            .get('content', dict())
-        )
-
-        usage = (
-            parsed
-            .get('response', dict())
-            .get('body', dict())
-            .get('usage', dict())
-            .get('total_tokens', 0)
-        )
-
-        logger.info(f'Result: {result}')
-        logger.info(f'Usage: {usage} token(s)')
-
-        return result, usage
+        return response

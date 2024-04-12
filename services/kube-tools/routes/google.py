@@ -11,12 +11,6 @@ from services.google_drive_service import GoogleDriveService
 google_bp = MetaBlueprint('google_bp', __name__)
 
 
-def get_google_auth_query_params(body: dict) -> dict:
-    return {
-        'scopes': body.get('scopes', [])
-    }
-
-
 @google_bp.configure('/api/google/auth', methods=['POST'], auth_scheme='default')
 async def get_auth(container):
     service: GoogleAuthService = container.resolve(
@@ -24,10 +18,16 @@ async def get_auth(container):
 
     body = await request.get_json()
 
-    client = await service.get_auth_client(
-        **get_google_auth_query_params(body))
+    client_name = body.get('client_name')
+    scopes = body.get('scopes', [])
 
-    return client.to_json()
+    token = await service.get_token(
+        client_name=client_name,
+        scopes=scopes)
+
+    return {
+        'token': token
+    }
 
 
 @google_bp.configure('/api/google/gmail', methods=['POST'], auth_scheme='default')

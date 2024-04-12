@@ -42,10 +42,9 @@ class GmailClient:
     ) -> str:
 
         # Fetch an auth token w/ Gmail scope
-        client = await self._auth_service.get_auth_client(
+        return await self._auth_service.get_token(
+            client_name='gmail-client',
             scopes=GoogleClientScope.Gmail)
-
-        return client.token
 
     async def _get_auth_headers(
         self
@@ -64,7 +63,9 @@ class GmailClient:
         # Fetch an auth token w/ Gmail scope
 
         logger.info('Assuring Gmail auth')
-        await self._auth_service.get_auth_client(
+
+        await self._auth_service.get_token(
+            client_name='gmail-client',
             scopes=scopes)
 
     async def get_message(

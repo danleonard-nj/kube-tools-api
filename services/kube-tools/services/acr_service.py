@@ -43,7 +43,7 @@ class AcrService:
 
         manifests = images.get('manifests')
 
-        logger.info(f'{len(manifests)} manifests for repo {repo_name}')
+        logger.info(f'Fetched {len(manifests)} manifests for repo: {repo_name}')
 
         return [
             AcrImage.from_manifest(data=manifest)

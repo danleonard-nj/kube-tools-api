@@ -52,15 +52,12 @@ class BalanceSyncService:
         balance: float,
         tokens: int = 0,
         message_bk: str = None,
-        sync_type=None
+        sync_type=SyncType.Email
     ):
         ArgumentNullException.if_none_or_whitespace(bank_key, 'bank_key')
         ArgumentNullException.if_none(balance, 'balance')
 
         logger.info(f'Capturing balance for bank {bank_key}')
-
-        if sync_type is None:
-            sync_type = str(SyncType.Email)
 
         balance = BankBalance(
             balance_id=str(uuid.uuid4()),
@@ -84,19 +81,10 @@ class BalanceSyncService:
     async def sync_balances(
         self
     ):
-        balances = list()
-
-        async def handle_account(account: dict):
-            balance = await self.sync_plaid_account(account)
-            balances.append(balance)
-
         # Sync all plaid accounts asynchronously
-        tasks = TaskCollection(*[handle_account(account)
-                                 for account in self._plaid_accounts])
-
-        await tasks.run()
-
-        return balances
+        return await TaskCollection(*[
+            self.sync_plaid_account(account)
+            for account in self._plaid_accounts]).run()
 
     async def sync_plaid_account(
         self,
@@ -111,24 +99,19 @@ class BalanceSyncService:
         balance_response = await self._plaid_client.get_balance(
             access_token=config.access_token)
 
-        accounts = balance_response.get('accounts', list())
-
         target_account = first(
-            accounts,
+            balance_response.get('accounts', list()),
             lambda x: x.get('account_id') == config.account_id)
 
         if target_account is None:
-            logger.info(
-                f'Could not find target account: {config.bank_key}: {config.account_id}')
-
+            logger.info(f'Could not find target account: {config.bank_key}: {config.account_id}')
             return
 
         # Parse the balance from the response
         balance = PlaidBalance.from_plaid_response(
             data=target_account)
 
-        logger.info(
-            f'Captured balance from plaid: {balance.to_dict()}')
+        logger.info(f'Captured balance from plaid: {balance.to_dict()}')
 
         # Store the captured balance
         await self.capture_account_balance(
@@ -194,12 +177,9 @@ class BalanceSyncService:
 
         logger.info(f'Fetching balances for banks: {keys}')
 
-        tasks = TaskCollection(*[
+        results = await TaskCollection(*[
             self.get_balance(key)
-            for key in keys
-        ])
-
-        results = await tasks.run()
+            for key in keys]).run()
 
         results = [x for x in results if x is not None]
 

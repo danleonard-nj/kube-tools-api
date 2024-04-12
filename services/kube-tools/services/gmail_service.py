@@ -15,6 +15,7 @@ from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from framework.validators.nulls import none_or_whitespace
+from services.chat_gpt_service import ChatGptService
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
 from utilities.utils import clean_unicode
@@ -30,13 +31,13 @@ class GmailService:
         rule_service: GmailRuleService,
         bank_sync_service: GmailBankSyncService,
         twilio_gateway: TwilioGatewayClient,
-        chat_gpt_client: ChatGptServiceClient
+        chat_gpt_service: ChatGptService
     ):
         self._gmail_client = gmail_client
         self._rule_service = rule_service
         self._twilio_gateway = twilio_gateway
         self._bank_sync_service = bank_sync_service
-        self._chat_gpt_client = chat_gpt_client
+        self._chat_gpt_service = chat_gpt_service
 
         self._sms_recipient = configuration.gmail.get(
             'sms_recipient')
@@ -358,7 +359,7 @@ class GmailService:
             prompt = f"{prompt_template}: {' '.join(body)}"
 
         # Get the email summary from ChatGPT service
-        result, usage = await self._chat_gpt_client.get_chat_completion(
+        result, usage = await self._chat_gpt_service.get_chat_completion(
             prompt=prompt)
 
         logger.info(f'ChatGPT email summary usage tokens: {usage}')
@@ -388,7 +389,7 @@ class GmailService:
         body += '\n'
 
         if summary:
-            body += f'Summary: {summary}'
+            body += f'GPT: {summary}'
             body += '\n'
             body += '\n'
 

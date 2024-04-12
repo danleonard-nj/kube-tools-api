@@ -1,14 +1,14 @@
 import re
-from typing import Dict, List
+from typing import List
 
-from clients.chat_gpt_service_client import (ChatGptException,
-                                             ChatGptServiceClient)
+from clients.chat_gpt_service_client import ChatGptException
 from domain.bank import (BALANCE_EMAIL_EXCLUSION_KEYWORDS,
                          BALANCE_EMAIL_INCLUSION_KEYWORDS,
                          CAPITAL_ONE_QUICKSILVER, CAPITAL_ONE_SAVOR,
                          CAPITAL_ONE_VENTURE, DEFAULT_BALANCE, PROMPT_PREFIX,
                          PROMPT_SUFFIX, SYNCHRONY_AMAZON,
-                         SYNCHRONY_GUITAR_CENTER, SYNCHRONY_SWEETWATER, ChatGptBalanceCompletion)
+                         SYNCHRONY_GUITAR_CENTER, SYNCHRONY_SWEETWATER,
+                         ChatGptBalanceCompletion)
 from domain.cache import CacheKey
 from domain.enums import BankKey, SyncType
 from domain.exceptions import GmailBalanceSyncException
@@ -17,6 +17,7 @@ from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from framework.logger import get_logger
 from services.bank_service import BankService
+from services.chat_gpt_service import ChatGptService
 from utilities.utils import fire_task
 
 logger = get_logger(__name__)
@@ -27,11 +28,11 @@ class GmailBankSyncService:
         self,
         configuration: Configuration,
         bank_service: BankService,
-        chat_gpt_service_client: ChatGptServiceClient,
+        chat_gpt_service: ChatGptService,
         cache_client: CacheClientAsync,
     ):
         self._bank_service = bank_service
-        self._chat_gpt_client = chat_gpt_service_client
+        self._chat_gpt_service = chat_gpt_service
         self._cache_client = cache_client
 
         self._bank_rules = configuration.banking.get(
@@ -206,7 +207,7 @@ class GmailBankSyncService:
 
                 # Submit the prompt to GPT and get the response
                 # and tokens used
-                balance, usage = await self._chat_gpt_client.get_chat_completion(
+                balance, usage = await self._chat_gpt_service.get_chat_completion(
                     prompt=balance_prompt)
 
                 logger.info(f'GPT response balance / usage: {balance} : {usage}')

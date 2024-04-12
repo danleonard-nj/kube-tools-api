@@ -49,6 +49,7 @@ from services.bank_balance_service import BalanceSyncService
 from services.bank_service import BankService
 from services.bank_transaction_service import BankTransactionService
 from services.calendar_service import CalendarService
+from services.chat_gpt_service import ChatGptService
 from services.event_service import EventService
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
@@ -161,7 +162,6 @@ def register_repositories(
     descriptors.add_singleton(GoogleEmailLogRepository)
     descriptors.add_singleton(BankBalanceRepository)
     descriptors.add_singleton(BankTransactionsRepository)
-    descriptors.add_singleton(BankTransactionsRepository)
     descriptors.add_singleton(BankWebhooksRepository)
     descriptors.add_singleton(WeatherRepository)
     descriptors.add_singleton(GooleCalendarEventRepository)
@@ -192,6 +192,7 @@ def register_services(
     descriptors.add_singleton(CalendarService)
     descriptors.add_singleton(RedisService)
     descriptors.add_singleton(GoogleDriveService)
+    descriptors.add_singleton(ChatGptService)
 
 
 class ContainerProvider(ProviderBase):

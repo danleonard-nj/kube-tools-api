@@ -116,7 +116,7 @@ class IdentityClient:
         content = response.json()
         token = content.get('access_token')
 
-        logger.info(f'Token fetched from client: {token}')
+        logger.info(f'Token fetched for client: {client_name}')
 
         fire_task(
             self._cache_client.set_cache(
