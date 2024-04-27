@@ -95,6 +95,20 @@ class BalanceSyncService:
         # Parse the account configuration
         config = PlaidAccount.from_configuration(account)
 
+        # Get the latest balance for the account
+        latest_balance = await self.get_balance(
+            bank_key=config.bank_key)
+
+        delta = (
+            DateTimeUtil.timestamp() - latest_balance.timestamp
+            if latest_balance is not None else 0
+        )
+
+        # Skip the sync if the threshold has not been exceeded
+        if delta < config.sync_threshold_seconds:
+            logger.info(f'Skipping sync for {config.bank_key} due to threshold')
+            return latest_balance
+
         # Fetch the balance from Plaid
         balance_response = await self._plaid_client.get_balance(
             access_token=config.access_token)
@@ -106,7 +120,6 @@ class BalanceSyncService:
         if target_account is None:
             logger.info(f'Could not find target account: {config.bank_key}: {config.account_id}')
             return
-
         # Parse the balance from the response
         balance = PlaidBalance.from_plaid_response(
             data=target_account)

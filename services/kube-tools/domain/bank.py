@@ -315,22 +315,31 @@ class PlaidBalance(Serializable):
 
 
 class PlaidAccount:
+    @property
+    def sync_threshold_seconds(
+        self
+    ):
+        return self.sync_threshold_minutes * 60
+
     def __init__(
         self,
         bank_key: str,
         access_token: str,
-        account_id: str
+        account_id: str,
+        sync_threshold_minutes: int = 60
     ):
         self.bank_key = bank_key
         self.access_token = access_token
         self.account_id = account_id
+        self.sync_threshold_minutes = sync_threshold_minutes
 
     @staticmethod
     def from_configuration(data):
         return PlaidAccount(
             bank_key=data.get('bank_key'),
             access_token=data.get('access_token'),
-            account_id=data.get('account_id'))
+            account_id=data.get('account_id'),
+            sync_threshold_minutes=data.get('sync_threshold_minutes'))
 
 
 class ChatGptBalanceCompletion(Serializable):

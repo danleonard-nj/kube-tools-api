@@ -63,7 +63,7 @@ class AcrPurgeService:
         ])
 
         for repo in repos:
-            logger.info(f'Processing repo: {repo}')
+            logger.info(f'Processing image: {repo.name}')
 
             # Verify the repo is not excluded by
             # evaluating the exclusion rules defined
@@ -77,8 +77,6 @@ class AcrPurgeService:
                 repo_name=repo,
                 days_back=days_back,
                 top_count=top_count)
-
-            logger.info(f'Purge images for repo: {repo}: {len(purged_images)}')
 
             processed_images.extend([
                 format_result_row(image, repo)

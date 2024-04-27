@@ -18,6 +18,7 @@ from services.chat_gpt_service import ChatGptService
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
 from utilities.utils import clean_unicode
+from framework.validators import none_or_whitespace
 
 logger = get_logger(__name__)
 
@@ -383,11 +384,12 @@ class GmailService:
         body += '\n'
         body += '\n'
 
-        body += snippet
-        body += '\n'
-        body += '\n'
+        if not none_or_whitespace(snippet):
+            body += snippet
+            body += '\n'
+            body += '\n'
 
-        if summary:
+        if not none_or_whitespace(summary):
             body += f'GPT: {summary}'
             body += '\n'
             body += '\n'

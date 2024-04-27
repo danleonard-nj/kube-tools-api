@@ -25,6 +25,22 @@ class AzureGatewayClient:
         ArgumentNullException.if_none_or_whitespace(
             self._base_url, 'api_gateway_base_url')
 
+    async def _send_request(
+        self,
+        method: str,
+        endpoint: str,
+        token: str = None
+    ):
+        logger.info(f'Endpoint: {endpoint}')
+
+        response = await self._http_client.request(
+            method=method,
+            url=endpoint,
+            headers=AuthorizationHeaders)
+
+        logger.info(f'Response: {response.status_code}')
+        return response
+
     async def _get_auth_headers(
         self
     ):

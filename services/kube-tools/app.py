@@ -1,5 +1,4 @@
 from framework.abstractions.abstract_request import RequestContextProvider
-from framework.di.static_provider import InternalProvider
 from framework.serialization.serializer import configure_serializer
 from framework.swagger.quart.swagger import Swagger
 from quart import Quart
