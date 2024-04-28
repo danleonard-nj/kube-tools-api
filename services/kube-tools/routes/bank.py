@@ -46,6 +46,12 @@ def get_transaction_sync_query_params() -> dict:
     }
 
 
+def get_balance_sync_query_params() -> dict:
+    return {
+        'run_async': request.args.get('run_async', '').lower() == 'true'
+    }
+
+
 @bank_bp.configure('/api/bank/balances/<key>', methods=['GET'], auth_scheme=AuthPolicy.Default)
 async def get_bank_balance(container, key):
     service: BankService = container.resolve(BankService)
@@ -75,7 +81,10 @@ async def get_bank_balances(container):
 async def post_sync(container):
     service: BankService = container.resolve(BankService)
 
-    return await service.run_balance_sync()
+    params = get_balance_sync_query_params()
+
+    return await service.run_balance_sync(
+        **params)
 
 
 @bank_bp.configure('/api/bank/transactions/sync', methods=['POST'], auth_scheme=AuthPolicy.Default)

@@ -20,9 +20,13 @@ class BankService:
         self._balance_service = balance_service
 
     async def run_balance_sync(
-        self
+        self,
+        run_async: bool = True
     ):
-        return await self._balance_service.sync_balances()
+        logger.info(f'Running balance sync')
+
+        return await self._balance_service.sync_balances(
+            run_async=run_async)
 
     async def run_transaction_sync(
         self,

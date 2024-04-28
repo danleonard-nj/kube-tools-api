@@ -79,12 +79,22 @@ class BalanceSyncService:
         return balance
 
     async def sync_balances(
-        self
+        self,
+        run_async: bool = True
     ):
-        # Sync all plaid accounts asynchronously
-        return await TaskCollection(*[
-            self.sync_plaid_account(account)
-            for account in self._plaid_accounts]).run()
+
+        logger.info(f'Running async: {run_async}')
+
+        if run_async:
+            # Sync all plaid accounts asynchronously
+            return await TaskCollection(*[
+                self.sync_plaid_account(account)
+                for account in self._plaid_accounts]).run()
+        else:
+            results = []
+            for account in self._plaid_accounts:
+                results.append(await self.sync_plaid_account(account))
+            return results
 
     async def sync_plaid_account(
         self,
