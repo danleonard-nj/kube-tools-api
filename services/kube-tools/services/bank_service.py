@@ -10,6 +10,10 @@ from utilities.utils import DateTimeUtil
 logger = get_logger(__name__)
 
 
+class BankServiceException(Exception):
+    pass
+
+
 class BankService:
     def __init__(
         self,

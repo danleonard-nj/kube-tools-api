@@ -22,6 +22,10 @@ from utilities.utils import DateTimeUtil
 logger = get_logger(__name__)
 
 
+class BalanceSyncServiceError(Exception):
+    pass
+
+
 class BalanceSyncService:
     def __init__(
         self,
@@ -85,16 +89,17 @@ class BalanceSyncService:
 
         logger.info(f'Running async: {run_async}')
 
+        results = []
         if run_async:
             # Sync all plaid accounts asynchronously
-            return await TaskCollection(*[
+            results = await TaskCollection(*[
                 self.sync_plaid_account(account)
                 for account in self._plaid_accounts]).run()
         else:
-            results = []
             for account in self._plaid_accounts:
                 results.append(await self.sync_plaid_account(account))
-            return results
+
+        return results
 
     async def sync_plaid_account(
         self,
@@ -204,8 +209,8 @@ class BalanceSyncService:
             self.get_balance(key)
             for key in keys]).run()
 
-        results = [x for x in results if x is not None]
-
+        # Sort the results by the bank key as they'll come back in random order
+        results = [x for x in results if x]
         results.sort(key=lambda x: x.bank_key)
 
         return GetBalancesResponse(
@@ -226,7 +231,7 @@ class BalanceSyncService:
         # Validate provided bank keys
         for bank_key in bank_keys:
             if bank_key not in BankKey.values():
-                raise InvalidBankKeyException(
+                raise BalanceSyncServiceError(
                     f"'{bank_key}' is not a valid bank key")
 
         entities = await self._balance_repository.get_balance_history(

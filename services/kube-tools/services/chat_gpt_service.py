@@ -7,6 +7,10 @@ from framework.logger import get_logger
 logger = get_logger(__name__)
 
 
+class ChatGptServiceException(Exception):
+    pass
+
+
 class ChatGptService:
     def __init__(
         self,
@@ -48,13 +52,13 @@ class ChatGptService:
 
             if internal_status == 429:
                 raise ChatGptException(
-                    message=f'Internal chatgpt service is rate limited: {internal_status}',
+                    message=f'Internal ChatGPT proxy service is rate limited: {internal_status}',
                     status_code=internal_status,
                     gpt_error=error)
 
             if internal_status == 503:
                 raise ChatGptException(
-                    f'Internal chatgpt service is unavailable: {internal_status}',
+                    message=f'Internal ChatGPT proxy service is unavailable: {internal_status}',
                     status_code=internal_status,
                     gpt_error=error)
 
@@ -75,7 +79,6 @@ class ChatGptService:
             .get('total_tokens', 0)
         )
 
-        logger.info(f'Result: {result}')
         logger.info(f'Usage: {usage} token(s)')
 
         return result, usage
