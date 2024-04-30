@@ -1,0 +1,93 @@
+import enum
+from typing import Dict
+from framework.serialization import Serializable
+
+from utilities.utils import DateTimeUtil
+
+
+class ConversationStatus(enum.StrEnum):
+    ACTIVE = 'active'
+    INACTIVE = 'inactive'
+    DELETED = 'deleted'
+
+
+class Direction:
+    INBOUND = 'inbound'
+    OUTBOUND = 'outbound'
+
+
+class Message(Serializable):
+    def __init__(
+        self,
+        message_id: str,
+        direction: str,
+        content: str,
+        created_date
+    ):
+        self.message_id = message_id
+        self.direction = direction
+        self.content = content
+        self.created_date = created_date
+
+    @staticmethod
+    def from_entity(
+        data: dict
+    ):
+        return Message(
+            message_id=data.get('message_id'),
+            direction=data.get('direction'),
+            content=data.get('content'),
+            created_date=data.get('created_date'))
+
+
+class Conversation(Serializable):
+    def __init__(
+        self,
+        conversation_id: str,
+        sender_id,
+        recipient: str,
+        status: ConversationStatus,
+        messages: list[Message],
+        created_date,
+        modified_date=0
+    ):
+        self.conversation_id = conversation_id
+        self.sender_id = sender_id
+        self.recipient = recipient
+        self.status = status
+        self.messages = messages
+        self.created_date = created_date
+        self.modified_date = modified_date
+
+    def add_message(
+        self,
+        message: Message
+    ):
+        self.messages.append(message)
+        self.modified_date = DateTimeUtil.timestamp()
+
+    @staticmethod
+    def from_entity(
+        data: dict
+    ):
+        messages = [Message.from_entity(message)
+                    for message in data.get('messages', [])]
+
+        status = ConversationStatus(data.get('status'))
+
+        return Conversation(
+            conversation_id=data.get('conversation_id'),
+            sender_id=data.get('sender_id'),
+            recipient=data.get('recipient'),
+            status=status,
+            messages=messages,
+            created_date=data.get('created_date'),
+            modified_date=data.get('modified_date'))
+
+    def to_dict(self) -> Dict:
+        return super().to_dict() | {
+            'messages': [
+                message.to_dict()
+                for message in self.messages
+            ]
+        }

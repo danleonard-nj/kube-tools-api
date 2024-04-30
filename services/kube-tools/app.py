@@ -15,6 +15,7 @@ from routes.torrents import torrent_bp
 from routes.usage import usage_bp
 from routes.weather import weather_bp
 from routes.redis import redis_bp
+from routes.conversation import conversation_bp
 from utilities.provider import ContainerProvider
 
 app = Quart(__name__)
@@ -34,6 +35,7 @@ app.register_blueprint(bank_bp)
 app.register_blueprint(weather_bp)
 app.register_blueprint(torrent_bp)
 app.register_blueprint(redis_bp)
+app.register_blueprint(conversation_bp)
 
 provider = ContainerProvider.get_service_provider()
 

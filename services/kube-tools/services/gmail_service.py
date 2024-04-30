@@ -4,7 +4,6 @@ from typing import Dict, List
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
 from domain.enums import ProcessGmailRuleResultType
-from domain.exceptions import GmailRuleProcessingException
 from domain.google import (DEFAULT_PROMPT_TEMPLATE, GmailEmail, GmailEmailRule,
                            GmailRuleAction, GoogleClientScope,
                            GoogleEmailHeader, GoogleEmailLabel,
@@ -13,14 +12,18 @@ from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
+from framework.validators import none_or_whitespace
 from framework.validators.nulls import none_or_whitespace
 from services.chat_gpt_service import ChatGptService
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
 from utilities.utils import clean_unicode
-from framework.validators import none_or_whitespace
 
 logger = get_logger(__name__)
+
+
+class GmailServiceError(Exception):
+    pass
 
 
 class GmailService:
@@ -99,7 +102,7 @@ class GmailService:
                     affected_count = await self.process_bank_sync_rule(rule=rule)
 
                 case _:
-                    raise GmailRuleProcessingException(
+                    raise GmailServiceError(
                         f'Unsupported rule action: {rule.action}')
 
             logger.info(
@@ -190,7 +193,7 @@ class GmailService:
             logger.info(f'Mapped bank key: {bank_key}')
 
             if none_or_whitespace(bank_key):
-                raise GmailRuleProcessingException(
+                raise GmailServiceError(
                     f'Bank key not defined for bank sync rule: {rule.name}')
 
             await self._bank_sync_service.handle_balance_sync(
@@ -253,7 +256,7 @@ class GmailService:
                 message=body)
 
         else:
-            raise GmailRuleProcessingException(
+            raise GmailServiceError(
                 f"Balance sync alert type '{alert_type}' is not currently supported")
 
     async def process_sms_rule(

@@ -4,8 +4,6 @@ from typing import Dict, List
 
 from data.google.google_email_log_repository import GoogleEmailLogRepository
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
-from domain.exceptions import (EmailRuleExistsException,
-                               EmailRuleNotFoundException)
 from domain.features import Feature
 from domain.google import (CreateEmailRuleRequest,
                            DeleteGmailEmailRuleResponse, EmailRuleLog,
@@ -16,6 +14,10 @@ from framework.logger import get_logger
 from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
+
+
+class GmailRuleServiceError(Exception):
+    pass
 
 
 class GmailRuleService:
@@ -86,7 +88,7 @@ class GmailRuleService:
         if existing is not None:
             logger.error(f'Rule {create_request.name} exists: {existing}')
 
-            raise EmailRuleExistsException(create_request.name)
+            raise GmailRuleServiceError(create_request.name)
 
         # Create the new rule
         rule = GmailEmailRule(
@@ -124,7 +126,7 @@ class GmailRuleService:
 
         # If the rule doesn't exist
         if not exists:
-            raise EmailRuleNotFoundException(
+            raise GmailRuleServiceError(
                 rule_id=rule_id)
 
         # Delete the rule
@@ -153,7 +155,7 @@ class GmailRuleService:
 
         # Handle rule not found
         if entity is None:
-            raise EmailRuleNotFoundException(
+            raise GmailRuleServiceError(
                 rule_id=rule_id)
 
         # Construct domain model from entity

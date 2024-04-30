@@ -28,6 +28,7 @@ from data.location_repository import (WeatherStationRepository,
                                       ZipLatLongRepository)
 from data.mongo_export_repository import MongoExportRepository
 from data.podcast_repository import PodcastRepository
+from data.conversation_repository import ConversationRepository
 from data.weather_repository import WeatherRepository
 from domain.auth import AdRole, AuthPolicy
 from framework.abstractions.abstract_request import RequestContextProvider
@@ -61,6 +62,7 @@ from services.mongo_backup_service import MongoBackupService
 from services.podcast_service import PodcastService
 from services.redis_service import RedisService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
+from services.conversation_service import ConversationService
 from services.torrent_service import TorrentService
 from services.usage_service import UsageService
 from services.weather_service import WeatherService
@@ -165,6 +167,7 @@ def register_repositories(
     descriptors.add_singleton(BankWebhooksRepository)
     descriptors.add_singleton(WeatherRepository)
     descriptors.add_singleton(GooleCalendarEventRepository)
+    descriptors.add_singleton(ConversationRepository)
 
 
 def register_services(
@@ -193,6 +196,7 @@ def register_services(
     descriptors.add_singleton(RedisService)
     descriptors.add_singleton(GoogleDriveService)
     descriptors.add_singleton(ChatGptService)
+    descriptors.add_singleton(ConversationService)
 
 
 class ContainerProvider(ProviderBase):

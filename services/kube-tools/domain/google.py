@@ -501,13 +501,11 @@ class AuthClient(Serializable):
     ):
         return AuthClient(
             client_name=data.get('client_name'),
-            # client_key=client_key,
             token=data.get('token'),
             refresh_token=data.get('refresh_token'),
             token_url=data.get('token_uri'),
             client_id=data.get('client_id'),
             client_secret=data.get('client_secret'),
-            # scopes=data.get('scopes'),
             expiry=data.get('expiry'),
             timestamp=data.get('timestamp')
         )
