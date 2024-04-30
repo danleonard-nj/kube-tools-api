@@ -313,6 +313,15 @@ class PlaidBalance(Serializable):
             current_balance=balances.get('current'),
             available_balance=balances.get('available'))
 
+    @staticmethod
+    def from_entity(
+        data: dict
+    ):
+        return PlaidBalance(
+            account_name=data.get('account_name'),
+            current_balance=data.get('current_balance'),
+            available_balance=data.get('available_balance'))
+
 
 class PlaidAccount:
     @property

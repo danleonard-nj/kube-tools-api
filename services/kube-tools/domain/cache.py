@@ -71,3 +71,10 @@ class CacheKey:
             balance_prompt=balance_prompt)
 
         return f'kube-tools-gpt-balance-prompt-{key}'
+
+    @staticmethod
+    def plaid_account_balance(
+        bank_key: str,
+        account_id: str
+    ) -> str:
+        return f'kube-tools-plaid-balance-{bank_key}-{account_id}'

@@ -1,14 +1,12 @@
 import uuid
-from typing import List
-
 from clients.email_gateway_client import EmailGatewayClient
 from clients.plaid_client import PlaidClient
 from data.bank_repository import BankBalanceRepository
 from domain.bank import (BALANCE_BANK_KEY_EXCLUSIONS, BALANCE_EMAIL_RECIPIENT,
                          BALANCE_EMAIL_SUBJECT, BankBalance,
                          GetBalancesResponse, PlaidAccount, PlaidBalance)
+from domain.cache import CacheKey
 from domain.enums import BankKey, SyncType
-from domain.exceptions import InvalidBankKeyException
 from domain.features import Feature
 from framework.clients.feature_client import FeatureClientAsync
 from framework.concurrency import TaskCollection
@@ -17,7 +15,8 @@ from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from framework.utilities.iter_utils import first
 from services.event_service import EventService
-from utilities.utils import DateTimeUtil
+from utilities.utils import DateTimeUtil, fire_task
+from framework.clients.cache_client import CacheClientAsync
 
 logger = get_logger(__name__)
 
@@ -34,13 +33,15 @@ class BalanceSyncService:
         email_client: EmailGatewayClient,
         event_service: EventService,
         plaid_client: PlaidClient,
-        feature_client: FeatureClientAsync
+        feature_client: FeatureClientAsync,
+        cache_client: CacheClientAsync
     ):
         self._balance_repository = balance_repository
         self._email_client = email_client
         self._event_service = event_service
         self._feature_client = feature_client
         self._plaid_client = plaid_client
+        self._cache_client = cache_client
 
         self._plaid_accounts = configuration.banking.get(
             'plaid_accounts', list())
@@ -86,7 +87,6 @@ class BalanceSyncService:
         self,
         run_async: bool = True
     ):
-
         logger.info(f'Running async: {run_async}')
 
         results = []
@@ -114,38 +114,78 @@ class BalanceSyncService:
         latest_balance = await self.get_balance(
             bank_key=config.bank_key)
 
+        logger.info(f'Latest balance: {latest_balance.bank_key}: {latest_balance.timestamp}')
+
         delta = (
             DateTimeUtil.timestamp() - latest_balance.timestamp
             if latest_balance is not None else 0
         )
+
+        logger.info(f'Delta: {delta} seconds')
 
         # Skip the sync if the threshold has not been exceeded
         if delta < config.sync_threshold_seconds:
             logger.info(f'Skipping sync for {config.bank_key} due to threshold')
             return latest_balance
 
-        # Fetch the balance from Plaid
-        balance_response = await self._plaid_client.get_balance(
-            access_token=config.access_token)
+        balance = await self._fetch_plaid_account_balance(
+            account=config)
 
-        target_account = first(
-            balance_response.get('accounts', list()),
-            lambda x: x.get('account_id') == config.account_id)
-
-        if target_account is None:
-            logger.info(f'Could not find target account: {config.bank_key}: {config.account_id}')
-            return
-        # Parse the balance from the response
-        balance = PlaidBalance.from_plaid_response(
-            data=target_account)
-
-        logger.info(f'Captured balance from plaid: {balance.to_dict()}')
+        logger.info(f'Captured balance from plaid: {config.bank_key}: {balance.available_balance}')
 
         # Store the captured balance
         await self.capture_account_balance(
             bank_key=config.bank_key,
             balance=balance.available_balance,
             sync_type=str(SyncType.Plaid))
+
+        return balance
+
+    async def _fetch_plaid_account_balance(
+        self,
+        account: PlaidAccount
+    ):
+        ArgumentNullException.if_none(account, 'account')
+
+        key = CacheKey.plaid_account_balance(
+            account_id=account.account_id,
+            bank_key=account.bank_key)
+
+        logger.info(f'Balance cache key: {key}')
+
+        # Try to fetch the balance from cache
+        balance = await self._cache_client.get_json(
+            key=key)
+
+        if balance is not None:
+            logger.info(f'Cache hit for plaid account balance: {account.bank_key}')
+            return PlaidBalance.from_entity(
+                data=balance)
+
+        logger.info(f'Cache miss for plaid account balance: {account.bank_key}')
+        balance_response = await self._plaid_client.get_balance(
+            access_token=account.access_token)
+
+        target_account = first(
+            balance_response.get('accounts', list()),
+            lambda x: x.get('account_id') == account.account_id)
+
+        if target_account is None:
+            logger.info(f'Could not find target account: {account.bank_key}: {account.account_id}')
+            return
+
+        balance = PlaidBalance.from_plaid_response(
+            data=target_account)
+
+        # Cache the balance response for 3 hours (another guard against
+        # accidentally sending a bunch of very expensive requests to Plaid)
+        fire_task(self._cache_client.set_json(
+            key=key,
+            value=balance.to_dict(),
+            ttl=15
+        ))
+
+        logger.info(f'Fetched plaid balance: {balance.account_name}: {balance.available_balance}')
 
         return balance
 
@@ -198,7 +238,7 @@ class BalanceSyncService:
 
     async def get_balances(
         self
-    ) -> List[BankBalance]:
+    ) -> list[BankBalance]:
 
         keys = [key for key in BankKey
                 if key.value not in BALANCE_BANK_KEY_EXCLUSIONS]
@@ -220,7 +260,7 @@ class BalanceSyncService:
         self,
         start_timestamp: int,
         end_timestamp: int,
-        bank_keys: List[str]
+        bank_keys: list[str]
     ):
         ArgumentNullException.if_none_or_whitespace(bank_keys, 'bank_keys')
         ArgumentNullException.if_none(start_timestamp, 'start_timestamp')

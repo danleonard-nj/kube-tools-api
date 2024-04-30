@@ -7,6 +7,44 @@ from quart import Response
 from utilities.utils import DateTimeUtil
 
 
+def get_content(parsed):
+    return (
+        parsed
+        .get('response', dict())
+        .get('body', dict())
+        .get('choices', list())[0]
+        .get('message', dict())
+        .get('content', dict())
+    )
+
+
+def get_usage(parsed):
+    return (
+        parsed
+        .get('response', dict())
+        .get('body', dict())
+        .get('usage', dict())
+        .get('total_tokens', 0)
+    )
+
+
+def get_error(parsed):
+    return (
+        parsed
+        .get('response', dict())
+        .get('body', dict())
+        .get('error', dict())
+    )
+
+
+def get_internal_status(parsed):
+    return (
+        parsed
+        .get('response', dict())
+        .get('status_code', 0)
+    )
+
+
 class ImageSize:
     Default = '1024x1024'
 

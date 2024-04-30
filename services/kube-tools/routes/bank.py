@@ -48,7 +48,7 @@ def get_transaction_sync_query_params() -> dict:
 
 def get_balance_sync_query_params() -> dict:
     return {
-        'run_async': request.args.get('run_async', '').lower() == 'true'
+        'run_async': request.args.get('run_async', '').lower() == 'true',
     }
 
 
