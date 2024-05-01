@@ -8,6 +8,7 @@ from utilities.utils import DateTimeUtil
 class ConversationStatus(enum.StrEnum):
     ACTIVE = 'active'
     INACTIVE = 'inactive'
+    CLOSED = 'closed'
     DELETED = 'deleted'
 
 
@@ -66,6 +67,21 @@ class Conversation(Serializable):
         self.messages.append(message)
         self.modified_date = DateTimeUtil.timestamp()
 
+    def to_dict(self) -> Dict:
+        return super().to_dict() | {
+            'messages': [
+                message.to_dict()
+                for message in self.messages
+            ]
+        }
+
+    def get_selector(
+        self
+    ):
+        return {
+            'conversation_id': self.conversation_id
+        }
+
     @staticmethod
     def from_entity(
         data: dict
@@ -83,11 +99,3 @@ class Conversation(Serializable):
             messages=messages,
             created_date=data.get('created_date'),
             modified_date=data.get('modified_date'))
-
-    def to_dict(self) -> Dict:
-        return super().to_dict() | {
-            'messages': [
-                message.to_dict()
-                for message in self.messages
-            ]
-        }

@@ -62,7 +62,7 @@ from services.mongo_backup_service import MongoBackupService
 from services.podcast_service import PodcastService
 from services.redis_service import RedisService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
-from services.conversation_service import ConversationService
+from services.conversation_service import ConversationService, InboundRequestValidator
 from services.torrent_service import TorrentService
 from services.usage_service import UsageService
 from services.weather_service import WeatherService
@@ -197,6 +197,7 @@ def register_services(
     descriptors.add_singleton(GoogleDriveService)
     descriptors.add_singleton(ChatGptService)
     descriptors.add_singleton(ConversationService)
+    descriptors.add_singleton(InboundRequestValidator)
 
 
 class ContainerProvider(ProviderBase):

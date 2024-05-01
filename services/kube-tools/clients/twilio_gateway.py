@@ -23,13 +23,9 @@ class TwilioGatewayClient:
     async def _get_auth_headers(
         self
     ):
-        logger.info(f'Fetching Twilio gateway auth token')
-
         token = await self._identity_client.get_token(
             client_name=AuthClient.KubeToolsApi,
             scope=ClientScope.TwilioGatewayApi)
-
-        logger.info(f'Twilio gateway token: {token}')
 
         return {
             'Authorization': f'Bearer {token}'
@@ -54,7 +50,6 @@ class TwilioGatewayClient:
             recipient=recipient,
             message=message)
 
-        logger.info(f'Endpoint: {endpoint}')
         headers = await self._get_auth_headers()
 
         response = await self._http_client.post(
