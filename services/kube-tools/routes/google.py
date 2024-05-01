@@ -12,26 +12,26 @@ from services.google_drive_service import GoogleDriveService
 google_bp = MetaBlueprint('google_bp', __name__)
 
 
-# @google_bp.configure('/api/google/auth', methods=['POST'], auth_scheme='default')
-# async def get_auth(container):
-#     service: GoogleAuthService = container.resolve(
-#         GoogleAuthService)
+@google_bp.configure('/api/google/auth/v2', methods=['POST'], auth_scheme='default')
+async def get_auth_v2(container):
+    service: GoogleAuthService = container.resolve(GoogleAuthService)
 
-#     body = await request.get_json()
+    body = await request.get_json()
 
-#     client_name = body.get('client_name')
-#     scopes = body.get('scopes', [])
+    client_name = body.get('client_name')
+    scopes = body.get('scopes', [])
 
-#     token = await service.get_token(
-#         client_name=client_name,
-#         scopes=scopes)
+    token = await service.get_token(
+        client_name=client_name,
+        scopes=scopes)
 
-#     return {
-#         'token': token
-#     }
+    return {
+        'token': token
+    }
 
-@google_bp.configure('/api/google/auth', methods=['POST'], auth_scheme='default')
-async def get_auth(container):
+
+@google_bp.configure('/api/google/auth/v3', methods=['POST'], auth_scheme='default')
+async def get_auth_v3(container):
     service: GoogleAuthClient = container.resolve(GoogleAuthClient)
 
     body = await request.get_json()

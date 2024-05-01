@@ -2,12 +2,13 @@ import uuid
 
 from clients.twilio_gateway import TwilioGatewayClient
 from data.conversation_repository import ConversationRepository
-from domain.conversation import Conversation, ConversationStatus, Direction, Message
+from domain.conversation import Conversation, ConversationStatus, Direction, Message, normalize_phone_number
 from framework.logger import get_logger
 from pymongo.results import InsertOneResult, UpdateResult
 from utilities.utils import DateTimeUtil
 from twilio.request_validator import RequestValidator
 from framework.configuration import Configuration
+import phonenumbers
 
 logger = get_logger(__name__)
 
@@ -106,10 +107,13 @@ class ConversationService:
             content=message,
             created_date=DateTimeUtil.timestamp())
 
+        normalized_phone = normalize_phone_number(recipient)
+        logger.info(f'Normalized phone number: {recipient} -> {normalized_phone}')
+
         conversation = Conversation(
             conversation_id=str(uuid.uuid4()),
             sender_id=SENDER_ID,
-            recipient=recipient,
+            recipient=normalized_phone,
             status=ConversationStatus.ACTIVE,
             messages=[message],
             created_date=DateTimeUtil.timestamp())
@@ -182,6 +186,9 @@ class ConversationService:
         message: str
     ):
         logger.info(f'Handling webhook for sender: {sender}')
+
+        normalized_phone = normalize_phone_number(sender)
+        logger.info(f'Normalized phone number: {sender} -> {normalized_phone}')
 
         # Fetch the active conversation for the sender if it exists
         query = {

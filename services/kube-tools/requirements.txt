@@ -16,3 +16,4 @@ openai
 twilio
 beautifulsoup4
 yfinance
+phonenumbers

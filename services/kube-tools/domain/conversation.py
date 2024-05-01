@@ -1,8 +1,14 @@
 import enum
 from typing import Dict
 from framework.serialization import Serializable
+import phonenumbers
 
 from utilities.utils import DateTimeUtil
+
+
+def normalize_phone_number(phone_number: str):
+    parsed_number = phonenumbers.parse(phone_number, 'US')
+    return phonenumbers.format_number(parsed_number, phonenumbers.PhoneNumberFormat.E164)
 
 
 class ConversationStatus(enum.StrEnum):
