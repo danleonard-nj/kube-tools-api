@@ -212,7 +212,7 @@ class ConversationService:
             message_id=str(uuid.uuid4()),
             direction=Direction.INBOUND,
             content=message,
-            created_dates=DateTimeUtil.timestamp())
+            created_date=DateTimeUtil.timestamp())
 
         logger.info(f'Adding message to active conversation for recipient: {sender}')
         conversation.add_message(message)
