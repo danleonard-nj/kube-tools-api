@@ -1,3 +1,4 @@
+from clients.google_auth_client import GoogleAuthClient
 from domain.google import (CreateEmailRuleRequest, ProcessGmailRuleRequest,
                            UpdateEmailRuleRequest)
 from framework.exceptions.nulls import ArgumentNullException
@@ -11,18 +12,33 @@ from services.google_drive_service import GoogleDriveService
 google_bp = MetaBlueprint('google_bp', __name__)
 
 
+# @google_bp.configure('/api/google/auth', methods=['POST'], auth_scheme='default')
+# async def get_auth(container):
+#     service: GoogleAuthService = container.resolve(
+#         GoogleAuthService)
+
+#     body = await request.get_json()
+
+#     client_name = body.get('client_name')
+#     scopes = body.get('scopes', [])
+
+#     token = await service.get_token(
+#         client_name=client_name,
+#         scopes=scopes)
+
+#     return {
+#         'token': token
+#     }
+
 @google_bp.configure('/api/google/auth', methods=['POST'], auth_scheme='default')
 async def get_auth(container):
-    service: GoogleAuthService = container.resolve(
-        GoogleAuthService)
+    service: GoogleAuthClient = container.resolve(GoogleAuthClient)
 
     body = await request.get_json()
 
-    client_name = body.get('client_name')
     scopes = body.get('scopes', [])
 
     token = await service.get_token(
-        client_name=client_name,
         scopes=scopes)
 
     return {

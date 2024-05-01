@@ -63,7 +63,7 @@ class GoogleAuthService:
         scopes: list[str]
     ) -> str:
 
-        cache_key = CacheKey.google_auth_client(
+        cache_key = CacheKey.google_auth_service(
             client_name=client_name,
             scopes=scopes)
 

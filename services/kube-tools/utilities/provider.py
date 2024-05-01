@@ -3,6 +3,7 @@ from clients.chat_gpt_service_client import ChatGptServiceClient
 from clients.email_gateway_client import EmailGatewayClient
 from clients.event_client import EventClient
 from clients.gmail_client import GmailClient
+from clients.google_auth_client import GoogleAuthClient
 from clients.google_drive_client import GoogleDriveClient
 from clients.google_maps_client import GoogleMapsClient
 from clients.identity_client import IdentityClient
@@ -146,6 +147,7 @@ def register_clients(
     descriptors.add_singleton(PlaidClient)
     descriptors.add_singleton(OpenWeatherClient)
     descriptors.add_singleton(TorrentClient)
+    descriptors.add_singleton(GoogleAuthClient)
 
 
 def register_repositories(
