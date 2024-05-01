@@ -2,19 +2,16 @@ import uuid
 
 from clients.twilio_gateway import TwilioGatewayClient
 from data.conversation_repository import ConversationRepository
-from domain.conversation import Conversation, ConversationStatus, Direction, Message, normalize_phone_number
+from domain.conversation import (Conversation, ConversationStatus, Direction,
+                                 Message, normalize_phone_number)
+from framework.configuration import Configuration
+from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from pymongo.results import InsertOneResult, UpdateResult
-from utilities.utils import DateTimeUtil
 from twilio.request_validator import RequestValidator
-from framework.configuration import Configuration
-import phonenumbers
+from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
-
-SENDER_ID = 'placeholder-id'
-
-TWILIO_VERIFICATION_HEADER_KEY = 'X-Twilio-Signature'
 
 
 class ConversationServiceError(Exception):
@@ -41,6 +38,8 @@ class InboundRequestValidator:
             post_vars,
             twilio_signature)
 
+# TODO: Validate webhook requets from Twilio
+
 
 class ConversationService:
     def __init__(
@@ -59,9 +58,12 @@ class ConversationService:
         conversation_id: str,
         message: str
     ):
+        ArgumentNullException.if_none_or_whitespace(conversation_id, 'conversation_id')
+        ArgumentNullException.if_none_or_whitespace(message, 'message')
+
         logger.info(f'Fetching conversation for conversation ID: {conversation_id}')
-        entity = await self._sms_repository.collection.find_one(
-            filter=dict(conversation_id=conversation_id))
+        entity = await self._sms_repository.get_conversation_by_id(
+            conversation_id=conversation_id)
 
         if entity is None:
             logger.info(f'No conversation found for conversation ID: {conversation_id}')
@@ -84,15 +86,11 @@ class ConversationService:
         conversation.add_message(message)
 
         logger.info(f'Updating conversation for recipient: {conversation.recipient}')
-        update_result: UpdateResult = await self._sms_repository.collection.replace_one(
-            filter=conversation.get_selector(),
-            replacement=conversation.to_dict())
+        update_result: UpdateResult = await self._sms_repository.replace(
+            selector=conversation.get_selector(),
+            document=conversation.to_dict())
 
-        return {
-            'conversation': conversation,
-            'twilio_result': result,
-            'update_result': update_result.raw_result,
-        }
+        return conversation
 
     async def create_conversation(
         self,
@@ -112,7 +110,7 @@ class ConversationService:
 
         conversation = Conversation(
             conversation_id=str(uuid.uuid4()),
-            sender_id=SENDER_ID,
+            sender_id='placeholder-id',
             recipient=normalized_phone,
             status=ConversationStatus.ACTIVE,
             messages=[message],
@@ -126,14 +124,12 @@ class ConversationService:
             message=message.content)
 
         logger.info(f'Inserting conversation for recipient: {recipient}')
-        insert_result: InsertOneResult = await self._sms_repository.collection.insert_one(
-            conversation.to_dict())
+        insert_result: InsertOneResult = await self._sms_repository.insert(
+            document=conversation.to_dict())
 
-        return {
-            'conversation': conversation,
-            'result': result,
-            'insert_result': insert_result.acknowledged,
-        }
+        logger.info(f'Conversation inserted: {insert_result.inserted_id}')
+
+        return conversation
 
     async def get_conversation(
         self,
@@ -141,8 +137,8 @@ class ConversationService:
     ):
         logger.info(f'Getting conversation for conversation ID: {conversation_id}')
 
-        entity = await self._sms_repository.collection.find_one(
-            filter=dict(conversation_id=conversation_id))
+        entity = await self._sms_repository.get_conversation_by_id(
+            conversation_id=conversation_id)
 
         if entity is None:
             logger.info(f'No conversation found for conversation ID: {conversation_id}')
@@ -158,8 +154,8 @@ class ConversationService:
     ):
         logger.info(f'Closing conversation for conversation_id: {conversation_id}')
 
-        entity = await self._sms_repository.collection.find_one(
-            filter=dict(conversation_id=conversation_id))
+        entity = await self._sms_repository.get_conversation_by_id(
+            conversation_id=conversation_id)
 
         if entity is None:
             logger.info(f'No conversation found for conversation ID: {conversation_id}')
@@ -172,9 +168,9 @@ class ConversationService:
 
         logger.info(f'Closing conversation for recipient: {conversation.recipient}')
 
-        update_result = await self._sms_repository.collection.replace_one(
-            filter=conversation.get_selector(),
-            replacement=conversation.to_dict())
+        update_result = await self._sms_repository.replace(
+            selector=conversation.get_selector(),
+            document=conversation.to_dict())
 
         logger.info(f'Conversation updated: {update_result.raw_result}')
 
@@ -190,29 +186,23 @@ class ConversationService:
         normalized_phone = normalize_phone_number(sender)
         logger.info(f'Normalized phone number: {sender} -> {normalized_phone}')
 
-        # Fetch the active conversation for the sender if it exists
-        query = {
-            'recipient': sender,
-            'status': ConversationStatus.ACTIVE
-        }
-
         logger.info(f'Fetching active conversation for recipient: {sender}')
-        entity = await self._sms_repository.collection.find_one(
-            filter=query,
-            sort=[('created_date', -1)])
+        entity = await self._sms_repository.get_conversation_by_recipient_status(
+            recipient=normalized_phone,
+            status=ConversationStatus.ACTIVE)
 
         if entity is None:
             logger.info(f'No active conversation found for recipient: {sender}')
             raise ConversationServiceError(f'No active conversation found for recipient: {sender}')
 
         conversation = Conversation.from_entity(entity)
-        logger.info(f'Active conversation found for recipient: {sender}: {entity}x')
+        logger.info(f'Active conversation found for recipient: {sender}: {entity}')
 
         message = Message(
             message_id=str(uuid.uuid4()),
             direction=Direction.INBOUND,
             content=message,
-            created_date=DateTimeUtil.timestamp())
+            created_dates=DateTimeUtil.timestamp())
 
         logger.info(f'Adding message to active conversation for recipient: {sender}')
         conversation.add_message(message)
