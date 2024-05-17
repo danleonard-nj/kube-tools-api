@@ -2,7 +2,7 @@ import uuid
 from clients.email_gateway_client import EmailGatewayClient
 from clients.plaid_client import PlaidClient
 from data.bank_repository import BankBalanceRepository
-from domain.bank import (BALANCE_BANK_KEY_EXCLUSIONS, BALANCE_EMAIL_RECIPIENT,
+from domain.bank import (BALANCE_BANK_KEY_EXCLUSIONS_SHOW_ALL_ACCOUNTS, BALANCE_BANK_KEY_EXCLUSIONS_SHOW_REDUCED_ACCOUNTS, BALANCE_EMAIL_RECIPIENT,
                          BALANCE_EMAIL_SUBJECT, BankBalance, CoinbaseAccountConfiguration,
                          GetBalancesResponse, PlaidAccount, PlaidBalance)
 from domain.cache import CacheKey
@@ -94,15 +94,35 @@ class BalanceSyncService:
     ):
         logger.info(f'Running async: {run_async}')
 
+        sync_plaid_enabled = await self._feature_client.is_enabled(
+            feature_key=Feature.PlaidSync)
+
+        coinbase_enabled = await self._feature_client.is_enabled(
+            feature_key=Feature.CoinbaseSync)
+
         results = []
+
         if run_async:
             # Sync all plaid accounts asynchronously
-            results = await TaskCollection(*[
-                self.sync_plaid_account(account)
-                for account in self._plaid_accounts]).run()
+            if sync_plaid_enabled:
+                logger.info('Syncing plaid accounts async')
+                results.extend(await TaskCollection(*[
+                    self.sync_plaid_account(account)
+                    for account in self._plaid_accounts]).run())
+
+            # Sync all coinbase accounts asynchronously
+            if coinbase_enabled:
+                logger.info('Syncing coinbase accounts async')
+                results.extend(await self.sync_coinbase_accounts())
         else:
-            for account in self._plaid_accounts:
-                results.append(await self.sync_plaid_account(account))
+            if sync_plaid_enabled:
+                logger.info('Syncing plaid accounts sequentially')
+                for account in self._plaid_accounts:
+                    results.append(await self.sync_plaid_account(account))
+
+            if coinbase_enabled:
+                logger.info('Syncing coinbase accounts sequentially')
+                results.extend(await self.sync_coinbase_accounts())
 
         return results
 
@@ -139,46 +159,47 @@ class BalanceSyncService:
         logger.info(f'Captured balance from plaid: {config.bank_key}: {balance.available_balance}')
 
         # Store the captured balance
-        await self.capture_account_balance(
+        result = await self.capture_account_balance(
             bank_key=config.bank_key,
             balance=balance.available_balance,
             sync_type=str(SyncType.Plaid))
 
-        return balance
+        self._feature_client.is_enabled
+
+        return result
 
     async def sync_coinbase_accounts(
         self
     ):
         logger.info(f'Fetching Coinbase account data')
 
+        balances = []
         coinbase_accounts = await self._coinbase_service.get_accounts()
 
-        configs = [CoinbaseAccountConfiguration.from_configuration(config)
-                   for config in self._coinbase_accounts]
+        sync_configs = [CoinbaseAccountConfiguration.from_config(config)
+                        for config in self._coinbase_accounts]
 
-        for config in configs:
+        for config in sync_configs:
             logger.info(f'Syncing Coinbase account: {config.currency_code}')
 
-            if config.currency_code not in coinbase_accounts:
+            # Get the Coinbase account for the currency code
+            account = first(
+                coinbase_accounts,
+                lambda x: x.currency_code == config.currency_code)
+
+            # No Coinbase account matching the currency code provided in the configuration
+            if account is None:
                 logger.info(f'Could not find account for currency: {config.currency_code}')
                 continue
 
-            total = 0
-            for account in coinbase_accounts[config.currency_code]:
-                total += account.usd_amount
-
-            balance = BankBalance(
-                balance_id=str(uuid.uuid4()),
+            balance = await self.capture_account_balance(
                 bank_key=config.bank_key,
-                balance=float(total),
-                gpt_tokens=0,
-                sync_type=str(SyncType.Coinbase),
-                timestamp=DateTimeUtil.timestamp())
+                balance=float(account.usd_amount),
+                sync_type=str(SyncType.Coinbase))
 
-            await self.capture_account_balance(
-                bank_key=config.bank_key,
-                balance=balance.balance,
-                sync_type=SyncType.Coinbase)
+            balances.append(balance)
+
+        return balances
 
     async def _fetch_plaid_account_balance(
         self,
@@ -186,22 +207,6 @@ class BalanceSyncService:
     ):
         ArgumentNullException.if_none(account, 'account')
 
-        key = CacheKey.plaid_account_balance(
-            account_id=account.account_id,
-            bank_key=account.bank_key)
-
-        logger.info(f'Balance cache key: {key}')
-
-        # Try to fetch the balance from cache
-        balance = await self._cache_client.get_json(
-            key=key)
-
-        if balance is not None:
-            logger.info(f'Cache hit for plaid account balance: {account.bank_key}')
-            return PlaidBalance.from_entity(
-                data=balance)
-
-        logger.info(f'Cache miss for plaid account balance: {account.bank_key}')
         balance_response = await self._plaid_client.get_balance(
             access_token=account.access_token)
 
@@ -215,14 +220,6 @@ class BalanceSyncService:
 
         balance = PlaidBalance.from_plaid_response(
             data=target_account)
-
-        # Cache the balance response for 3 hours (another guard against
-        # accidentally sending a bunch of very expensive requests to Plaid)
-        fire_task(self._cache_client.set_json(
-            key=key,
-            value=balance.to_dict(),
-            ttl=15
-        ))
 
         logger.info(f'Fetched plaid balance: {balance.account_name}: {balance.available_balance}')
 
@@ -279,10 +276,21 @@ class BalanceSyncService:
         self
     ) -> list[BankBalance]:
 
-        keys = [key for key in BankKey
-                if key.value not in BALANCE_BANK_KEY_EXCLUSIONS]
+        is_all_accounts_enabled = await self._feature_client.is_enabled(
+            feature_key=Feature.BankBalanceDisplayAllAccounts)
 
-        logger.info(f'Fetching balances for banks: {keys}')
+        exclusions = (
+            BALANCE_BANK_KEY_EXCLUSIONS_SHOW_ALL_ACCOUNTS
+            if is_all_accounts_enabled
+            else BALANCE_BANK_KEY_EXCLUSIONS_SHOW_REDUCED_ACCOUNTS
+        )
+
+        logger.info(f'Exclusions: {exclusions}')
+
+        keys = [key for key in BankKey
+                if key.value not in exclusions]
+
+        logger.info(f'Fetching {len(keys)} balances')
 
         results = await TaskCollection(*[
             self.get_balance(key)

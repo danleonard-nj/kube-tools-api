@@ -3,7 +3,7 @@ from clients.coinbase_client import CoinbaseClient
 from framework.configuration import Configuration
 from framework.logger import get_logger
 
-from domain.coinbase import GROUP_BY_AGGS, CoinbaseAccount
+from domain.coinbase import GROUP_BY_AGGS, CoinbaseAccount, CoinbaseBalance
 
 logger = get_logger(__name__)
 
@@ -57,4 +57,5 @@ class CoinbaseService:
         df = df[['currency_code', 'currency_name', 'balance', 'usd_exchange', 'usd_amount']]
         df = df.groupby(['currency_code', 'currency_name']).agg(GROUP_BY_AGGS).reset_index()
 
-        return df.to_dict(orient='records')
+        return [CoinbaseBalance.from_dict(balance)
+                for balance in df.to_dict(orient='records')]

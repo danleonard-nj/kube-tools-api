@@ -7,3 +7,7 @@ class Feature:
     EmailRuleLogIngestion = 'email-rule-log-ingestion'
     NestSensorDataIngestion = 'nest-sensor-data-ingestion'
     BankingBalanceCaptureEmailNotify = 'banking-balance-capture-emails'
+    PlaidSync = 'plaid-sync'
+    PlaidSyncCacheEnabled = 'plaid-sync-cache'
+    CoinbaseSync = 'coinbase-sync'
+    BankBalanceDisplayAllAccounts = 'bank-balance-display-all-accounts'

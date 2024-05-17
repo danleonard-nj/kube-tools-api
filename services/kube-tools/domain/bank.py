@@ -49,7 +49,7 @@ TRANSACTION_DEFAULT_LOOKBACK_DAYS = 3
 
 
 # Unsupported bank keys for balance captures
-BALANCE_BANK_KEY_EXCLUSIONS = [
+BALANCE_BANK_KEY_EXCLUSIONS_SHOW_ALL_ACCOUNTS = [
     BankKey.CapitalOne,
     BankKey.Ally,
     BankKey.Synchrony,
@@ -57,6 +57,20 @@ BALANCE_BANK_KEY_EXCLUSIONS = [
     BankKey.WellsFargoChecking,
     BankKey.WellsFargoPlatinum,
     BankKey.Discover
+]
+
+# Unsupported bank keys for balance captures
+BALANCE_BANK_KEY_EXCLUSIONS_SHOW_REDUCED_ACCOUNTS = [
+    BankKey.CapitalOne,
+    BankKey.Ally,
+    BankKey.Synchrony,
+    BankKey.WellsFargoActiveCash,
+    BankKey.WellsFargoChecking,
+    BankKey.WellsFargoPlatinum,
+    BankKey.Discover,
+    BankKey.SynchronyAmazon,
+    BankKey.SynchronyGuitarCenter,
+    BankKey.SynchronySweetwater
 ]
 
 
@@ -280,7 +294,7 @@ class BankBalance(Serializable):
     @staticmethod
     def from_entity(
         data: Dict
-    ):
+    ) -> 'BankBalance':
         return BankBalance(
             balance_id=data.get('balance_id'),
             bank_key=data.get('bank_key'),

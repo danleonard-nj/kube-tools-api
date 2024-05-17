@@ -18,6 +18,33 @@ def round_currency(amount, precision='0.01'):
     return float(amount)
 
 
+class CoinbaseBalance(Serializable):
+    def __init__(
+        self,
+        currency_code: str,
+        currency_name: str,
+        usd_amount: float,
+        usd_exchange: float,
+        balance: float
+    ):
+        self.currency_code = currency_code
+        self.currency_name = currency_name
+        self.usd_amount = usd_amount
+        self.usd_exchange = usd_exchange
+        self.balance = balance
+
+    @staticmethod
+    def from_dict(
+        data: dict
+    ):
+        return CoinbaseBalance(
+            currency_code=data.get('currency_code'),
+            currency_name=data.get('currency_name'),
+            usd_amount=data.get('usd_amount'),
+            usd_exchange=data.get('usd_exchange'),
+            balance=data.get('balance'))
+
+
 class CoinbaseAccount(Serializable):
     @property
     def usd_amount(self) -> float:
