@@ -164,8 +164,6 @@ class BalanceSyncService:
             balance=balance.available_balance,
             sync_type=str(SyncType.Plaid))
 
-        self._feature_client.is_enabled
-
         return result
 
     async def sync_coinbase_accounts(
