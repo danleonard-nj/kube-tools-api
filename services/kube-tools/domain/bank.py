@@ -372,3 +372,21 @@ class ChatGptBalanceCompletion(Serializable):
             usage=usage,
             is_success=balance != 'N/A'
         )
+
+
+class CoinbaseAccountConfiguration:
+    def __init__(
+        self,
+        currency_code: str,
+        bank_key: str,
+    ):
+        self.currency_code = currency_code
+        self.bank_key = bank_key
+
+    @staticmethod
+    def from_config(
+        data: dict
+    ):
+        return CoinbaseAccountConfiguration(
+            currency_code=data.get('currency_code'),
+            bank_key=data.get('bank_key'))

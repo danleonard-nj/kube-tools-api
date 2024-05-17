@@ -148,6 +148,18 @@ class ConversationService:
 
         return conversation
 
+    async def get_conversations(
+        self
+    ):
+        logger.info(f'Getting all conversations')
+
+        entities = await self._sms_repository.get_all()
+
+        conversations = [Conversation.from_entity(entity)
+                         for entity in entities]
+
+        return conversations
+
     async def close_conversation(
         self,
         conversation_id: str

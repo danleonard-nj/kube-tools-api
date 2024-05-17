@@ -5,6 +5,7 @@ from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
 from services.bank_service import BankService
+from services.coinbase_service import CoinbaseService
 from utilities.utils import parse_timestamp
 
 logger = get_logger(__name__)
@@ -105,3 +106,10 @@ async def get_transactions(container):
 
     return await service.get_transactions(
         **params)
+
+
+@bank_bp.configure('/api/bank/crypto', methods=['GET'], auth_scheme=AuthPolicy.Default)
+async def get_crypto(container):
+    service: CoinbaseService = container.resolve(CoinbaseService)
+
+    return await service.get_accounts()

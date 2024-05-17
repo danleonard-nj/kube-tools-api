@@ -3,7 +3,7 @@ from clients.email_gateway_client import EmailGatewayClient
 from clients.plaid_client import PlaidClient
 from data.bank_repository import BankBalanceRepository
 from domain.bank import (BALANCE_BANK_KEY_EXCLUSIONS, BALANCE_EMAIL_RECIPIENT,
-                         BALANCE_EMAIL_SUBJECT, BankBalance,
+                         BALANCE_EMAIL_SUBJECT, BankBalance, CoinbaseAccountConfiguration,
                          GetBalancesResponse, PlaidAccount, PlaidBalance)
 from domain.cache import CacheKey
 from domain.enums import BankKey, SyncType
@@ -14,6 +14,7 @@ from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from framework.utilities.iter_utils import first
+from services.coinbase_service import CoinbaseService
 from services.event_service import EventService
 from utilities.utils import DateTimeUtil, fire_task
 from framework.clients.cache_client import CacheClientAsync
@@ -33,6 +34,7 @@ class BalanceSyncService:
         email_client: EmailGatewayClient,
         event_service: EventService,
         plaid_client: PlaidClient,
+        coinbase_service: CoinbaseService,
         feature_client: FeatureClientAsync,
         cache_client: CacheClientAsync
     ):
@@ -41,10 +43,13 @@ class BalanceSyncService:
         self._event_service = event_service
         self._feature_client = feature_client
         self._plaid_client = plaid_client
+        self._coinbase_service = coinbase_service
         self._cache_client = cache_client
 
         self._plaid_accounts = configuration.banking.get(
             'plaid_accounts', list())
+        self._coinbase_accounts = configuration.banking.get(
+            'coinbase_accounts', list())
 
     async def run_sync(
         self
@@ -140,6 +145,40 @@ class BalanceSyncService:
             sync_type=str(SyncType.Plaid))
 
         return balance
+
+    async def sync_coinbase_accounts(
+        self
+    ):
+        logger.info(f'Fetching Coinbase account data')
+
+        coinbase_accounts = await self._coinbase_service.get_accounts()
+
+        configs = [CoinbaseAccountConfiguration.from_configuration(config)
+                   for config in self._coinbase_accounts]
+
+        for config in configs:
+            logger.info(f'Syncing Coinbase account: {config.currency_code}')
+
+            if config.currency_code not in coinbase_accounts:
+                logger.info(f'Could not find account for currency: {config.currency_code}')
+                continue
+
+            total = 0
+            for account in coinbase_accounts[config.currency_code]:
+                total += account.usd_amount
+
+            balance = BankBalance(
+                balance_id=str(uuid.uuid4()),
+                bank_key=config.bank_key,
+                balance=float(total),
+                gpt_tokens=0,
+                sync_type=str(SyncType.Coinbase),
+                timestamp=DateTimeUtil.timestamp())
+
+            await self.capture_account_balance(
+                bank_key=config.bank_key,
+                balance=balance.balance,
+                sync_type=SyncType.Coinbase)
 
     async def _fetch_plaid_account_balance(
         self,

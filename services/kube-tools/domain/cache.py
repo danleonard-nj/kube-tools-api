@@ -84,3 +84,13 @@ class CacheKey:
         account_id: str
     ) -> str:
         return f'kube-tools-plaid-balance-{bank_key}-{account_id}'
+
+    @staticmethod
+    def coinbase_account_balances() -> str:
+        return f'kube-tools-coinbase-account-balances'
+
+    @staticmethod
+    def coinbase_exchange_rates(
+        currency: str
+    ) -> str:
+        return f'kube-tools-coinbase-exchange-rates-{currency}'

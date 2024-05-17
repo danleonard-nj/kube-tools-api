@@ -1,5 +1,6 @@
 from clients.azure_gateway_client import AzureGatewayClient
 from clients.chat_gpt_service_client import ChatGptServiceClient
+from clients.coinbase_client import CoinbaseClient
 from clients.email_gateway_client import EmailGatewayClient
 from clients.event_client import EventClient
 from clients.gmail_client import GmailClient
@@ -52,6 +53,7 @@ from services.bank_service import BankService
 from services.bank_transaction_service import BankTransactionService
 from services.calendar_service import CalendarService
 from services.chat_gpt_service import ChatGptService
+from services.coinbase_service import CoinbaseService
 from services.event_service import EventService
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
@@ -148,6 +150,7 @@ def register_clients(
     descriptors.add_singleton(OpenWeatherClient)
     descriptors.add_singleton(TorrentClient)
     descriptors.add_singleton(GoogleAuthClient)
+    descriptors.add_singleton(CoinbaseClient)
 
 
 def register_repositories(
@@ -200,6 +203,7 @@ def register_services(
     descriptors.add_singleton(ChatGptService)
     descriptors.add_singleton(ConversationService)
     descriptors.add_singleton(InboundRequestValidator)
+    descriptors.add_singleton(CoinbaseService)
 
 
 class ContainerProvider(ProviderBase):

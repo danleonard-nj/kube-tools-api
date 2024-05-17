@@ -13,9 +13,7 @@ def normalize_phone_number(phone_number: str):
 
 class ConversationStatus(enum.StrEnum):
     ACTIVE = 'active'
-    INACTIVE = 'inactive'
     CLOSED = 'closed'
-    DELETED = 'deleted'
 
 
 class Direction:
