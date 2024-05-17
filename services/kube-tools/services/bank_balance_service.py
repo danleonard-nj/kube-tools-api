@@ -6,8 +6,9 @@ from data.bank_repository import BankBalanceRepository
 from domain.bank import (BALANCE_BANK_KEY_EXCLUSIONS_SHOW_ALL_ACCOUNTS,
                          BALANCE_BANK_KEY_EXCLUSIONS_SHOW_REDUCED_ACCOUNTS,
                          BALANCE_EMAIL_RECIPIENT, BALANCE_EMAIL_SUBJECT,
-                         BankBalance, CoinbaseAccountConfiguration,
-                         GetBalancesResponse, PlaidAccount, PlaidBalance)
+                         DEFAULT_AGE_CUTOFF_THRESHOLD_DAYS, BankBalance,
+                         CoinbaseAccountConfiguration, GetBalancesResponse,
+                         PlaidAccount, PlaidBalance)
 from domain.enums import BankKey, SyncType
 from domain.features import Feature
 from framework.clients.cache_client import CacheClientAsync
@@ -52,6 +53,8 @@ class BalanceSyncService:
             'plaid_accounts', list())
         self._coinbase_accounts = configuration.banking.get(
             'coinbase_accounts', list())
+        self._age_cutoff_threshold_days = configuration.banking.get(
+            'age_cutoff_threshold_days', DEFAULT_AGE_CUTOFF_THRESHOLD_DAYS)
 
     async def get_balance(
         self,
@@ -78,12 +81,14 @@ class BalanceSyncService:
 
         logger.info('Getting bank balances')
 
-        is_all_accounts_enabled, show_crypto_balances = await TaskCollection(
+        is_all_accounts_enabled, show_crypto_balances, use_age_cutoff_threshold = await TaskCollection(
             self._feature_client.is_enabled(feature_key=Feature.BankBalanceDisplayAllAccounts),
-            self._feature_client.is_enabled(feature_key=Feature.BankBalanceDisplayCryptoBalances)).run()
+            self._feature_client.is_enabled(feature_key=Feature.BankBalanceDisplayCryptoBalances),
+            self._feature_client.is_enabled(feature_key=Feature.BankBalanceUseAgeCutoffThreshold)).run()
 
         logger.info(f'All accounts enabled: {is_all_accounts_enabled}')
         logger.info(f'Show crypto balances: {show_crypto_balances}')
+        logger.info(f'Use age cutoff threshold: {use_age_cutoff_threshold}')
 
         exclusions = (
             BALANCE_BANK_KEY_EXCLUSIONS_SHOW_ALL_ACCOUNTS
@@ -105,6 +110,16 @@ class BalanceSyncService:
         results = await TaskCollection(*[
             self.get_balance(key)
             for key in keys]).run()
+
+        # Filter out any balances that are older than the cutoff threshold from being displayed
+        if use_age_cutoff_threshold:
+            age_cutoff = DateTimeUtil.timestamp() - (60 * 60 * 24 * int(self._age_cutoff_threshold_days))
+            logger.info(f'Using age cutoff threshold: {age_cutoff}')
+
+            for result in results:
+                if result.timestamp < age_cutoff:
+                    logger.info(f'Removing key due to age threshold: {result.bank_key}')
+                    results.remove(result)
 
         # Sort the results by the bank key as they'll come back in random order
         results = [x for x in results if x]
@@ -171,7 +186,7 @@ class BalanceSyncService:
         await self._handle_balance_capture_alert_email(
             balance=balance)
 
-        logger.info(f'Inserted bank record: {result.inserted_id}')
+        logger.info(f'Inserted bank record for key: {bank_key}: {result.inserted_id}')
 
         return balance
 
