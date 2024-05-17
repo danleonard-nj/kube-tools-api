@@ -1,13 +1,16 @@
 import uuid
+
 from clients.email_gateway_client import EmailGatewayClient
 from clients.plaid_client import PlaidClient
 from data.bank_repository import BankBalanceRepository
-from domain.bank import (BALANCE_BANK_KEY_EXCLUSIONS_SHOW_ALL_ACCOUNTS, BALANCE_BANK_KEY_EXCLUSIONS_SHOW_REDUCED_ACCOUNTS, BALANCE_EMAIL_RECIPIENT,
-                         BALANCE_EMAIL_SUBJECT, BankBalance, CoinbaseAccountConfiguration,
+from domain.bank import (BALANCE_BANK_KEY_EXCLUSIONS_SHOW_ALL_ACCOUNTS,
+                         BALANCE_BANK_KEY_EXCLUSIONS_SHOW_REDUCED_ACCOUNTS,
+                         BALANCE_EMAIL_RECIPIENT, BALANCE_EMAIL_SUBJECT,
+                         BankBalance, CoinbaseAccountConfiguration,
                          GetBalancesResponse, PlaidAccount, PlaidBalance)
-from domain.cache import CacheKey
 from domain.enums import BankKey, SyncType
 from domain.features import Feature
+from framework.clients.cache_client import CacheClientAsync
 from framework.clients.feature_client import FeatureClientAsync
 from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
@@ -17,7 +20,6 @@ from framework.utilities.iter_utils import first
 from services.coinbase_service import CoinbaseService
 from services.event_service import EventService
 from utilities.utils import DateTimeUtil, fire_task
-from framework.clients.cache_client import CacheClientAsync
 
 logger = get_logger(__name__)
 
@@ -51,10 +53,95 @@ class BalanceSyncService:
         self._coinbase_accounts = configuration.banking.get(
             'coinbase_accounts', list())
 
-    async def run_sync(
+    async def get_balance(
+        self,
+        bank_key: BankKey
+    ) -> BankBalance:
+
+        ArgumentNullException.if_none_or_whitespace(bank_key, 'bank_key')
+
+        entity = await self._balance_repository.get_balance_by_bank_key(
+            bank_key=bank_key)
+
+        if entity is None:
+            logger.info(f'Could not find balance for bank {bank_key}')
+            return
+
+        balance = BankBalance.from_entity(
+            data=entity)
+
+        return balance
+
+    async def get_balances(
         self
+    ) -> list[BankBalance]:
+
+        logger.info('Getting bank balances')
+
+        is_all_accounts_enabled, show_crypto_balances = await TaskCollection(
+            self._feature_client.is_enabled(feature_key=Feature.BankBalanceDisplayAllAccounts),
+            self._feature_client.is_enabled(feature_key=Feature.BankBalanceDisplayCryptoBalances)).run()
+
+        logger.info(f'All accounts enabled: {is_all_accounts_enabled}')
+        logger.info(f'Show crypto balances: {show_crypto_balances}')
+
+        exclusions = (
+            BALANCE_BANK_KEY_EXCLUSIONS_SHOW_ALL_ACCOUNTS
+            if is_all_accounts_enabled
+            else BALANCE_BANK_KEY_EXCLUSIONS_SHOW_REDUCED_ACCOUNTS
+        )
+
+        logger.info(f'Exclusions: {exclusions}')
+
+        keys = [key for key in BankKey
+                if key.value not in exclusions]
+
+        if show_crypto_balances:
+            logger.info('Including crypto balances')
+            keys.extend([BankKey.Bitcoin, BankKey.Solana])
+
+        logger.info(f'Fetching {len(keys)} balances')
+
+        results = await TaskCollection(*[
+            self.get_balance(key)
+            for key in keys]).run()
+
+        # Sort the results by the bank key as they'll come back in random order
+        results = [x for x in results if x]
+        results.sort(key=lambda x: x.bank_key, reverse=True)
+
+        return GetBalancesResponse(
+            balances=results)
+
+    async def get_balance_history(
+        self,
+        start_timestamp: int,
+        end_timestamp: int,
+        bank_keys: list[str]
     ):
-        return await self.sync_balances()
+        ArgumentNullException.if_none_or_whitespace(bank_keys, 'bank_keys')
+        ArgumentNullException.if_none(start_timestamp, 'start_timestamp')
+        ArgumentNullException.if_none(end_timestamp, 'end_timestamp')
+
+        logger.info(f'Getting balance history for bank {bank_keys}')
+
+        # Validate provided bank keys
+        for bank_key in bank_keys:
+            if bank_key not in BankKey.values():
+                raise BalanceSyncServiceError(
+                    f"'{bank_key}' is not a valid bank key")
+
+        entities = await self._balance_repository.get_balance_history(
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
+            bank_keys=bank_keys)
+
+        logger.info(f'Fetched {len(entities)} balance history records')
+
+        balances = [BankBalance.from_entity(data=entity)
+                    for entity in entities]
+
+        return balances
 
     async def capture_account_balance(
         self,
@@ -87,6 +174,11 @@ class BalanceSyncService:
         logger.info(f'Inserted bank record: {result.inserted_id}')
 
         return balance
+
+    async def run_sync(
+        self
+    ):
+        return await self.sync_balances()
 
     async def sync_balances(
         self,
@@ -250,83 +342,3 @@ class BalanceSyncService:
         await self._event_service.dispatch_email_event(
             endpoint=endpoint,
             message=email_request.to_dict())
-
-    async def get_balance(
-        self,
-        bank_key: BankKey
-    ) -> BankBalance:
-
-        ArgumentNullException.if_none_or_whitespace(bank_key, 'bank_key')
-
-        entity = await self._balance_repository.get_balance_by_bank_key(
-            bank_key=bank_key)
-
-        if entity is None:
-            logger.info(f'Could not find balance for bank {bank_key}')
-            return
-
-        balance = BankBalance.from_entity(
-            data=entity)
-
-        return balance
-
-    async def get_balances(
-        self
-    ) -> list[BankBalance]:
-
-        is_all_accounts_enabled = await self._feature_client.is_enabled(
-            feature_key=Feature.BankBalanceDisplayAllAccounts)
-
-        exclusions = (
-            BALANCE_BANK_KEY_EXCLUSIONS_SHOW_ALL_ACCOUNTS
-            if is_all_accounts_enabled
-            else BALANCE_BANK_KEY_EXCLUSIONS_SHOW_REDUCED_ACCOUNTS
-        )
-
-        logger.info(f'Exclusions: {exclusions}')
-
-        keys = [key for key in BankKey
-                if key.value not in exclusions]
-
-        logger.info(f'Fetching {len(keys)} balances')
-
-        results = await TaskCollection(*[
-            self.get_balance(key)
-            for key in keys]).run()
-
-        # Sort the results by the bank key as they'll come back in random order
-        results = [x for x in results if x]
-        results.sort(key=lambda x: x.bank_key)
-
-        return GetBalancesResponse(
-            balances=results)
-
-    async def get_balance_history(
-        self,
-        start_timestamp: int,
-        end_timestamp: int,
-        bank_keys: list[str]
-    ):
-        ArgumentNullException.if_none_or_whitespace(bank_keys, 'bank_keys')
-        ArgumentNullException.if_none(start_timestamp, 'start_timestamp')
-        ArgumentNullException.if_none(end_timestamp, 'end_timestamp')
-
-        logger.info(f'Getting balance history for bank {bank_keys}')
-
-        # Validate provided bank keys
-        for bank_key in bank_keys:
-            if bank_key not in BankKey.values():
-                raise BalanceSyncServiceError(
-                    f"'{bank_key}' is not a valid bank key")
-
-        entities = await self._balance_repository.get_balance_history(
-            start_timestamp=start_timestamp,
-            end_timestamp=end_timestamp,
-            bank_keys=bank_keys)
-
-        logger.info(f'Fetched {len(entities)} balance history records')
-
-        balances = [BankBalance.from_entity(data=entity)
-                    for entity in entities]
-
-        return balances

@@ -11,3 +11,4 @@ class Feature:
     PlaidSyncCacheEnabled = 'plaid-sync-cache'
     CoinbaseSync = 'coinbase-sync'
     BankBalanceDisplayAllAccounts = 'bank-balance-display-all-accounts'
+    BankBalanceDisplayCryptoBalances = 'show-crypto-balances'

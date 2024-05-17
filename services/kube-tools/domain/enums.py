@@ -19,8 +19,8 @@ class BankKey(enum.StrEnum):
     SynchronyAmazon = 'synchrony-amazon'
     SynchronyGuitarCenter = 'synchrony-guitar-center'
     SynchronySweetwater = 'synchrony-sweetwater'
-    # Bitcoin = 'bitcoin'
-    # Solana = 'solana'
+    Bitcoin = 'coinbase-bitcoin'
+    Solana = 'coinbase-solana'
 
     @classmethod
     def values(

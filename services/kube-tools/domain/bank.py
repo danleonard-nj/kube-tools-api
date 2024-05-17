@@ -56,7 +56,9 @@ BALANCE_BANK_KEY_EXCLUSIONS_SHOW_ALL_ACCOUNTS = [
     BankKey.WellsFargoActiveCash,
     BankKey.WellsFargoChecking,
     BankKey.WellsFargoPlatinum,
-    BankKey.Discover
+    BankKey.Discover,
+    BankKey.Bitcoin,
+    BankKey.Solana
 ]
 
 # Unsupported bank keys for balance captures
@@ -70,7 +72,9 @@ BALANCE_BANK_KEY_EXCLUSIONS_SHOW_REDUCED_ACCOUNTS = [
     BankKey.Discover,
     BankKey.SynchronyAmazon,
     BankKey.SynchronyGuitarCenter,
-    BankKey.SynchronySweetwater
+    BankKey.SynchronySweetwater,
+    BankKey.Bitcoin,
+    BankKey.Solana
 ]
 
 
