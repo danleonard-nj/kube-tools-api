@@ -6,9 +6,20 @@ import phonenumbers
 from utilities.utils import DateTimeUtil
 
 
-def normalize_phone_number(phone_number: str):
-    parsed_number = phonenumbers.parse(phone_number, 'US')
-    return phonenumbers.format_number(parsed_number, phonenumbers.PhoneNumberFormat.E164)
+def normalize_phone_number(
+    phone_number: str
+) -> str:
+    '''
+    Normalize phone number to E.164 format
+    '''
+
+    parsed_number = phonenumbers.parse(
+        number=phone_number,
+        region='US')
+
+    return phonenumbers.format_number(
+        parsed_number,
+        phonenumbers.PhoneNumberFormat.E164)
 
 
 class ConversationStatus(enum.StrEnum):
@@ -52,6 +63,7 @@ class Conversation(Serializable):
         sender_id,
         recipient: str,
         status: ConversationStatus,
+        service_type: str,
         messages: list[Message],
         created_date,
         modified_date=0
@@ -60,6 +72,7 @@ class Conversation(Serializable):
         self.sender_id = sender_id
         self.recipient = recipient
         self.status = status
+        self.service_type = service_type
         self.messages = messages
         self.created_date = created_date
         self.modified_date = modified_date
@@ -99,6 +112,7 @@ class Conversation(Serializable):
             conversation_id=data.get('conversation_id'),
             sender_id=data.get('sender_id'),
             recipient=data.get('recipient'),
+            service_type=data.get('service_type'),
             status=status,
             messages=messages,
             created_date=data.get('created_date'),

@@ -49,16 +49,23 @@ class GetChatGptHistoryQuery(Queryable):
 class GetBalanceByBankKeyQuery(Queryable):
     def __init__(
         self,
-        bank_key: str
+        bank_key: str,
+        sync_type: str = None
     ):
         self.bank_key = bank_key
+        self.sync_type = sync_type
 
     def get_query(
         self
     ):
-        return {
+        query = {
             'bank_key': self.bank_key
         }
+
+        if self.sync_type is not None:
+            query['sync_type'] = self.sync_type
+
+        return query
 
     def get_sort(
         self

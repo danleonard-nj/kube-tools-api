@@ -23,20 +23,22 @@ class CoinbaseService:
     ):
         exchanges = dict()
 
+        # TODO: Fetch asynchronously w/ task collection
         for currency in self._currencies:
-            rates = await self._coinbase_client.get_exchange_rates(currency)
+            # Fetch USD exchange rates for currency
+            rates = await self._coinbase_client.get_exchange_rates(
+                currency=currency)
 
             usd_exchange = rates.get('USD')
-
             logger.info(f'Exchange rates for: {currency}: {usd_exchange}')
 
             exchanges[currency] = float(usd_exchange)
-
         return exchanges
 
     async def get_accounts(
         self
-    ):
+    ) -> list[CoinbaseBalance]:
+
         logger.info(f'Getting accounts from coinbase for currencies: {self._currencies}')
 
         data = await self._coinbase_client.get_accounts()

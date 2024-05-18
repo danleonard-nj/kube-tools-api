@@ -15,13 +15,15 @@ class BankBalanceRepository(MongoRepositoryAsync):
             database='Bank',
             collection='Balance')
 
-    async def get_balance_by_bank_key(
+    async def get_balance_by_bank_key_sync_type(
         self,
-        bank_key: str
+        bank_key: str,
+        sync_type: str = None
     ) -> dict:
 
         query = GetBalanceByBankKeyQuery(
-            bank_key=bank_key)
+            bank_key=bank_key,
+            sync_type=sync_type)
 
         return await self.collection.find_one(
             filter=query.get_query(),

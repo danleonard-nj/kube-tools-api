@@ -95,7 +95,8 @@ class ConversationService:
     async def create_conversation(
         self,
         recipient,
-        message: str
+        message: str,
+        service_type: str = None
     ):
         # TODO: Verify an active conversation does not already exist
 
@@ -113,6 +114,7 @@ class ConversationService:
             sender_id='placeholder-id',
             recipient=normalized_phone,
             status=ConversationStatus.ACTIVE,
+            service_type=service_type,
             messages=[message],
             created_date=DateTimeUtil.timestamp())
 
@@ -204,8 +206,19 @@ class ConversationService:
             status=ConversationStatus.ACTIVE)
 
         if entity is None:
-            logger.info(f'No active conversation found for recipient: {sender}')
-            raise ConversationServiceError(f'No active conversation found for recipient: {sender}')
+            logger.info(f'No active conversation found for sender: {sender}')
+
+            # TODO: Create new conversation if trigger word is found in inbound message
+            if message.lower().strip() == 'gizmo':
+                logger.info(f'Creating new conversation for sender: {sender}')
+
+                # TODO: Create new conversation on trigger word
+                # await self.create_conversation(
+                #     recipient=sender,
+                #     message='intro-message')
+
+            # TODO: Throw if no trigger word is found
+            raise ConversationServiceError(f'No active conversation found for sender: {sender}')
 
         conversation = Conversation.from_entity(entity)
         logger.info(f'Active conversation found for recipient: {sender}: {entity}')
@@ -221,9 +234,9 @@ class ConversationService:
 
         logger.info(f'Updating conversation for recipient: {sender}')
 
-        await self._sms_repository.collection.replace_one(
-            filter=conversation.get_selector(),
-            replacement=conversation.to_dict())
+        await self._sms_repository.replace(
+            selector=conversation.get_selector(),
+            document=conversation.to_dict())
 
         return conversation
 

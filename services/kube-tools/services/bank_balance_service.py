@@ -58,13 +58,15 @@ class BalanceSyncService:
 
     async def get_balance(
         self,
-        bank_key: BankKey
+        bank_key: BankKey,
+        sync_type: SyncType = None
     ) -> BankBalance:
 
         ArgumentNullException.if_none_or_whitespace(bank_key, 'bank_key')
 
-        entity = await self._balance_repository.get_balance_by_bank_key(
-            bank_key=bank_key)
+        entity = await self._balance_repository.get_balance_by_bank_key_sync_type(
+            bank_key=bank_key,
+            sync_type=sync_type)
 
         if entity is None:
             logger.info(f'Could not find balance for bank {bank_key}')
@@ -174,7 +176,7 @@ class BalanceSyncService:
         balance = BankBalance(
             balance_id=str(uuid.uuid4()),
             bank_key=bank_key,
-            balance=balance,
+            balance=round(balance, 2),
             gpt_tokens=tokens,
             message_bk=message_bk,
             sync_type=sync_type,
@@ -201,11 +203,9 @@ class BalanceSyncService:
     ):
         logger.info(f'Running async: {run_async}')
 
-        sync_plaid_enabled = await self._feature_client.is_enabled(
-            feature_key=Feature.PlaidSync)
-
-        coinbase_enabled = await self._feature_client.is_enabled(
-            feature_key=Feature.CoinbaseSync)
+        sync_plaid_enabled, coinbase_enabled = await TaskCollection(
+            self._feature_client.is_enabled(feature_key=Feature.PlaidSync),
+            self._feature_client.is_enabled(feature_key=Feature.CoinbaseSync)).run()
 
         results = []
 
@@ -242,11 +242,12 @@ class BalanceSyncService:
         # Parse the account configuration
         config = PlaidAccount.from_configuration(account)
 
-        # Get the latest balance for the account
+        # Get the latest Plaid balance for the account
         latest_balance = await self.get_balance(
-            bank_key=config.bank_key)
+            bank_key=config.bank_key,
+            sync_type=SyncType.Plaid)
 
-        logger.info(f'Latest balance: {latest_balance.bank_key}: {latest_balance.timestamp}')
+        logger.info(f'Latest Plaid balance: {latest_balance.bank_key}: {latest_balance.timestamp}')
 
         delta = (
             DateTimeUtil.timestamp() - latest_balance.timestamp
