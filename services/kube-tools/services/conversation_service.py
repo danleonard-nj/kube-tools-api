@@ -216,6 +216,8 @@ class ConversationService:
                 # await self.create_conversation(
                 #     recipient=sender,
                 #     message='intro-message')
+            else:
+                logger.info(f'No trigger word found in inbound message')
 
             # TODO: Throw if no trigger word is found
             raise ConversationServiceError(f'No active conversation found for sender: {sender}')
