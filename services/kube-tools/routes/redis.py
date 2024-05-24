@@ -1,10 +1,12 @@
+from http.client import HTTPException
 from domain.auth import AuthPolicy
-from domain.redis import RedisGetCacheValueRequest, RedisSetCacheValueRequest
+from domain.redis import RedisDeleteCacheValueRequest, RedisGetCacheValueRequest, RedisSetCacheValueRequest
 from framework.di.service_provider import ServiceProvider
 from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
 from services.redis_service import RedisService
+from framework.exceptions.rest import HttpException
 
 redis_bp = MetaBlueprint('redis_bp', __name__)
 
@@ -24,6 +26,9 @@ async def get_redis_key_value(container: ServiceProvider):
 
     body = await request.get_json()
 
+    if body is None:
+        raise HttpException('Request body is required', 400)
+
     req = RedisGetCacheValueRequest.from_request_body(
         data=body)
 
@@ -37,6 +42,9 @@ async def set_redis_key_value(container: ServiceProvider):
 
     body = await request.get_json()
 
+    if body is None:
+        raise HttpException('Request body is required', 400)
+
     req = RedisSetCacheValueRequest.from_request_body(
         body=body)
 
@@ -46,12 +54,18 @@ async def set_redis_key_value(container: ServiceProvider):
 
 @redis_bp.configure('/api/redis/delete', methods=['POST'], auth_scheme=AuthPolicy.Default)
 async def delete_redis_key(container: ServiceProvider):
-    service = container.resolve(RedisService)
+    service: RedisService = container.resolve(RedisService)
 
     body = await request.get_json()
 
-    return await service.delete_key(
+    if body is None:
+        raise HttpException('Request body is required', 400)
+
+    req = RedisDeleteCacheValueRequest.from_request_body(
         body=body)
+
+    return await service.delete_key(
+        req=req)
 
 
 @redis_bp.configure('/api/redis/flush', methods=['POST'], auth_scheme=AuthPolicy.Default)
@@ -66,15 +80,3 @@ async def get_redis_diagnostics(container: ServiceProvider):
     service = container.resolve(RedisService)
 
     return await service.get_diagnostics()
-
-
-@redis_bp.configure('/api/redis/monitor', methods=['GET'], auth_scheme=AuthPolicy.Default)
-async def get_redis_monitor(container: ServiceProvider):
-    service: RedisService = container.resolve(RedisService)
-
-    client = service.get_client()
-    monitor = client.monitor()
-
-    while True:
-        msg = await monitor.next_command()
-        yield msg

@@ -3,14 +3,20 @@ from framework.handlers.response_handler_async import response_handler
 from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import Blueprint, Response, request
-from services.conversation_service import (ConversationService,
-                                           InboundRequestValidator)
+from services.conversation_service import ConversationService
 
 VALIDATE_TWILIO_HMAC = False
 
 logger = get_logger(__name__)
 
 conversation_bp = MetaBlueprint('conversation_bp', __name__)
+
+
+def get_params_from_webhook_form(data):
+    return (
+        data.get('From', '').strip(),
+        data.get('Body', '').strip()
+    )
 
 
 @conversation_bp.configure('/api/conversation', methods=['POST'], auth_scheme='default')
@@ -36,7 +42,6 @@ async def post_conversations(container):
 @inject_container_async
 async def post_conversation_inbound(container):
     conversation_service: ConversationService = container.resolve(ConversationService)
-    validator: InboundRequestValidator = container.resolve(InboundRequestValidator)
 
     logger.info(f'Handling inbound message from Twilio: {request.url}')
 
@@ -45,19 +50,11 @@ async def post_conversation_inbound(container):
     logger.info(f'Body: {data}')
     logger.info(f'Headers: {request.headers}')
 
-    sig = request.headers.get('X-Twilio-Signature')
+    _from, body = get_params_from_webhook_form(data)
 
-    if VALIDATE_TWILIO_HMAC:
-        if not await validator.validate(
-                request_url=request.url,
-                post_vars=data,
-                twilio_signature=sig):
-            logger.info('HMAC validation failed')
-            return Response(None, status=403)
-
-        await conversation_service.handle_webhook(
-            sender=data.get('From', '').strip(),
-            message=data.get('Body', '').strip())
+    await conversation_service.handle_webhook(
+        sender=_from,
+        message=body)
 
     return Response(None, status=204)
 

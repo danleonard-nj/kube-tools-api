@@ -4,11 +4,12 @@ from clients.twilio_gateway import TwilioGatewayClient
 from data.conversation_repository import ConversationRepository
 from domain.conversation import (Conversation, ConversationStatus, Direction,
                                  Message, normalize_phone_number)
+from domain.features import Feature
+from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from pymongo.results import InsertOneResult, UpdateResult
-from twilio.request_validator import RequestValidator
 from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
@@ -18,38 +19,17 @@ class ConversationServiceError(Exception):
     pass
 
 
-class InboundRequestValidator:
-    def __init__(
-        self,
-        configuration: Configuration
-    ):
-        self._auth_token = configuration.twilio.get('api_key')
-
-    def validate(
-        self,
-        request_url: str,
-        post_vars: dict,
-        twilio_signature: str
-    ):
-        validator = RequestValidator(self._auth_token)
-
-        return validator.validate(
-            request_url,
-            post_vars,
-            twilio_signature)
-
-# TODO: Validate webhook requets from Twilio
-
-
 class ConversationService:
     def __init__(
         self,
         configuration: Configuration,
         sms_repository: ConversationRepository,
-        twilio_client: TwilioGatewayClient
+        twilio_client: TwilioGatewayClient,
+        feature_client: FeatureClientAsync
     ):
         self._sms_repository = sms_repository
         self._twilio_gateway_client = twilio_client
+        self._feature_client = feature_client
 
         self._api_key = configuration.twilio.get('api_key')
 
@@ -197,7 +177,15 @@ class ConversationService:
     ):
         logger.info(f'Handling webhook for sender: {sender}')
 
-        normalized_phone = normalize_phone_number(sender)
+        inbound_no_trigger_word_logging_enabled = await self._feature_client.is_enabled(
+            feature_key=Feature.ConversationServiceInboundNoTriggerWord)
+
+        logger.info(f'Inbound no trigger word logging enabled: {inbound_no_trigger_word_logging_enabled}')
+
+        # Parse and normalize the phone number formatting
+        normalized_phone = normalize_phone_number(
+            phone_number=sender)
+
         logger.info(f'Normalized phone number: {sender} -> {normalized_phone}')
 
         logger.info(f'Fetching active conversation for recipient: {sender}')
@@ -205,6 +193,7 @@ class ConversationService:
             recipient=normalized_phone,
             status=ConversationStatus.ACTIVE)
 
+        # No active conversation exists for the sender
         if entity is None:
             logger.info(f'No active conversation found for sender: {sender}')
 
@@ -217,10 +206,11 @@ class ConversationService:
                 #     recipient=sender,
                 #     message='intro-message')
             else:
-                logger.info(f'No trigger word found in inbound message')
+                # Log if no trigger word is found in inbound message
+                if inbound_no_trigger_word_logging_enabled:
+                    logger.info(f'No trigger word found in inbound message')
 
-            # TODO: Throw if no trigger word is found
-            raise ConversationServiceError(f'No active conversation found for sender: {sender}')
+                raise ConversationServiceError(f'No active conversation found for sender: {sender}')
 
         conversation = Conversation.from_entity(entity)
         logger.info(f'Active conversation found for recipient: {sender}: {entity}')
