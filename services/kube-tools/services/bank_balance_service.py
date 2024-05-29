@@ -244,8 +244,8 @@ class BalanceSyncService:
 
         # Get the latest Plaid balance for the account
         latest_balance = await self.get_balance(
-            bank_key=config.bank_key,
-            sync_type=SyncType.Plaid)
+            bank_key=config.bank_key)
+            # sync_type=SyncType.Plaid)
 
         logger.info(f'Latest Plaid balance: {latest_balance.bank_key}: {latest_balance.timestamp}')
 
