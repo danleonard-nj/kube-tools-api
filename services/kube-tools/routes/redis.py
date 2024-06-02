@@ -1,4 +1,3 @@
-from http.client import HTTPException
 from domain.auth import AuthPolicy
 from domain.redis import RedisDeleteCacheValueRequest, RedisGetCacheValueRequest, RedisSetCacheValueRequest
 from framework.di.service_provider import ServiceProvider

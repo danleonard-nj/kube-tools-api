@@ -1,4 +1,4 @@
-framework==0.3.8
+framework==0.4.0
 pandas
 kubernetes
 xmltodict
