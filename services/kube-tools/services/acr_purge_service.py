@@ -63,7 +63,7 @@ class AcrPurgeService:
         ])
 
         for repo in repos:
-            logger.info(f'Processing image: {repo.name}')
+            logger.info(f'Processing image: {repo}')
 
             # Verify the repo is not excluded by
             # evaluating the exclusion rules defined
