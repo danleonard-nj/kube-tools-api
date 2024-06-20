@@ -1,3 +1,4 @@
+import stat
 from data.google.google_auth_repository import GoogleAuthRepository
 from domain.cache import CacheKey
 from domain.exceptions import InvalidGoogleAuthClientException
@@ -7,8 +8,33 @@ from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
 from framework.validators.nulls import none_or_whitespace
 from google.auth.transport.requests import Request
+from framework.serialization import Serializable
+
+from utilities.utils import fire_task
 
 logger = get_logger(__name__)
+
+
+class GetTokenResponse(Serializable):
+    def __init__(
+        self,
+        token: str
+    ):
+        self.token = token
+
+    @staticmethod
+    def from_entity(
+        data: dict
+    ):
+        return GetTokenResponse(
+            token=data.get('token'))
+
+    @staticmethod
+    def from_credentials(
+        creds
+    ):
+        return GetTokenResponse(
+            token=creds.token)
 
 
 class GoogleAuthService:
@@ -61,26 +87,33 @@ class GoogleAuthService:
         self,
         client_name: str,
         scopes: list[str]
-    ) -> str:
+    ) -> GetTokenResponse:
 
         cache_key = CacheKey.google_auth_service(
             client_name=client_name,
             scopes=scopes)
 
-        token = await self._cache_client.get_cache(
+        data = await self._cache_client.get_json(
             key=cache_key)
 
-        if not none_or_whitespace(token):
-            return token
+        if not none_or_whitespace(data):
+            return GetTokenResponse.from_entity(
+                data=data)
 
         client = await self.get_credentials(
             client_name=client_name,
             scopes=scopes)
 
-        # Cache the token for 30 minutes
-        await self._cache_client.set_cache(
-            key=cache_key,
-            value=client.token,
-            ttl=30)
+        data = GetTokenResponse.from_credentials(
+            creds=client)
 
-        return client.token
+        # Cache the token for 30 minutes
+        fire_task(
+            self._cache_client.set_json(
+                key=cache_key,
+                value=data.to_dict(),
+                ttl=30)
+        )
+
+        return GetTokenResponse(
+            token=client.token)

@@ -1,49 +1,45 @@
 from clients.google_auth_client import GoogleAuthClient
 from domain.google import (CreateEmailRuleRequest, ProcessGmailRuleRequest,
                            UpdateEmailRuleRequest)
-from framework.exceptions.nulls import ArgumentNullException
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
 from services.gmail_rule_service import GmailRuleService
 from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
 from services.google_drive_service import GoogleDriveService
+from framework.exceptions.rest import HttpException
+from framework.validators.nulls import none_or_whitespace
 
 google_bp = MetaBlueprint('google_bp', __name__)
 
 
-@google_bp.configure('/api/google/auth/v2', methods=['POST'], auth_scheme='default')
-async def get_auth_v2(container):
-    service: GoogleAuthService = container.resolve(GoogleAuthService)
+# @google_bp.configure('/api/google/auth/v2', methods=['POST'], auth_scheme='default')
+# async def get_auth_v2(container):
+#     service: GoogleAuthService = container.resolve(GoogleAuthService)
 
-    body = await request.get_json()
+#     body = await request.get_json()
 
-    client_name = body.get('client_name')
-    scopes = body.get('scopes', [])
+#     client_name = body.get('client_name')
+#     scopes = body.get('scopes', [])
 
-    token = await service.get_token(
-        client_name=client_name,
-        scopes=scopes)
+#     if none_or_whitespace(client_name):
+#         raise HttpException('Client name is required', 400)
 
-    return {
-        'token': token
-    }
+#     return await service.get_token(
+#         client_name=client_name,
+#         scopes=scopes)
 
 
-@google_bp.configure('/api/google/auth/v3', methods=['POST'], auth_scheme='default')
-async def get_auth_v3(container):
-    service: GoogleAuthClient = container.resolve(GoogleAuthClient)
+# @google_bp.configure('/api/google/auth/v3', methods=['POST'], auth_scheme='default')
+# async def get_auth_v3(container):
+#     service: GoogleAuthClient = container.resolve(GoogleAuthClient)
 
-    body = await request.get_json()
+#     body = await request.get_json()
 
-    scopes = body.get('scopes', [])
+#     scopes = body.get('scopes', [])
 
-    token = await service.get_token(
-        scopes=scopes)
-
-    return {
-        'token': token
-    }
+#     return await service.get_token(
+#         scopes=scopes)
 
 
 @google_bp.configure('/api/google/gmail', methods=['POST'], auth_scheme='default')
@@ -67,8 +63,8 @@ async def get_gmail_rule(container, rule_id: str):
     service: GmailRuleService = container.resolve(
         GmailRuleService)
 
-    ArgumentNullException.if_none_or_whitespace(
-        rule_id, 'rule_id')
+    if none_or_whitespace(rule_id):
+        raise HttpException('Rule ID is required', 400)
 
     return await service.get_rule(
         rule_id=rule_id)
@@ -81,8 +77,8 @@ async def post_gmail_rule_process(container):
 
     body = await request.get_json()
 
-    ArgumentNullException.if_none_or_whitespace(
-        body, 'body')
+    if body is None:
+        raise HttpException('Request body is required', 400)
 
     process_request = ProcessGmailRuleRequest(
         data=body)
@@ -96,8 +92,8 @@ async def delete_gmail_rule(container, rule_id: str):
     service: GmailRuleService = container.resolve(
         GmailRuleService)
 
-    ArgumentNullException.if_none_or_whitespace(
-        rule_id, 'rule_id')
+    if none_or_whitespace(rule_id):
+        raise HttpException('Rule ID is required', 400)
 
     return await service.delete_rule(
         rule_id=rule_id)
@@ -109,6 +105,9 @@ async def post_gmail_rule(container):
         GmailRuleService)
 
     body = await request.get_json()
+
+    if body is None:
+        raise HttpException('Request body is required', 400)
 
     create_request = CreateEmailRuleRequest(
         data=body)
@@ -123,6 +122,9 @@ async def put_gmail_rule(container):
         GmailRuleService)
 
     body = await request.get_json()
+
+    if body is None:
+        raise HttpException('Request body is required')
 
     update_request = UpdateEmailRuleRequest(
         data=body)

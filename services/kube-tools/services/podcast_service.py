@@ -8,6 +8,7 @@ from clients.google_drive_client import GoogleDriveClient
 from data.podcast_repository import PodcastRepository
 from domain.exceptions import PodcastConfigurationException
 from domain.features import Feature
+from domain.google import GoogleDriveDirectory
 from domain.podcasts.handlers import (AcastFeedHandler, FeedHandler,
                                       GenericFeedHandler)
 from domain.podcasts.podcasts import (DownloadedEpisode, Episode, Feed,
@@ -21,6 +22,10 @@ from services.event_service import EventService
 from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
+
+
+class PodcastServiceException(Exception):
+    pass
 
 
 class PodcastService:
@@ -93,22 +98,20 @@ class PodcastService:
         logger.info(f'Handling RSS feed: {feed.name}')
 
         # Get episodes to download and show model
-        downloads, show, is_new = await self._sync_feed(
+        downloads, show = await self._sync_feed(
             rss_feed=feed)
 
         if not any(downloads):
             logger.info(f'No new episodes for show')
             return
 
-        if not is_new:
-            # Update the show modified date
-            show.modified_date = DateTimeUtil.timestamp()
+        # Update the show modified date
+        show.modified_date = DateTimeUtil.timestamp()
 
-            # Update the show with new episodes
-            await self._podcast_repository.update(
-                selector=show.get_selector(),
-                values=show.to_dict()
-            )
+        # Update the show with new episodes
+        await self._podcast_repository.update(
+            selector=show.get_selector(),
+            values=show.to_dict())
 
         # Send an email for the downloaded episodes
         await self._send_email(
@@ -135,30 +138,33 @@ class PodcastService:
 
     async def upload_file(
         self,
-        episode: DownloadedEpisode,
+        downloaded_episode: DownloadedEpisode,
         audio: bytes
     ) -> None:
         '''
         Upload podcast audio to Google Drive
         '''
 
-        ArgumentNullException.if_none(episode, 'episode')
+        ArgumentNullException.if_none(downloaded_episode, 'episode')
         ArgumentNullException.if_none(audio, 'audio')
 
-        logger.info(f'{episode.get_filename()}: Upload started')
+        logger.info(f'{downloaded_episode.get_filename()}: Upload started')
+
+        filename = downloaded_episode.get_filename()
 
         # Throw if the audio file is less than 1KB - occasionally the
         # response is an error message but we get a 200 status anyway
         if len(audio) < 1024:
-            raise PodcastDownloadException(
+            raise PodcastServiceException(
                 f'Audio file is less than the threshold size to upload: {audio}')
 
         # Upload file to Google Drive
         await self._google_drive_client.upload_file(
-            filename=episode.get_filename(),
-            data=audio)
+            filename=filename,
+            data=audio,
+            parent_directory=GoogleDriveDirectory.PodcastDirectoryId)
 
-        logger.info(f'{episode.get_filename()}: Episode uploaded successfully')
+        logger.info(f'{downloaded_episode.get_filename()}: Episode uploaded successfully')
         del audio
 
     def _get_results_table(
@@ -245,9 +251,8 @@ class PodcastService:
             follow_redirects=True)
 
         if response.is_error:
-            logger.info(f'Failed to fetch audio: {response.status_code}: {response.text}')
-            raise PodcastDownloadException(
-                f'Failed to fetch audio: {response.status_code}')
+            logger.warning(f'Failed to fetch audio: {response.status_code}: {response.text}')
+            raise PodcastServiceException(f'Failed to fetch audio: {response.status_code}')
 
         return response
 
@@ -266,26 +271,22 @@ class PodcastService:
             'show_id': show.show_id
         })
 
-        # Initial insert if no record for show exists
-        if entity is None:
-            logger.info(f'Initial insert for show: {show.show_title}')
+        if entity is not None:
+            return (Show.from_entity(entity), False)
 
-            new_show = Show(
-                show_id=show.show_id,
-                show_title=show.show_title,
-                episodes=list())
+        logger.info(f'Initial insert for show: {show.show_title}')
 
-            result = await self._podcast_repository.insert(
-                document=new_show.to_dict())
+        show = Show(
+            show_id=show.show_id,
+            show_title=show.show_title,
+            episodes=list())
 
-            logger.info(f'Insert result: {result.inserted_id}')
+        result = await self._podcast_repository.insert(
+            document=show.to_dict())
 
-            return (new_show, True)
+        logger.info(f'Insert result: {result.inserted_id}')
 
-        saved_show = Show.from_entity(
-            entity=entity)
-
-        return (saved_show, False)
+        return (show, True)
 
     def _get_handler(
         self,
@@ -342,26 +343,33 @@ class PodcastService:
 
                 logger.info(f'Save episode: {episode.episode_title}')
 
-                if not self.dry_run:
-                    audio_data = await self.get_episode_audio(
-                        episode=episode)
-
-                    logger.info(f'Bytes fetched: {len(audio_data.content)}')
-
                 downloaded_episode = DownloadedEpisode(
                     episode=episode,
-                    show=show,
-                    size=len(audio_data.content) if not self.dry_run else 0)
+                    show=show)
 
-                if not self.dry_run:
-                    await self.upload_file(
-                        episode=downloaded_episode,
-                        audio=audio_data.content)
+                # Check if the episode already exists in Google Drive
+                exists = await self._google_drive_client.file_exists(
+                    directory_id=GoogleDriveDirectory.PodcastDirectoryId,
+                    filename=downloaded_episode.get_filename())
+
+                if exists:
+                    logger.info(f'Episode already exists: {downloaded_episode.get_filename()}')
+                    continue
+
+                audio_data = await self.get_episode_audio(
+                    episode=episode)
+
+                logger.info(f'Bytes fetched: {len(audio_data.content)}')
+
+                downloaded_episode.size = len(audio_data.content) if audio_data.content else 0
+
+                await self.upload_file(
+                    downloaded_episode=downloaded_episode,
+                    audio=audio_data.content)
 
                 download_queue.append(downloaded_episode)
 
         return (
             download_queue,
-            show,
-            is_new
+            show
         )

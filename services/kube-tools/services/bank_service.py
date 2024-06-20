@@ -1,11 +1,8 @@
-import uuid
-from typing import Dict, List
-
+from typing import List
 from domain.bank import BankBalance
 from framework.logger import get_logger
 from services.bank_balance_service import BalanceSyncService
 from services.bank_transaction_service import BankTransactionService
-from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
 

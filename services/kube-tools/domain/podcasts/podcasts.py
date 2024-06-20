@@ -4,6 +4,7 @@ from typing import Callable, Dict, List, OrderedDict
 
 from framework.logger import get_logger
 from framework.serialization import Serializable
+from framework.validators.nulls import none_or_whitespace
 
 TITLE_FILENAME_REGEX = '[^A-Za-z0-9 ]+'
 
@@ -16,6 +17,10 @@ class PodcastDownloadException(Exception):
         message: str
     ):
         super().__init__(message)
+
+
+class PodcastSyncException(Exception):
+    pass
 
 
 class Episode(Serializable):
@@ -43,7 +48,15 @@ class Episode(Serializable):
 
         episode_id = id_selector(data)
         episode_title = title_selector(data)
+
+        # Verify that the episode data was parsed correctly
+        if none_or_whitespace(episode_id) or none_or_whitespace(episode_title):
+            raise PodcastSyncException(f'Failed to parse episode data: {data}')
+
         audio = audio_selector(data)
+
+        if none_or_whitespace(audio):
+            raise PodcastSyncException(f'Failed to parse audio data URL: {data}')
 
         return Episode(
             episode_id=episode_id,
@@ -76,7 +89,7 @@ class Feed:
 
 
 class Show(Serializable):
-    @property
+    @ property
     def episode_ids(
         self
     ) -> List[str]:
@@ -99,7 +112,7 @@ class Show(Serializable):
         self.episodes = episodes
         self.modified_date = modified_date
 
-    @classmethod
+    @ classmethod
     def from_entity(
         cls,
         entity: Dict
@@ -111,7 +124,7 @@ class Show(Serializable):
             episodes=cls.get_entity_episodes(
                 episodes=entity.get('episodes')))
 
-    @classmethod
+    @ classmethod
     def get_entity_episodes(
         cls,
         episodes
@@ -150,20 +163,27 @@ class Show(Serializable):
 
 
 class DownloadedEpisode(Serializable):
+    @property
+    def size_mb(
+        self
+    ):
+        mb = self.size / 1048576 if self.size != 0 else 0
+        return round(mb, 2)
+
     def __init__(
         self,
         episode: Episode,
         show: Show,
-        size: int
+        size: int = 0
     ):
         self.episode = episode
         self.show = show
-        self.size = round(size / 1048576)
+        self.size = size
 
     def get_text(
         self
     ) -> str:
-        return f'{self.show.show_title}: {self.episode.episode_title}: {self.size}mb'
+        return f'{self.show.show_title}: {self.episode.episode_title}: {self.size_mb}mb'
 
     def get_filename(
         self
@@ -175,7 +195,7 @@ class DownloadedEpisode(Serializable):
         return {
             'episode': self.episode.to_dict(),
             'show': self.show.to_dict(),
-            'size': self.size
+            'size': self.size_mb
         }
 
     def to_result(
@@ -184,5 +204,5 @@ class DownloadedEpisode(Serializable):
         return {
             'Show': self.show.show_title,
             'Episode': self.episode.episode_title,
-            'Size': f'{self.size} mb'
+            'Size': f'{self.size_mb} mb'
         }

@@ -20,7 +20,8 @@ class GoogleDriveClient:
     async def upload_file(
         self,
         filename: str,
-        data: bytes
+        data: bytes,
+        parent_directory: str = None
     ):
         client = await self._get_client()
 
@@ -31,7 +32,7 @@ class GoogleDriveClient:
             filename=filename,
             data=data,
             mimetype='audio/mpeg',
-            parent_directory=GoogleDriveDirectory.PodcastDirectoryId)
+            parent_directory=parent_directory)
 
         file = client.files().create(
             body=upload.metadata,
@@ -59,6 +60,27 @@ class GoogleDriveClient:
             orderBy="quotaBytesUsed desc").execute()
 
         return results.get('files', [])
+
+    async def file_exists(
+        self,
+        directory_id: str,
+        filename: str
+    ):
+        client = await self._get_client()
+
+        logger.info(f'Checking if file exists: {filename} in directory: {directory_id}')
+        query = f"name='{filename}' and trashed=false and '{directory_id}' in parents"
+        # query = f"name='{filename}' and trashed=false"
+
+        results = client.files().list(q=query, spaces='drive',
+                                      fields='files(id, name)').execute()
+
+        items = results.get('files', [])
+
+        exists = len(items) > 0
+        logger.info(f'File exists: {filename}: {directory_id}: {exists}')
+
+        return exists
 
     async def _get_client(
         self

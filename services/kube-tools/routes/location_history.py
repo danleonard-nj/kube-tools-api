@@ -1,7 +1,7 @@
+from domain.geo import LocationHistoryQueryRequest
+from framework.exceptions.rest import HttpException
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
-
-from domain.geo import LocationHistoryQueryRequest
 from services.location_history_service import LocationHistoryService
 
 location_history_bp = MetaBlueprint('location_history_bp', __name__)
@@ -12,6 +12,9 @@ async def query_location_history(container):
     service: LocationHistoryService = container.resolve(LocationHistoryService)
 
     body = await request.get_json()
+
+    if body is None:
+        raise HttpException('Request body is required', 400)
 
     query_request = LocationHistoryQueryRequest(
         data=body)
