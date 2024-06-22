@@ -4,7 +4,6 @@ import random
 from typing import Dict, List, Tuple
 
 import httpx
-import psutil
 from clients.email_gateway_client import EmailGatewayClient
 from clients.google_drive_client_async import (GoogleDriveClientAsync,
                                                GoogleDriveUploadRequest)
@@ -28,19 +27,6 @@ from utilities.utils import DateTimeUtil
 logger = get_logger(__name__)
 
 UPLOAD_CHUNK_SIZE = 1024 * 1024 * 4  # 8MB
-
-
-def log_memory_stats():
-    memory_stats = psutil.virtual_memory()
-    total_memory = memory_stats.total
-    available_memory = memory_stats.available
-    used_memory = memory_stats.used
-    memory_percent = memory_stats.percent
-
-    logger.info(f"Total Memory: {total_memory} bytes")
-    logger.info(f"Available Memory: {available_memory} bytes")
-    logger.info(f"Used Memory: {used_memory} bytes")
-    logger.info(f"Memory Percent: {memory_percent}%")
 
 
 class PodcastServiceException(Exception):
