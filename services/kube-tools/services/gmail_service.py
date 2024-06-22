@@ -65,7 +65,7 @@ class GmailService:
         # prevent multiple threads from attempting to authenticate
         # at the same time
         await self._gmail_client.ensure_auth(
-            scopes=GoogleClientScope.Gmail)
+            scopes=[GoogleClientScope.Gmail])
 
         # Process the rules asynchronously
         process_rules = TaskCollection(*[

@@ -1,4 +1,3 @@
-import stat
 from data.google.google_auth_repository import GoogleAuthRepository
 from domain.cache import CacheKey
 from domain.exceptions import InvalidGoogleAuthClientException
@@ -6,10 +5,9 @@ from domain.google import AuthClient
 from framework.clients.cache_client import CacheClientAsync
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
+from framework.serialization import Serializable
 from framework.validators.nulls import none_or_whitespace
 from google.auth.transport.requests import Request
-from framework.serialization import Serializable
-
 from utilities.utils import fire_task
 
 logger = get_logger(__name__)

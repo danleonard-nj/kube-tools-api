@@ -44,7 +44,7 @@ class GmailClient:
         # Fetch an auth token w/ Gmail scope
         response = await self._auth_service.get_token(
             client_name='gmail-client',
-            scopes=GoogleClientScope.Gmail)
+            scopes=[GoogleClientScope.Gmail])
 
         return response.token
 

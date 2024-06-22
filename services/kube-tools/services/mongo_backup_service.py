@@ -43,10 +43,10 @@ class MongoBackupService:
         export_start = datetime.utcnow()
 
         # Run mongodump as subprocess
-        stdout, stderr = await self.__run_backup_subprocess()
+        stdout, stderr = await self._run_backup_subprocess()
         export_end = datetime.utcnow()
 
-        blob_name = self.__get_export_name()
+        blob_name = self._get_export_name()
         logger.info(f'Uploading to blob storage: {blob_name}')
 
         # Upload the export to blob storage
@@ -59,17 +59,17 @@ class MongoBackupService:
         logger.info(f'Upload complete in: {upload_end - upload_start}')
 
         # Purge any expired exports
-        purged = await self.__purge_expired_exports(
+        purged = await self._purge_expired_exports(
             days=int(purge_days))
 
         # Send email notification that process
         # is complete
-        await self.__send_email_notification(
+        await self._send_email_notification(
             blob_name=blob_name)
 
-        await self.__write_history_record(
-            blob_name=blob_name,
-            elapsed=(export_end - export_start))
+        # await self._write_history_record(
+        #     blob_name=blob_name,
+        #     elapsed=(export_end - export_start))
 
         return MongoExportResult(
             stdout=stdout,
@@ -86,12 +86,12 @@ class MongoBackupService:
 
         logger.info(f'Purge exports: {purge_days} day window')
 
-        purged = await self.__purge_expired_exports(
+        purged = await self._purge_expired_exports(
             days=int(purge_days))
 
         return purged
 
-    async def __run_backup_subprocess(
+    async def _run_backup_subprocess(
         self
     ) -> Tuple[str, str]:
 
@@ -116,7 +116,7 @@ class MongoBackupService:
 
         return (stdout, stderr)
 
-    def __get_export_name(
+    def _get_export_name(
         self
     ) -> str:
 
@@ -125,7 +125,7 @@ class MongoBackupService:
 
         return f'mongo__{now}'
 
-    async def __purge_expired_exports(
+    async def _purge_expired_exports(
         self,
         days: int
     ) -> List[Dict]:
@@ -196,33 +196,10 @@ class MongoBackupService:
                 blob_name=blob_name,
                 blob_data=blob_data)
 
+            del blob_data
             return result
 
-    # async def __send_email_notification(
-    #     self,
-    #     blob_name: str,
-    #     elapsed: timedelta
-    # ) -> None:
-
-    #     ArgumentNullException.if_none_or_whitespace(blob_name, 'blob_name')
-
-    #     logger.info('Sending notification email')
-
-    #     # await self.__email_client.send_email(
-    #     #     subject='MongoDB Backup Service',
-    #     #     recipient='dcl525@gmail.com',
-    #     #     message=f'MongoDB backup completed successfully: {blob_name}')
-
-    #     email_request, endpoint = self.__email_gateway_client.get_email_request(
-    #         recipient=EMAIL_RECIPIENT,
-    #         subject=EMAIL_SUBJECT,
-    #         body=f'MongoDB backup completed successfully in {round(elapsed, 2)}s: {blob_name}')
-
-    #     await self.__event_service.dispatch_email_event(
-    #         endpoint=endpoint,
-    #         message=email_request.to_dict())
-
-    async def __send_email_notification(
+    async def _send_email_notification(
         self,
         blob_name: str
     ) -> None:
@@ -236,7 +213,7 @@ class MongoBackupService:
             recipient='dcl525@gmail.com',
             message=f'MongoDB backup completed successfully: {blob_name}')
 
-    async def __write_history_record(
+    async def _write_history_record(
         self,
         blob_name: str,
         elapsed: timedelta,

@@ -1,7 +1,7 @@
 from typing import Any
 
-from domain.google import (GoogleClientScope, GoogleDriveDirectory,
-                           GoogleDriveFilePermission, GoogleDriveFileUpload)
+from domain.google import (GoogleClientScope, GoogleDriveFilePermission,
+                           GoogleDriveFileUpload)
 from framework.logger.providers import get_logger
 from googleapiclient.discovery import build
 from services.google_auth_service import GoogleAuthService

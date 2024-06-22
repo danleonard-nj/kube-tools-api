@@ -10,25 +10,9 @@ from typing import Union
 
 from dateutil import parser
 from framework.logger.providers import get_logger
+import unicodedata
 
 logger = get_logger(__name__)
-
-DEPRECATE_LOGGER_FORMAT = '[%(asctime)-8s] [%(thread)-4s] [%(name)-12s]: [%(levelname)-4s]: %(message)s'
-
-
-def build_deprecate_logger():
-    deprecate_logger = logging.getLogger('deprecated')
-    deprecate_logger.setLevel(logging.DEBUG)
-
-    formatter = logging.Formatter(DEPRECATE_LOGGER_FORMAT)
-
-    file_handler = logging.FileHandler('deprecated.log')
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(formatter)
-
-    deprecate_logger.addHandler(file_handler)
-
-    return deprecate_logger
 
 
 def parse_timestamp(
@@ -39,10 +23,10 @@ def parse_timestamp(
     '''
 
     if isinstance(value, str):
-        return (
-            int(value) if value.isnumeric()
-            else int(parser.parse(value).timestamp())
-        )
+        if value.isnumeric():
+            return int(value)
+        else:
+            return int(parser.parse(value).timestamp())
 
     elif isinstance(value, int):
         return value
@@ -70,31 +54,18 @@ class DateTimeUtil:
         return int(time.time())
 
     @classmethod
-    def get_iso_date(
-        cls
-    ) -> str:
-        return (
-            datetime
-            .now()
-            .strftime(cls.IsoDateFormat)
-        )
+    def get_iso_date(cls) -> str:
+        return datetime.now().strftime(cls.IsoDateFormat)
 
     @staticmethod
     def iso_from_timestamp(timestamp: int) -> str:
-        return (
-            datetime
-            .fromtimestamp(timestamp)
-            .isoformat()
-        )
+        return datetime.fromtimestamp(timestamp).isoformat()
 
 
 class KeyUtils:
     @staticmethod
     def create_uuid(**kwargs):
-        digest = hashlib.md5(json.dumps(
-            kwargs,
-            default=str).encode())
-
+        digest = hashlib.md5(json.dumps(kwargs, default=str).encode())
         return str(uuid.UUID(digest.hexdigest()))
 
 
@@ -169,11 +140,7 @@ def parse_bool(value):
 
 
 def contains(source_list, substring_list):
-    for source_string in source_list:
-        for substring in substring_list:
-            if substring in source_string:
-                return True
-    return False
+    return any(substring in source_list for substring in substring_list)
 
 
 def to_celsius(degrees_fahrenheit, round_digits=2):
@@ -184,7 +151,9 @@ def to_celsius(degrees_fahrenheit, round_digits=2):
 def create_uuid(data):
     text = json.dumps(data, default=str)
     hash_value = md5(text.encode()).hexdigest()
-    return str(uuid.UUID(hash_value))
+
+    # Ensure the hash is truncated to 32 characters
+    return str(uuid.UUID(hash_value[:32]))
 
 
 def first(items):
@@ -204,7 +173,4 @@ def fire_task(coroutine):
 
 
 def clean_unicode(unicode_str):
-    return unicode_str.encode('ascii', 'ignore').decode('utf-8')
-
-
-deprecate_logger = build_deprecate_logger()
+    return unicodedata.normalize('NFKD', unicode_str).encode('ascii', 'ignore').decode('utf-8')

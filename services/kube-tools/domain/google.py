@@ -277,8 +277,8 @@ class GmailEmailRule(Serializable):
 
 
 class GoogleClientScope:
-    Drive = ['https://www.googleapis.com/auth/drive']
-    Gmail = ['https://www.googleapis.com/auth/gmail.modify']
+    Drive = 'https://www.googleapis.com/auth/drive'
+    Gmail = 'https://www.googleapis.com/auth/gmail.modify'
 
 
 class GoogleDriveDirectory:
@@ -298,15 +298,15 @@ class GoogleDriveFilePermission(Serializable):
 
 
 class GoogleDriveFileUpload:
-    @property
+    @ property
     def data(self):
         return self._data
 
-    @property
+    @ property
     def metadata(self):
         return self._metadata
 
-    @property
+    @ property
     def media(self):
         return self._get_media_io()
 
@@ -479,7 +479,7 @@ class AuthClient(Serializable):
         self.expiry = expiry
         self.timestamp = timestamp
 
-    @staticmethod
+    @ staticmethod
     def from_client(
         credentials: Credentials,
         client_name: str
@@ -495,7 +495,7 @@ class AuthClient(Serializable):
             timestamp=datetime.now().isoformat()
         )
 
-    @staticmethod
+    @ staticmethod
     def from_entity(
         data: dict
     ):
@@ -553,7 +553,7 @@ class GmailServiceRunResult(Serializable):
         self.rule_name = rule_name
         self.affected_count = affected_count
 
-    @staticmethod
+    @ staticmethod
     def from_response(
         response: ProcessGmailRuleResponse
     ):
@@ -571,7 +571,7 @@ class ProcessGmailRuleRequest(Serializable):
     ):
         self.rule = rule
 
-    @staticmethod
+    @ staticmethod
     def from_rule(
         rule
     ):
@@ -632,7 +632,7 @@ class GoogleDriveReportModel(Serializable):
         self.size_mb = ValueConverter.bytes_to_megabytes(
             int(size_bytes))
 
-    @staticmethod
+    @ staticmethod
     def from_response(
         data: dict
     ):

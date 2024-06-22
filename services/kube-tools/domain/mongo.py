@@ -76,7 +76,7 @@ class MongoExportBlob:
         self
     ) -> float:
 
-        return self.__get_days_old(
+        return self._get_days_old(
             now=int(datetime.now().timestamp()),
             created=self.created_timestamp)
 
@@ -87,7 +87,7 @@ class MongoExportBlob:
         self.blob_name = data.get('name')
         self.created_date = data.get('creation_time')
 
-    def __get_days_old(
+    def _get_days_old(
         self,
         now: int,
         created: int

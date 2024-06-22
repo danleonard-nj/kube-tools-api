@@ -13,6 +13,7 @@ from clients.plaid_client import PlaidClient
 from clients.storage_client import StorageClient
 from clients.torrent_client import TorrentClient
 from clients.twilio_gateway import TwilioGatewayClient
+from clients.google_drive_client_async import GoogleDriveClientAsync
 from data.api_event_repository import ApiEventRepository
 from data.bank_repository import (BankBalanceRepository,
                                   BankTransactionsRepository,
@@ -138,6 +139,7 @@ def register_clients(
     descriptors.add_singleton(CacheClientAsync)
     descriptors.add_singleton(TwilioGatewayClient)
     descriptors.add_singleton(GoogleDriveClient)
+    descriptors.add_singleton(GoogleDriveClientAsync)
     descriptors.add_singleton(AzureGatewayClient)
     descriptors.add_singleton(FeatureClientAsync)
     descriptors.add_singleton(EmailGatewayClient)
