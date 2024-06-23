@@ -17,3 +17,4 @@ twilio
 beautifulsoup4
 yfinance
 phonenumbers
+tenacity
