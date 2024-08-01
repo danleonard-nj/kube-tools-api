@@ -88,7 +88,7 @@ class GmailRuleService:
         if existing is not None:
             logger.error(f'Rule {create_request.name} exists: {existing}')
 
-            raise GmailRuleServiceError(create_request.name)
+            raise GmailRuleServiceError(f"A rule with the name '{create_request.name}' already exists")
 
         # Create the new rule
         rule = GmailEmailRule(
@@ -127,7 +127,7 @@ class GmailRuleService:
         # If the rule doesn't exist
         if not exists:
             raise GmailRuleServiceError(
-                rule_id=rule_id)
+                f"No rule with the ID '{rule_id}' exists")
 
         # Delete the rule
         result = await self._email_rule_repository.delete({
@@ -156,7 +156,7 @@ class GmailRuleService:
         # Handle rule not found
         if entity is None:
             raise GmailRuleServiceError(
-                rule_id=rule_id)
+                f"No rule with the ID '{rule_id}' exists")
 
         # Construct domain model from entity
         rule = GmailEmailRule.from_entity(

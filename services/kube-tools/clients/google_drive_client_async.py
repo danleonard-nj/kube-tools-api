@@ -3,6 +3,7 @@ import os
 from datetime import datetime
 
 import aiofiles
+import httpx
 from domain.drive import (GoogleDriveFileDetailsRequest,
                           GoogleDriveFileExistsRequest,
                           GoogleDrivePermissionRequest,
@@ -180,15 +181,18 @@ class GoogleDriveClientAsync:
 
             return response
 
-        except RetryError:
+        except RetryError as e:
             # Cancel the session if an error occurs and we've retried too many times
             logger.info(f"Failed to upload chunk starting at byte {start_byte}")
             await self._cancel_resumable_session(session_url)
-            raise GoogleDriveClientAsyncException(f"Resumable upload failed: {response.status_code}")
+            raise GoogleDriveClientAsyncException(f"Resumable upload failed: {str(e)}")
 
-        except Exception as ex:
-            logger.error(f"Failed to upload chunk starting at byte {start_byte}. Error: {ex}")
-            logger.info(response.json())
+        except httpx.HTTPStatusError as ex:
+            if ex.status_code == 308:
+                logger.info('Ignoring 308')
+                logger.info(f'Uploaded chunk')
+                pass
+            logger.error(f"Failed to upload chunk starting at byte {start_byte}. Error: {str(ex)}")
 
     async def upload_large_file(
         self,

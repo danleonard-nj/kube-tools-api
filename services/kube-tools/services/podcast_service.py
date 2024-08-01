@@ -368,6 +368,9 @@ class PodcastService:
             raise PodcastServiceException(
                 f'Audio file is less than the threshold size to upload: {response}')
 
+        # Wait for the session to be created
+        await asyncio.sleep(1)
+
         logger.info(f'Getting buffer for episode')
         with io.BytesIO(response.content) as buffer:
 
@@ -393,8 +396,11 @@ class PodcastService:
                     start_byte=start_byte,
                     total_size=len(response.content))
 
-                logger.info(f'Chunk upload response: {response.status_code}')
                 start_byte += len(chunk)
+
+                if response.status_code in [200, 201]:
+                    logger.info(f'Chunk upload successful')
+                    break
 
         if response is None:
             logger.info(f'Invalid response on file upload completion')
