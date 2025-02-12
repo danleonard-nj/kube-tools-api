@@ -93,3 +93,7 @@ class PodcastConfigurationException(Exception):
 class UsageRangeException(Exception):
     def __init__(self, message, *args: object) -> None:
         super().__init__(message)
+
+
+class GmailRuleServiceError(Exception):
+    pass

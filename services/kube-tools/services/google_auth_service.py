@@ -1,38 +1,16 @@
 from data.google.google_auth_repository import GoogleAuthRepository
 from domain.cache import CacheKey
 from domain.exceptions import InvalidGoogleAuthClientException
-from domain.google import AuthClient
+from domain.google import AuthClient, GetTokenResponse
 from framework.clients.cache_client import CacheClientAsync
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
-from framework.serialization import Serializable
 from framework.validators.nulls import none_or_whitespace
 from google.auth.transport.requests import Request
-from utilities.utils import fire_task
+from google.oauth2.credentials import Credentials
+from utilities.utils import DateTimeUtil, fire_task
 
 logger = get_logger(__name__)
-
-
-class GetTokenResponse(Serializable):
-    def __init__(
-        self,
-        token: str
-    ):
-        self.token = token
-
-    @staticmethod
-    def from_entity(
-        data: dict
-    ):
-        return GetTokenResponse(
-            token=data.get('token'))
-
-    @staticmethod
-    def from_credentials(
-        creds
-    ):
-        return GetTokenResponse(
-            token=creds.token)
 
 
 class GoogleAuthService:
@@ -48,7 +26,7 @@ class GoogleAuthService:
         self,
         client_name: str,
         scopes: list[str]
-    ):
+    ) -> Credentials:
         ArgumentNullException.if_none_or_whitespace(client_name, 'client_name')
         ArgumentNullException.if_none(scopes, 'scopes')
 
@@ -74,7 +52,10 @@ class GoogleAuthService:
         logger.info(f'Refreshing Google auth client: {client_name}')
         creds.refresh(Request())
 
-        # Update the stored client
+        # Update the client with the new credentials
+        client.update_credentials(
+            credentials=creds)
+
         await self._repository.replace(
             selector=client.get_selector(),
             document=client.to_dict())

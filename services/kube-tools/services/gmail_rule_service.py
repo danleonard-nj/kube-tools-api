@@ -4,6 +4,7 @@ from typing import Dict, List
 
 from data.google.google_email_log_repository import GoogleEmailLogRepository
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
+from domain.exceptions import GmailRuleServiceError
 from domain.features import Feature
 from domain.google import (CreateEmailRuleRequest,
                            DeleteGmailEmailRuleResponse, EmailRuleLog,
@@ -14,10 +15,6 @@ from framework.logger import get_logger
 from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
-
-
-class GmailRuleServiceError(Exception):
-    pass
 
 
 class GmailRuleService:

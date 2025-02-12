@@ -12,7 +12,7 @@ from framework.serialization import Serializable
 from framework.validators.nulls import none_or_whitespace
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaIoBaseUpload
-from utilities.utils import ValueConverter, clean_unicode
+from utilities.utils import DateTimeUtil, ValueConverter, clean_unicode
 
 logger = get_logger(__name__)
 
@@ -298,15 +298,15 @@ class GoogleDriveFilePermission(Serializable):
 
 
 class GoogleDriveFileUpload:
-    @ property
+    @property
     def data(self):
         return self._data
 
-    @ property
+    @property
     def metadata(self):
         return self._metadata
 
-    @ property
+    @property
     def media(self):
         return self._get_media_io()
 
@@ -479,7 +479,7 @@ class AuthClient(Serializable):
         self.expiry = expiry
         self.timestamp = timestamp
 
-    @ staticmethod
+    @staticmethod
     def from_client(
         credentials: Credentials,
         client_name: str
@@ -495,7 +495,7 @@ class AuthClient(Serializable):
             timestamp=datetime.now().isoformat()
         )
 
-    @ staticmethod
+    @staticmethod
     def from_entity(
         data: dict
     ):
@@ -525,6 +525,16 @@ class AuthClient(Serializable):
             info=self.to_dict(),
             scopes=scopes)
 
+    def update_credentials(
+        self,
+        credentials: Credentials
+    ):
+        self.token = credentials.token
+        self.refresh_token = credentials.refresh_token
+        self.token_url = credentials.token_uri
+        self.expiry = credentials.expiry
+        self.timestamp = DateTimeUtil.now()
+
 
 class ProcessGmailRuleResponse(Serializable):
     def __init__(
@@ -553,7 +563,7 @@ class GmailServiceRunResult(Serializable):
         self.rule_name = rule_name
         self.affected_count = affected_count
 
-    @ staticmethod
+    @staticmethod
     def from_response(
         response: ProcessGmailRuleResponse
     ):
@@ -571,7 +581,7 @@ class ProcessGmailRuleRequest(Serializable):
     ):
         self.rule = rule
 
-    @ staticmethod
+    @staticmethod
     def from_rule(
         rule
     ):
@@ -632,7 +642,7 @@ class GoogleDriveReportModel(Serializable):
         self.size_mb = ValueConverter.bytes_to_megabytes(
             int(size_bytes))
 
-    @ staticmethod
+    @staticmethod
     def from_response(
         data: dict
     ):
@@ -642,3 +652,25 @@ class GoogleDriveReportModel(Serializable):
             created_time=data.get('createdTime'),
             modified_time=data.get('modifiedTime'),
             size_bytes=data.get('size'))
+
+
+class GetTokenResponse(Serializable):
+    def __init__(
+        self,
+        token: str
+    ):
+        self.token = token
+
+    @staticmethod
+    def from_entity(
+        data: dict
+    ):
+        return GetTokenResponse(
+            token=data.get('token'))
+
+    @staticmethod
+    def from_credentials(
+        creds
+    ):
+        return GetTokenResponse(
+            token=creds.token)
