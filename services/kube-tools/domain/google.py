@@ -533,7 +533,7 @@ class AuthClient(Serializable):
         self.refresh_token = credentials.refresh_token
         self.token_url = credentials.token_uri
         self.expiry = credentials.expiry
-        self.timestamp = DateTimeUtil.now()
+        self.timestamp = DateTimeUtil.get_iso_date()
 
 
 class ProcessGmailRuleResponse(Serializable):

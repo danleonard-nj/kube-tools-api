@@ -8,7 +8,7 @@ from framework.logger.providers import get_logger
 from framework.validators.nulls import none_or_whitespace
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from utilities.utils import DateTimeUtil, fire_task
+from utilities.utils import fire_task
 
 logger = get_logger(__name__)
 
@@ -22,6 +22,23 @@ class GoogleAuthService:
         self._repository = repository
         self._cache_client = cache_client
 
+    async def get_client(
+        self,
+        client_name: str
+    ):
+        ArgumentNullException.if_none_or_whitespace(client_name, 'client_name')
+
+        client = await self._repository.get({
+            'client_name': client_name
+        })
+
+        if client is None:
+            raise InvalidGoogleAuthClientException(
+                f"No client with the name '{client_name}' exists")
+
+        return AuthClient.from_entity(
+            data=client)
+
     async def get_credentials(
         self,
         client_name: str,
@@ -31,16 +48,8 @@ class GoogleAuthService:
         ArgumentNullException.if_none(scopes, 'scopes')
 
         # Fetch the client from database
-        client = await self._repository.get({
-            'client_name': client_name
-        })
-
-        if client is None:
-            raise InvalidGoogleAuthClientException(
-                f"No client with the name '{client_name}' exists")
-
-        client = AuthClient.from_entity(
-            data=client)
+        client = await self.get_client(
+            client_name=client_name)
 
         creds = client.get_credentials(
             scopes=scopes)
@@ -96,3 +105,43 @@ class GoogleAuthService:
 
         return GetTokenResponse(
             token=client.token)
+
+    async def refresh_token(
+        self,
+        client_name: str
+    ):
+        ArgumentNullException.if_none_or_whitespace(client_name, 'client_name')
+
+        client = await self.get_client(
+            client_name=client_name)
+
+        creds = client.get_credentials()
+
+        if creds.valid:
+            logger.info(f'Google auth client: {client_name} is already valid')
+            return True
+
+        logger.info(f'Refreshing Google auth client: {client_name}')
+
+        creds.refresh(Request())
+
+        client.update_credentials(
+            credentials=creds)
+
+        await self._repository.replace(
+            selector=client.get_selector(),
+            document=client.to_dict())
+
+        # Cache the token for 30 minutes
+        fire_task(
+            self._cache_client.set_cache(
+                key=CacheKey.google_auth_service(
+                    client_name=client_name,
+                    scopes=client.scopes),
+                value=GetTokenResponse.from_credentials(
+                    creds).to_dict(),
+                ttl=30
+            )
+        )
+
+        return True
