@@ -18,3 +18,4 @@ beautifulsoup4
 yfinance
 phonenumbers
 tenacity
+openai>=1.0.0

@@ -2,20 +2,10 @@ from framework.abstractions.abstract_request import RequestContextProvider
 from framework.serialization.serializer import configure_serializer
 from framework.swagger.quart.swagger import Swagger
 from quart import Quart
-from routes.acr import acr_bp
-from routes.api_event_history import api_event_history_bp
-from routes.bank import bank_bp
-from routes.calendar import calendar_bp
-from routes.google import google_bp
-from routes.kubernetes import kubernetes_bp
-from routes.location_history import location_history_bp
-from routes.mongo_backup import mongo_backup_bp
-from routes.podcasts import podcasts_bp
-from routes.torrents import torrent_bp
-from routes.usage import usage_bp
-from routes.weather import weather_bp
-from routes.redis import redis_bp
-from routes.conversation import conversation_bp
+from routes import (acr_bp, api_event_history_bp, bank_bp, calendar_bp,
+                    conversation_bp, google_bp, kubernetes_bp,
+                    location_history_bp, mongo_backup_bp, podcasts_bp,
+                    redis_bp, torrent_bp, usage_bp, weather_bp)
 from utilities.provider import ContainerProvider
 
 app = Quart(__name__)
