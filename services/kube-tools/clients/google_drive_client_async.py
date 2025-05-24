@@ -315,11 +315,6 @@ class GoogleDriveClientAsync:
 
         logger.info(f'Uploading single file: {filename}')
 
-        headers = await self._get_auth_headers() | {
-            "Content-Type": "application/octet-stream",
-            "Content-Length": str(len(data)),
-        }
-
         req = GoogleDriveUploadRequest(
             name=filename,
             parents=[parent_directory] if parent_directory else None)
@@ -328,6 +323,11 @@ class GoogleDriveClientAsync:
 
         async with aiofiles.open(filepath, 'rb') as file:
             data = await file.read()
+
+            headers = await self._get_auth_headers() | {
+                "Content-Type": "application/octet-stream",
+                "Content-Length": str(len(data)),
+            }
 
             response = await self._http_client.post(
                 "https://www.googleapis.com/upload/drive/v3/files",
