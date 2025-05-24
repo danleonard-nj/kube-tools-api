@@ -139,3 +139,55 @@ async def get_google_drive_report(container):
         GoogleDriveService)
 
     return await service.get_drive_report()
+
+
+@google_bp.configure('/api/google/update_refresh_token', methods=['POST'], auth_scheme='default')
+async def update_refresh_token(container):
+    service: GoogleAuthService = container.resolve(GoogleAuthService)
+    body = await request.get_json()
+    client_name = body.get('client_name')
+    refresh_token = body.get('refresh_token')
+    if none_or_whitespace(client_name):
+        raise HttpException('client_name is required', 400)
+    if none_or_whitespace(refresh_token):
+        raise HttpException('refresh_token is required', 400)
+    await service.update_refresh_token(
+        client_name=client_name,
+        refresh_token=refresh_token
+    )
+    return {"success": True, "message": f"Refresh token for {client_name} updated."}
+
+
+@google_bp.configure('/api/google/save_client', methods=['POST'], auth_scheme='default')
+async def save_client(container):
+    service: GoogleAuthService = container.resolve(GoogleAuthService)
+    body = await request.get_json()
+    client_name = body.get('client_name')
+    client_id = body.get('client_id')
+    client_secret = body.get('client_secret')
+    if none_or_whitespace(client_name):
+        raise HttpException('client_name is required', 400)
+    if none_or_whitespace(client_id):
+        raise HttpException('client_id is required', 400)
+    if none_or_whitespace(client_secret):
+        raise HttpException('client_secret is required', 400)
+    await service.save_client_info(
+        client_name=client_name,
+        client_id=client_id,
+        client_secret=client_secret
+    )
+    return {"success": True, "message": f"Client info for {client_name} saved."}
+
+
+@google_bp.configure('/api/google/test_token', methods=['POST'], auth_scheme='default')
+async def get_test_token(container):
+    service: GoogleAuthService = container.resolve(GoogleAuthService)
+    body = await request.get_json()
+    client_name = body.get('client_name')
+    scopes = body.get('scopes')
+    if none_or_whitespace(client_name):
+        raise HttpException('client_name is required', 400)
+    if not scopes or not isinstance(scopes, list):
+        raise HttpException('scopes must be a non-empty list', 400)
+    token = await service.get_token(client_name=client_name, scopes=scopes)
+    return {"token": token}
