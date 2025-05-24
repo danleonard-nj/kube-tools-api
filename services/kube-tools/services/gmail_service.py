@@ -1,5 +1,7 @@
 import html
-from typing import Dict, List
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
@@ -13,13 +15,378 @@ from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from framework.validators import none_or_whitespace
-from framework.validators.nulls import none_or_whitespace
 from services.chat_gpt_service import ChatGptService
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
 from utilities.utils import clean_unicode
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class TagModification:
+    """Represents tag modifications for email messages."""
+    to_add: List[GoogleEmailLabel]
+    to_remove: List[GoogleEmailLabel]
+
+
+class EmailTagManager:
+    """Manages consistent email tag modifications."""
+
+    @staticmethod
+    def get_archive_tags() -> TagModification:
+        """Tags for archiving emails."""
+        return TagModification(
+            to_add=[],
+            to_remove=[GoogleEmailLabel.Inbox]
+        )
+
+    @staticmethod
+    def get_processed_tags() -> TagModification:
+        """Tags for marking emails as processed."""
+        return TagModification(
+            to_add=[GoogleEmailLabel.Starred],
+            to_remove=[GoogleEmailLabel.Unread, GoogleEmailLabel.Inbox]
+        )
+
+
+class MessageFormatter:
+    """Handles formatting of email messages for SMS notifications."""
+
+    def __init__(self, chat_gpt_service: ChatGptService):
+        self._chat_gpt_service = chat_gpt_service
+
+    async def format_sms_message(
+        self,
+        rule: GmailEmailRule,
+        message: GmailEmail
+    ) -> str:
+        """Format email message for SMS notification."""
+        ArgumentNullException.if_none(rule, 'rule')
+        ArgumentNullException.if_none(message, 'message')
+
+        # Check if ChatGPT summary is requested
+        chat_gpt_summary = rule.data.get('chat_gpt_include_summary', False)
+
+        if not chat_gpt_summary:
+            return self._build_basic_message(rule, message)
+
+        # Get ChatGPT summary
+        prompt_template = rule.data.get('chat_gpt_prompt_template')
+        summary = await self._get_chat_gpt_summary(message, prompt_template)
+
+        return self._build_message_with_summary(rule, message, summary)
+
+    def format_balance_sync_message(
+        self,
+        rule: GmailEmailRule,
+        message: GmailEmail
+    ) -> str:
+        """Format email message for balance sync notifications."""
+        return self._build_basic_message(rule, message)
+
+    def _build_basic_message(
+        self,
+        rule: GmailEmailRule,
+        message: GmailEmail,
+        summary: Optional[str] = None
+    ) -> str:
+        """Build the SMS message text."""
+        snippet = clean_unicode(html.unescape(message.snippet)).strip()
+
+        parts = [
+            f'Rule: {rule.name}',
+            f'Date: {message.timestamp}',
+            ''
+        ]
+
+        if not none_or_whitespace(snippet):
+            parts.extend([snippet, ''])
+
+        if not none_or_whitespace(summary):
+            parts.extend([f'GPT: {summary}', ''])
+
+        parts.append(f'From: {message.headers[GoogleEmailHeader.From]}')
+
+        return '\n'.join(parts)
+
+    def _build_message_with_summary(
+        self,
+        rule: GmailEmailRule,
+        message: GmailEmail,
+        summary: str
+    ) -> str:
+        """Build message with ChatGPT summary."""
+        return self._build_basic_message(rule, message, summary)
+
+    async def _get_chat_gpt_summary(
+        self,
+        message: GmailEmail,
+        prompt_template: Optional[str] = None
+    ) -> str:
+        """Get email summary using ChatGPT."""
+        logger.info('Generating ChatGPT summary for email')
+
+        # Parse email body
+        body_segments = parse_gmail_body_text(message=message)
+        body_text = ' '.join(body_segments)
+
+        # Build prompt
+        if not none_or_whitespace(prompt_template):
+            logger.info(f'Using custom prompt template: {prompt_template}')
+            prompt = f"{prompt_template}: {body_text}"
+        else:
+            prompt = f"{DEFAULT_PROMPT_TEMPLATE}: {body_text}"
+
+        # Get summary from ChatGPT
+        result, usage = await self._chat_gpt_service.get_chat_completion(prompt=prompt)
+
+        logger.info(f'ChatGPT email summary usage tokens: {usage}')
+        return result
+
+
+class BaseRuleProcessor(ABC):
+    """Base class for rule processors with common functionality."""
+
+    def __init__(
+        self,
+        gmail_client: GmailClient,
+        message_formatter: MessageFormatter
+    ):
+        self._gmail_client = gmail_client
+        self._message_formatter = message_formatter
+
+    async def process_rule(self, rule: GmailEmailRule) -> int:
+        """Process a rule and return the number of affected emails."""
+        ArgumentNullException.if_none(rule, 'rule')
+
+        logger.info(f'Processing {self.get_processor_name()} rule: {rule.name}')
+
+        # Query inbox with rule query
+        query_result = await self._gmail_client.search_inbox(
+            query=rule.query,
+            max_results=rule.max_results
+        )
+
+        if query_result is None or not query_result.message_ids:
+            logger.info(f'No emails found for rule: {rule.name}')
+            return 0
+
+        logger.info(f'Query result count: {query_result.count}')
+        processed_count = 0
+
+        for message_id in query_result.message_ids:
+            try:
+                message = await self._gmail_client.get_message(message_id=message_id)
+
+                if not self._should_process_message(message):
+                    continue
+
+                logger.info(f'Processing message {message_id} for rule: {rule.name}')
+
+                # Process the specific message
+                await self._process_message(rule, message, message_id)
+
+                # Apply tag modifications
+                tag_modification = self._get_tag_modification()
+                if tag_modification:
+                    await self._apply_tag_modification(message_id, tag_modification)
+
+                processed_count += 1
+
+            except Exception as ex:
+                logger.exception(f'Failed to process message {message_id}: {str(ex)}')
+                # Continue processing other messages
+
+        return processed_count
+
+    def _should_process_message(self, message: GmailEmail) -> bool:
+        """Determine if a message should be processed."""
+        # Default implementation - can be overridden by subclasses
+        return True
+
+    async def _apply_tag_modification(
+        self,
+        message_id: str,
+        tag_modification: TagModification
+    ) -> None:
+        """Apply tag modifications to a message."""
+        if tag_modification.to_add or tag_modification.to_remove:
+            await self._gmail_client.modify_tags(
+                message_id=message_id,
+                to_add=tag_modification.to_add,
+                to_remove=tag_modification.to_remove
+            )
+            logger.info(f'Tags applied - Add: {tag_modification.to_add}, Remove: {tag_modification.to_remove}')
+
+    @abstractmethod
+    async def _process_message(
+        self,
+        rule: GmailEmailRule,
+        message: GmailEmail,
+        message_id: str
+    ) -> None:
+        """Process a specific message according to rule logic."""
+        pass
+
+    @abstractmethod
+    def _get_tag_modification(self) -> Optional[TagModification]:
+        """Get the tag modification for this processor type."""
+        pass
+
+    @abstractmethod
+    def get_processor_name(self) -> str:
+        """Get the name of this processor for logging."""
+        pass
+
+
+class ArchiveRuleProcessor(BaseRuleProcessor):
+    """Processes archive rules."""
+
+    def _should_process_message(self, message: GmailEmail) -> bool:
+        """Only process messages that are still in inbox."""
+        return GoogleEmailLabel.Inbox in message.label_ids
+
+    async def _process_message(
+        self,
+        rule: GmailEmailRule,
+        message: GmailEmail,
+        message_id: str
+    ) -> None:
+        """Archive the message."""
+        await self._gmail_client.archive_message(message_id=message_id)
+        logger.info(f'Archived email: {message_id}')
+
+    def _get_tag_modification(self) -> Optional[TagModification]:
+        """Archive rules don't need additional tag modifications."""
+        return None
+
+    def get_processor_name(self) -> str:
+        return "archive"
+
+
+class SmsRuleProcessor(BaseRuleProcessor):
+    """Processes SMS notification rules."""
+
+    def __init__(
+        self,
+        gmail_client: GmailClient,
+        message_formatter: MessageFormatter,
+        twilio_gateway: TwilioGatewayClient,
+        sms_recipient: str
+    ):
+        super().__init__(gmail_client, message_formatter)
+        self._twilio_gateway = twilio_gateway
+        self._sms_recipient = sms_recipient
+
+    def _should_process_message(self, message: GmailEmail) -> bool:
+        """Only process unread messages."""
+        return GoogleEmailLabel.Unread in message.label_ids
+
+    async def _process_message(
+        self,
+        rule: GmailEmailRule,
+        message: GmailEmail,
+        message_id: str
+    ) -> None:
+        """Send SMS notification for the message."""
+        message_body = await self._message_formatter.format_sms_message(rule, message)
+
+        logger.info(f'Sending SMS notification for message: {message_id}')
+        await self._twilio_gateway.send_sms(
+            recipient=self._sms_recipient,
+            message=message_body
+        )
+
+    def _get_tag_modification(self) -> Optional[TagModification]:
+        """Mark as processed and remove from inbox."""
+        return EmailTagManager.get_processed_tags()
+
+    def get_processor_name(self) -> str:
+        return "SMS"
+
+
+class BankSyncRuleProcessor(BaseRuleProcessor):
+    """Processes bank sync rules."""
+
+    def __init__(
+        self,
+        gmail_client: GmailClient,
+        message_formatter: MessageFormatter,
+        bank_sync_service: GmailBankSyncService,
+        twilio_gateway: TwilioGatewayClient,
+        sms_recipient: str
+    ):
+        super().__init__(gmail_client, message_formatter)
+        self._bank_sync_service = bank_sync_service
+        self._twilio_gateway = twilio_gateway
+        self._sms_recipient = sms_recipient
+
+    def _should_process_message(self, message: GmailEmail) -> bool:
+        """Only process unread messages."""
+        return GoogleEmailLabel.Unread in message.label_ids
+
+    async def _process_message(
+        self,
+        rule: GmailEmailRule,
+        message: GmailEmail,
+        message_id: str
+    ) -> None:
+        """Process bank sync for the message."""
+        # Get bank sync configuration
+        bank_key = rule.data.get('bank_sync_bank_key')
+        alert_type = rule.data.get('bank_sync_alert_type')
+
+        if none_or_whitespace(bank_key):
+            raise GmailServiceError(
+                f'Bank key not defined for bank sync rule: {rule.name}'
+            )
+
+        logger.info(f'Processing bank sync with bank key: {bank_key}')
+
+        # Handle balance sync
+        await self._bank_sync_service.handle_balance_sync(
+            rule=rule,
+            message=message,
+            bank_key=bank_key
+        )
+
+        # Send alert if configured
+        try:
+            await self._send_balance_sync_alert(rule, message, alert_type)
+        except Exception as ex:
+            logger.exception(f'Failed to send balance sync alert: {str(ex)}')
+
+    async def _send_balance_sync_alert(
+        self,
+        rule: GmailEmailRule,
+        message: GmailEmail,
+        alert_type: str = 'none'
+    ) -> None:
+        """Send balance sync alert."""
+        if alert_type == GmailRuleAction.Undefined:
+            logger.info(f'No alert type defined for bank sync rule: {rule.name}')
+            return
+
+        if alert_type == GmailRuleAction.SMS:
+            logger.info('Sending SMS alert for bank sync')
+            message_body = self._message_formatter.format_balance_sync_message(rule, message)
+
+            await self._twilio_gateway.send_sms(
+                recipient=self._sms_recipient,
+                message=message_body
+            )
+        else:
+            raise GmailServiceError(
+                f"Balance sync alert type '{alert_type}' is not currently supported"
+            )
+
+    def _get_tag_modification(self) -> Optional[TagModification]:
+        """Mark as processed and remove from inbox."""
+        return EmailTagManager.get_processed_tags()
+
+    def get_processor_name(self) -> str:
+        return "bank sync"
 
 
 class GmailServiceError(Exception):

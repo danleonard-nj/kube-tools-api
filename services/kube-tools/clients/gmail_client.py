@@ -46,7 +46,7 @@ class GmailClient:
             client_name='gmail-client',
             scopes=[GoogleClientScope.Gmail])
 
-        return response.token
+        return response
 
     async def _get_auth_headers(
         self
@@ -70,7 +70,7 @@ class GmailClient:
             client_name='gmail-client',
             scopes=scopes)
 
-        return response.token
+        return response
 
     async def get_message(
         self,

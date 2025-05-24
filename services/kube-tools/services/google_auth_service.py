@@ -1,7 +1,3 @@
-from data.google.google_auth_repository import GoogleAuthRepository
-from domain.cache import CacheKey
-from domain.exceptions import InvalidGoogleAuthClientException
-from domain.google import AuthClient, GetTokenResponse
 from framework.clients.cache_client import CacheClientAsync
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
@@ -9,6 +5,8 @@ from framework.validators.nulls import none_or_whitespace
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from utilities.utils import fire_task
+import datetime
+import json
 
 logger = get_logger(__name__)
 
@@ -16,28 +14,9 @@ logger = get_logger(__name__)
 class GoogleAuthService:
     def __init__(
         self,
-        repository: GoogleAuthRepository,
         cache_client: CacheClientAsync
     ):
-        self._repository = repository
         self._cache_client = cache_client
-
-    async def get_client(
-        self,
-        client_name: str
-    ):
-        ArgumentNullException.if_none_or_whitespace(client_name, 'client_name')
-
-        client = await self._repository.get({
-            'client_name': client_name
-        })
-
-        if client is None:
-            raise InvalidGoogleAuthClientException(
-                f"No client with the name '{client_name}' exists")
-
-        return AuthClient.from_entity(
-            data=client)
 
     async def get_credentials(
         self,
@@ -47,101 +26,100 @@ class GoogleAuthService:
         ArgumentNullException.if_none_or_whitespace(client_name, 'client_name')
         ArgumentNullException.if_none(scopes, 'scopes')
 
-        # Fetch the client from database
-        client = await self.get_client(
-            client_name=client_name)
+        cache_key = f"google_auth:{client_name}:{'-'.join(scopes)}"
+        data = await self._cache_client.get_json(key=cache_key)
+        if data and 'token' in data and 'refresh_token' in data and 'expiry' in data:
+            expiry = datetime.datetime.fromisoformat(data['expiry'])
+            if expiry > datetime.datetime.utcnow():
+                creds = Credentials(
+                    token=data['token'],
+                    refresh_token=data['refresh_token'],
+                    token_uri=data.get('token_uri'),
+                    client_id=data.get('client_id'),
+                    client_secret=data.get('client_secret'),
+                    scopes=scopes
+                )
+                return creds
 
-        creds = client.get_credentials(
-            scopes=scopes)
+        # If no valid token, try to refresh using refresh_token from redis
+        refresh_token = await self._cache_client.get_json(key=f"google_auth_refresh:{client_name}")
+        if not refresh_token or 'refresh_token' not in refresh_token:
+            raise Exception("No refresh token available. Please set it via the update_refresh_token endpoint.")
 
-        if creds.valid:
-            return creds
+        # Always get scopes from client info if not provided or empty
+        if not scopes or not isinstance(scopes, list) or not all(isinstance(s, str) for s in scopes):
+            client_info = await self._cache_client.get_json(key=f"google_auth_client:{client_name}")
+            if not client_info or 'scopes' not in client_info:
+                raise Exception("No scopes provided and none found in client info.")
+            scopes = client_info['scopes']
+            if isinstance(scopes, str):
+                scopes = [scopes]
 
-        # Refresh the credentials
-        logger.info(f'Refreshing Google auth client: {client_name}')
+        creds = Credentials(
+            token=None,
+            refresh_token=refresh_token['refresh_token'],
+            token_uri=refresh_token.get('token_uri'),
+            client_id=refresh_token.get('client_id'),
+            client_secret=refresh_token.get('client_secret'),
+            scopes=scopes
+        )
         creds.refresh(Request())
-
-        # Update the client with the new credentials
-        client.update_credentials(
-            credentials=creds)
-
-        await self._repository.replace(
-            selector=client.get_selector(),
-            document=client.to_dict())
-
+        expiry = creds.expiry.isoformat() if creds.expiry else (datetime.datetime.utcnow() + datetime.timedelta(minutes=55)).isoformat()
+        token_data = {
+            'token': creds.token,
+            'refresh_token': creds.refresh_token,
+            'expiry': expiry,
+            'token_uri': creds.token_uri,
+            'client_id': creds.client_id,
+            'client_secret': creds.client_secret
+        }
+        fire_task(self._cache_client.set_json(key=cache_key, value=token_data, ttl=3600))
         return creds
 
     async def get_token(
         self,
         client_name: str,
         scopes: list[str]
-    ) -> GetTokenResponse:
+    ):
+        creds = await self.get_credentials(client_name, scopes)
+        return creds.token
 
-        cache_key = CacheKey.google_auth_service(
-            client_name=client_name,
-            scopes=scopes)
-
-        data = await self._cache_client.get_json(
-            key=cache_key)
-
-        if not none_or_whitespace(data):
-            return GetTokenResponse.from_entity(
-                data=data)
-
-        client = await self.get_credentials(
-            client_name=client_name,
-            scopes=scopes)
-
-        data = GetTokenResponse.from_credentials(
-            creds=client)
-
-        # Cache the token for 30 minutes
-        fire_task(
-            self._cache_client.set_json(
-                key=cache_key,
-                value=data.to_dict(),
-                ttl=30)
-        )
-
-        return GetTokenResponse(
-            token=client.token)
-
-    async def refresh_token(
+    async def save_client_info(
         self,
-        client_name: str
+        client_name: str,
+        client_id: str,
+        client_secret: str,
+        token_uri: str = "https://oauth2.googleapis.com/token"
     ):
         ArgumentNullException.if_none_or_whitespace(client_name, 'client_name')
+        ArgumentNullException.if_none_or_whitespace(client_id, 'client_id')
+        ArgumentNullException.if_none_or_whitespace(client_secret, 'client_secret')
+        data = {
+            'client_id': client_id,
+            'client_secret': client_secret,
+            'token_uri': token_uri
+        }
+        await self._cache_client.set_json(key=f"google_auth_client:{client_name}", value=data, ttl=60*60*24*30)  # 30 days
+        logger.info(f"Client info for {client_name} saved in redis.")
+        return True
 
-        client = await self.get_client(
-            client_name=client_name)
-
-        creds = client.get_credentials()
-
-        if creds.valid:
-            logger.info(f'Google auth client: {client_name} is already valid')
-            return True
-
-        logger.info(f'Refreshing Google auth client: {client_name}')
-
-        creds.refresh(Request())
-
-        client.update_credentials(
-            credentials=creds)
-
-        await self._repository.replace(
-            selector=client.get_selector(),
-            document=client.to_dict())
-
-        # Cache the token for 30 minutes
-        fire_task(
-            self._cache_client.set_cache(
-                key=CacheKey.google_auth_service(
-                    client_name=client_name,
-                    scopes=client.scopes),
-                value=GetTokenResponse.from_credentials(
-                    creds).to_dict(),
-                ttl=30
-            )
-        )
-
+    async def update_refresh_token(
+        self,
+        client_name: str,
+        refresh_token: str
+    ):
+        ArgumentNullException.if_none_or_whitespace(client_name, 'client_name')
+        ArgumentNullException.if_none_or_whitespace(refresh_token, 'refresh_token')
+        # Retrieve client info
+        client_info = await self._cache_client.get_json(key=f"google_auth_client:{client_name}")
+        if not client_info:
+            raise Exception("Client info not found. Please save client info first.")
+        data = {
+            'refresh_token': refresh_token,
+            'token_uri': client_info.get('token_uri', "https://oauth2.googleapis.com/token"),
+            'client_id': client_info['client_id'],
+            'client_secret': client_info['client_secret']
+        }
+        await self._cache_client.set_json(key=f"google_auth_refresh:{client_name}", value=data, ttl=60*60*24*30)  # 30 days
+        logger.info(f"Refresh token for {client_name} updated in redis.")
         return True
