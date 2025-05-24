@@ -159,7 +159,6 @@ def register_repositories(
     descriptors: ServiceCollection
 ):
     descriptors.add_singleton(PodcastRepository)
-    descriptors.add_singleton(GoogleAuthRepository)
     descriptors.add_singleton(ZipLatLongRepository)
     descriptors.add_singleton(WeatherStationRepository)
     descriptors.add_singleton(GoogleLocationHistoryRepository)
@@ -175,6 +174,7 @@ def register_repositories(
     descriptors.add_singleton(WeatherRepository)
     descriptors.add_singleton(GooleCalendarEventRepository)
     descriptors.add_singleton(ConversationRepository)
+    descriptors.add_singleton(GoogleAuthRepository)
 
 
 def register_services(
