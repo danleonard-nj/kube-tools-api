@@ -73,7 +73,7 @@ class GoogleAuthService:
             return cached_token
 
         # Get stored credentials from database
-        stored_creds = await self._repo.get_client(client_name)
+            stored_creds = await self._repo.get_client(client_name)
         if not stored_creds:
             raise Exception(f"No client found with name '{client_name}'. Please save client first.")
 

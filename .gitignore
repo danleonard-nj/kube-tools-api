@@ -7,3 +7,4 @@ services/kube-tools/scripts/esp8266_client/esp8266_client.ino
 services/kube-tools/.VSCodeCounter/*
 *.ipynb
 services/kube-tools/scripts/get_google_refresh_token.py
+services/kube-tools/scripts/plaid_link.py

@@ -20,3 +20,4 @@ phonenumbers
 tenacity
 openai>=1.0.0
 pytest
+feedparser
