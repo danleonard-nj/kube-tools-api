@@ -69,22 +69,28 @@ class GoogleDriveClientAsync:
         """
 
         logger.info(f'Creating resumable session for file: {file_metadata.get("name")}')
-
-        headers = await self._get_auth_headers() | {
-            "Content-Type": "application/json; charset=UTF-8"
-        }
-
+        try:
+            headers = await self._get_auth_headers() | {
+                "Content-Type": "application/json; charset=UTF-8"
+            }
+        except Exception as ex:
+            logger.error(f'Failed to get auth headers for resumable upload: {ex}')
+            raise
         logger.info(f'Resumable session headers: {headers}')
-
-        response = await self._http_client.post(
-            "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable",
-            headers=headers,
-            json=file_metadata)
-
-        logger.info(f'Resumable session response: {response.status_code}')
-
-        # Extract the location header from the response which contains the session URL
+        try:
+            response = await self._http_client.post(
+                "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable",
+                headers=headers,
+                json=file_metadata)
+        except Exception as ex:
+            logger.error(f'HTTP request to create resumable session failed: {ex}')
+            raise
+        logger.info(f'Resumable session response: {response.status_code} {response.text}')
+        if response.status_code != 200:
+            logger.error(f'Failed to create resumable session. Status: {response.status_code}, Body: {response.text}')
         session_url = response.headers.get('Location')
+        if not session_url:
+            logger.error(f'No Location header found in resumable session response. Headers: {response.headers}')
         logger.info(f'Resumable session location: {session_url}')
 
         return session_url

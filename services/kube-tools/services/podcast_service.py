@@ -402,6 +402,9 @@ class PodcastService:
 
         session_url = await self._google_drive_client.create_resumable_upload_session(
             file_metadata=file_metadata.to_dict())
+        if not isinstance(session_url, str) or none_or_whitespace(session_url):
+            logger.error(f'Invalid session_url returned from create_resumable_upload_session: {session_url}')
+            raise PodcastServiceException('Failed to create a valid resumable upload session URL')
         logger.info(f'Resumable upload session created')
 
         try:
