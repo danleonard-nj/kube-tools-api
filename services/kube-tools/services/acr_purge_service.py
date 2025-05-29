@@ -123,6 +123,9 @@ class AcrPurgeService:
 
         df = pd.DataFrame(processing_data)
 
+        if df.empty:
+            return []
+
         for index in df.index:
             created_date = df.loc[index, 'created_date']
             tag = df.loc[index, 'tag']

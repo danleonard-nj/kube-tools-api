@@ -27,6 +27,10 @@ RUN pip install uvicorn
 COPY . .
 
 RUN apt-get update && apt-get dist-upgrade -y
+
+# Run tests during build
+RUN pytest || (echo "Tests failed" && exit 1)
+
 EXPOSE 80
 
 CMD ["bash", "startup.sh"]
