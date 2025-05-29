@@ -8,3 +8,4 @@ services/kube-tools/.VSCodeCounter/*
 *.ipynb
 services/kube-tools/scripts/get_google_refresh_token.py
 services/kube-tools/scripts/plaid_link.py
+services/kube-tools/scripts/google_credentials.json

@@ -70,10 +70,13 @@ class GoogleAuthService:
         cache_key = f"google_auth:{client_name}:{'-'.join(sorted(scopes))}"
         cached_token = await self._cache.get_cache(key=cache_key)
         if cached_token:
+            logger.info(f"[GoogleAuthService] Using cached token for '{client_name}' (first 8: {cached_token[:8]})")
+            # Optionally, you could decode the JWT and check expiry, but Google tokens are opaque.
+            # So, we rely on cache TTL. If you want to be extra safe, always refresh if in doubt.
             return cached_token
 
         # Get stored credentials from database
-            stored_creds = await self._repo.get_client(client_name)
+        stored_creds = await self._repo.get_client(client_name)
         if not stored_creds:
             raise Exception(f"No client found with name '{client_name}'. Please save client first.")
 
@@ -90,15 +93,18 @@ class GoogleAuthService:
         # Create credentials from stored data
         creds = Credentials.from_authorized_user_info(creds_data, scopes=scopes)
 
-        # Refresh if needed
-        if not creds.valid:
+        # Always refresh if token is not valid or expires in <10min
+        needs_refresh = not creds.valid or (creds.expiry and (creds.expiry - datetime.utcnow()).total_seconds() < 600)
+        if needs_refresh:
+            logger.info(f"[GoogleAuthService] Refreshing token for '{client_name}' (expired or expiring soon)")
             creds.refresh(Request())
-
             # Update stored credentials with new token/refresh_token
             updated_creds = json.loads(creds.to_json())
             updated_creds["client_name"] = client_name
             updated_creds["updated_at"] = datetime.utcnow().isoformat()
             await self._repo.set_client(updated_creds)
+        else:
+            logger.info(f"[GoogleAuthService] Using valid token from DB for '{client_name}' (first 8: {str(creds.token)[:8]})")
 
         # Cache the token for 50 minutes (10 min before expiry)
         await self._cache.set_cache(key=cache_key, value=creds.token, ttl=3000)

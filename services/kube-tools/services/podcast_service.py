@@ -343,6 +343,7 @@ class PodcastService:
         existing_episode_ids = set(ep.episode_id for ep in entity.episodes)
         download_queue = []
         episodes_synced = 0
+        episodes_to_add = []  # Collect new episodes to add after loop
         # Loop until no new episodes remain or sync cap is reached
         while episodes_synced < 5:
             new_episodes = [ep for ep in show.episodes if ep.episode_id not in existing_episode_ids]
@@ -359,14 +360,16 @@ class PodcastService:
                 existing_episode_ids.add(episode.episode_id)
                 continue
             await self.upload_file_async(downloaded_episode=downloaded_episode)
-            show.episodes.append(episode)
+            episodes_to_add.append(episode)
+            download_queue.append(downloaded_episode)
+            episodes_synced += 1
+            existing_episode_ids.add(episode.episode_id)
+        if episodes_to_add:
+            show.episodes.extend(episodes_to_add)
             show.modified_date = DateTimeUtil.timestamp()
             await self._podcast_repository.update(
                 selector=show.get_selector(),
                 values=show.to_dict())
-            download_queue.append(downloaded_episode)
-            episodes_synced += 1
-            existing_episode_ids.add(episode.episode_id)
         return (download_queue, show)
 
     async def upload_file_async(
@@ -400,13 +403,38 @@ class PodcastService:
 
         await asyncio.sleep(1)  # Wait for session creation if needed
 
-        session_url = await self._google_drive_client.create_resumable_upload_session(
-            file_metadata=file_metadata.to_dict())
-        if not isinstance(session_url, str) or none_or_whitespace(session_url):
-            logger.error(f'Invalid session_url returned from create_resumable_upload_session: {session_url}')
-            raise PodcastServiceException('Failed to create a valid resumable upload session URL')
-        logger.info(f'Resumable upload session created')
+        # Retry logic for authentication failures
+        max_retries = 3
+        retry_count = 0
+        session_url = None
 
+        while retry_count < max_retries:
+            try:
+                session_url = await self._google_drive_client.create_resumable_upload_session(
+                    file_metadata=file_metadata.to_dict())
+
+                if isinstance(session_url, str) and not none_or_whitespace(session_url):
+                    logger.info(f'Resumable upload session created successfully')
+                    break
+                else:
+                    logger.warning(f'Invalid session_url returned: {session_url}')
+
+            except Exception as ex:
+                retry_count += 1
+                logger.warning(f'Failed to create upload session (attempt {retry_count}/{max_retries}): {ex}')
+
+                if retry_count < max_retries:
+                    # Wait before retrying with exponential backoff
+                    wait_time = 2 ** retry_count
+                    logger.info(f'Waiting {wait_time} seconds before retry...')
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error(f'All {max_retries} attempts to create upload session failed')
+                    raise PodcastServiceException(f'Failed to create resumable upload session after {max_retries} attempts: {str(ex)}')
+
+        if not isinstance(session_url, str) or none_or_whitespace(session_url):
+            logger.error(f'Failed to create valid session URL after all retries')
+            raise PodcastServiceException('Failed to create a valid resumable upload session URL')
         try:
             file_id = await self._upload_chunks(session_url, audio_bytes, downloaded_episode.size)
         except Exception as ex:
@@ -418,15 +446,34 @@ class PodcastService:
             raise PodcastServiceException('No valid file ID returned from file upload')
 
         logger.info(f'Creating public permission for file: {file_id}')
-        try:
-            permission = await self._google_drive_client.create_permission(
-                file_id=file_id,
-                _type=PermissionType.ANYONE,
-                role=PermissionRole.READER,
-                value=PermissionType.ANYONE)
-        except Exception as ex:
-            logger.error(f'Failed to create public permission for file {file_id}: {ex}')
-            raise Exception(f'Failed to create public permission for file {file_id}: {ex}')
+
+        # Retry logic for permission creation (can also fail due to auth issues)
+        max_retries = 3
+        retry_count = 0
+        permission = None
+
+        while retry_count < max_retries:
+            try:
+                permission = await self._google_drive_client.create_permission(
+                    file_id=file_id,
+                    _type=PermissionType.ANYONE,
+                    role=PermissionRole.READER,
+                    value=PermissionType.ANYONE)
+                logger.info(f'Public permission created successfully')
+                break
+
+            except Exception as ex:
+                retry_count += 1
+                logger.warning(f'Failed to create permission (attempt {retry_count}/{max_retries}): {ex}')
+
+                if retry_count < max_retries:
+                    # Wait before retrying with exponential backoff
+                    wait_time = 2 ** retry_count
+                    logger.info(f'Waiting {wait_time} seconds before retry...')
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error(f'All {max_retries} attempts to create permission failed')
+                    raise Exception(f'Failed to create public permission for file {file_id} after {max_retries} attempts: {str(ex)}')
 
         logger.info(f'Public permission created: {permission}')
 
