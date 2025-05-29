@@ -3,6 +3,7 @@ import io
 import random
 from typing import Dict, List, Tuple
 
+import feedparser
 import httpx
 from clients.email_gateway_client import EmailGatewayClient
 from clients.google_drive_client_async import (GoogleDriveClientAsync,
@@ -292,14 +293,43 @@ class PodcastService:
         feed_data = await self._get_feed_request(
             rss_feed=rss_feed)
 
-        logger.info(f'Parsing show from feed data')
+        logger.info(f'Parsing show from feed data (feedparser)')
 
-        # Get the correct handler for given feed type
-        handler = self._get_handler(
-            handler_type=rss_feed.type)
+        # Parse the RSS feed using feedparser
+        parsed_feed = feedparser.parse(feed_data.text)
 
-        show = handler.get_show(
-            feed=feed_data.text)
+        show_title = parsed_feed.feed.get('title', rss_feed.name)
+        show_id = show_title  # You may want to hash or uuid this
+
+        episodes = []
+        for entry in parsed_feed.entries:
+            episode_id = entry.get('guid') or entry.get('id') or entry.get('link')
+            episode_title = entry.get('title')
+            audio_url = None
+            if 'enclosures' in entry and entry['enclosures']:
+                audio_url = entry['enclosures'][0].get('href')
+            elif 'links' in entry:
+                for link in entry['links']:
+                    if link.get('type', '').startswith('audio'):
+                        audio_url = link.get('href')
+                        break
+
+            if not (episode_id and episode_title and audio_url):
+                continue
+
+            episode = Episode(
+                episode_id=episode_id,
+                episode_title=episode_title,
+                audio=audio_url
+            )
+
+            episodes.append(episode)
+
+        show = Show(
+            show_id=show_id,
+            show_title=show_title,
+            episodes=episodes
+        )
 
         logger.info(f'Feed episode count: {len(show.episodes)}')
 
@@ -309,36 +339,35 @@ class PodcastService:
 
         logger.info(f'Entity episode count: {len(entity.episodes)}')
 
+        # Use a set for fast episode existence checks (DSA improvement)
+        existing_episode_ids = set(ep.episode_id for ep in entity.episodes)
         download_queue = []
-
-        for episode in show.episodes:
-            if not entity.contains_episode(
-                    episode_id=episode.episode_id):
-
-                logger.info(f'Save episode: {episode.episode_title}')
-
-                downloaded_episode = DownloadedEpisode(
-                    episode=episode,
-                    show=show)
-
-                # Check if the episode already exists in Google Drive
-                exists = await self._google_drive_client.file_exists(
-                    directory_id=GoogleDriveDirectory.PodcastDirectoryId,
-                    filename=downloaded_episode.get_filename())
-
-                if exists:
-                    logger.info(f'Episode already exists: {downloaded_episode.get_filename()}')
-                    continue
-
-                await self.upload_file_async(
-                    downloaded_episode=downloaded_episode)
-
-                download_queue.append(downloaded_episode)
-
-        return (
-            download_queue,
-            show
-        )
+        episodes_synced = 0
+        # Loop until no new episodes remain or sync cap is reached
+        while episodes_synced < 5:
+            new_episodes = [ep for ep in show.episodes if ep.episode_id not in existing_episode_ids]
+            if not new_episodes:
+                break
+            episode = new_episodes[0]
+            logger.info(f'Save episode: {episode.episode_title}')
+            downloaded_episode = DownloadedEpisode(episode=episode, show=show)
+            exists = await self._google_drive_client.file_exists(
+                directory_id=GoogleDriveDirectory.PodcastDirectoryId,
+                filename=downloaded_episode.get_filename())
+            if exists:
+                logger.info(f'Episode already exists: {downloaded_episode.get_filename()}')
+                existing_episode_ids.add(episode.episode_id)
+                continue
+            await self.upload_file_async(downloaded_episode=downloaded_episode)
+            show.episodes.append(episode)
+            show.modified_date = DateTimeUtil.timestamp()
+            await self._podcast_repository.update(
+                selector=show.get_selector(),
+                values=show.to_dict())
+            download_queue.append(downloaded_episode)
+            episodes_synced += 1
+            existing_episode_ids.add(episode.episode_id)
+        return (download_queue, show)
 
     async def upload_file_async(
         self,
@@ -347,7 +376,6 @@ class PodcastService:
         '''
         Upload podcast audio to Google Drive
         '''
-
         ArgumentNullException.if_none(downloaded_episode, 'episode')
 
         file_metadata = GoogleDriveUploadRequest(
@@ -358,81 +386,83 @@ class PodcastService:
 
         logger.info(f'Downloading episode audio')
         audio_response = await self.get_episode_audio(episode=downloaded_episode.episode)
-        downloaded_episode.size = len(audio_response.content)
+        audio_bytes = audio_response.content
+        downloaded_episode.size = len(audio_bytes)
 
-        logger.info(f'Downloaded bytes: {len(audio_response.content)}')
+        logger.info(f'Downloaded bytes: {downloaded_episode.size}')
 
-        # Throw if the audio file is less than 1KB - occasionally the
-        # response is an error message but we get a 200 status anyway
-        if len(audio_response.content) < 1024:
+        # Validate file size
+        MIN_FILE_SIZE = 1024
+        if downloaded_episode.size < MIN_FILE_SIZE:
+            logger.error(f'Audio file is less than the threshold size to upload: {downloaded_episode.size}')
             raise PodcastServiceException(
-                f'Audio file is less than the threshold size to upload: {audio_response}')
+                f'Audio file is less than the threshold size to upload: {downloaded_episode.size}')
 
-        # Wait for the session to be created
-        await asyncio.sleep(1)
+        await asyncio.sleep(1)  # Wait for session creation if needed
 
-        logger.info(f'Getting buffer for episode')
-        with io.BytesIO(audio_response.content) as buffer:
+        session_url = await self._google_drive_client.create_resumable_upload_session(
+            file_metadata=file_metadata.to_dict())
+        logger.info(f'Resumable upload session created')
 
-            # Create a resumable upload session for the file
-            logger.info(f'Creating resumable upload session')
-            session_url = await self._google_drive_client.create_resumable_upload_session(
-                file_metadata=file_metadata.to_dict())
+        try:
+            file_id = await self._upload_chunks(session_url, audio_bytes, downloaded_episode.size)
+        except Exception as ex:
+            logger.error(f'Failed during chunked upload: {ex}')
+            raise Exception(f'Failed during chunked upload: {ex}')
 
-            buffer.seek(0)
+        if none_or_whitespace(file_id):
+            logger.error(f'No valid file ID returned after upload')
+            raise PodcastServiceException('No valid file ID returned from file upload')
 
-            start_byte = 0
-            upload_response = None
-            total_size = downloaded_episode.size
+        logger.info(f'Creating public permission for file: {file_id}')
+        try:
+            permission = await self._google_drive_client.create_permission(
+                file_id=file_id,
+                _type=PermissionType.ANYONE,
+                role=PermissionRole.READER,
+                value=None)
+        except Exception as ex:
+            logger.error(f'Failed to create public permission for file {file_id}: {ex}')
+            raise Exception(f'Failed to create public permission for file {file_id}: {ex}')
+
+        logger.info(f'Public permission created: {permission}')
+
+    async def _upload_chunks(self, session_url, audio_bytes, total_size):
+        start_byte = 0
+        upload_response = None
+        with io.BytesIO(audio_bytes) as buffer:
             while True:
                 percent_complete = round(start_byte / total_size * 100, 2) if total_size else 0
                 logger.info(f'Percent complete: {percent_complete}%')
-
                 chunk = buffer.read(UPLOAD_CHUNK_SIZE)
                 if not chunk:
                     logger.info(f'End of buffer reached')
                     break
-
-                upload_response = await self._google_drive_client.upload_file_chunk(
-                    session_url=session_url,
-                    chunk=chunk,
-                    start_byte=start_byte,
-                    total_size=total_size)
-
+                try:
+                    upload_response = await self._google_drive_client.upload_file_chunk(
+                        session_url=session_url,
+                        chunk=chunk,
+                        start_byte=start_byte,
+                        total_size=total_size)
+                except Exception as ex:
+                    logger.error(f'Chunk upload failed at byte {start_byte}: {ex}')
+                    raise Exception(f'Chunk upload failed at byte {start_byte}: {ex}')
                 if upload_response is None:
                     logger.error('No response from upload_file_chunk')
                     raise PodcastServiceException('No response from upload_file_chunk')
-
                 if upload_response.status_code not in [200, 201, 308]:
                     logger.error(f'Chunk upload failed: {upload_response.status_code} {upload_response.text}')
                     raise PodcastServiceException(f'Chunk upload failed: {upload_response.status_code}')
-
                 start_byte += len(chunk)
-
-                # 308 = Resume Incomplete, 200/201 = Success
                 if upload_response.status_code in [200, 201]:
                     logger.info(f'Chunk upload successful')
                     break
-
         if upload_response is None:
-            logger.info(f'Invalid response on file upload completion')
+            logger.error(f'Invalid response on file upload completion')
             raise PodcastServiceException('Invalid response on file upload completion')
-
         try:
             file_id = upload_response.json().get('id')
         except Exception as ex:
             logger.error(f'Failed to parse file ID from upload response: {ex}')
             raise PodcastServiceException('No valid file ID returned from file upload')
-
-        if none_or_whitespace(file_id):
-            logger.info(f'No valid file ID returned')
-            raise PodcastServiceException('No valid file ID returned from file upload')
-
-        logger.info(f'Creating public permission for file: {file_id}')
-        permission = await self._google_drive_client.create_permission(
-            file_id=file_id,
-            permission_type=PermissionType.ANYONE,
-            role=PermissionRole.READER,
-            value=PermissionType.ANYONE)
-
-        logger.info(f'Public permission created: {permission}')
+        return file_id
