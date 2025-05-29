@@ -4,6 +4,7 @@ from domain.google import (GoogleClientScope, GoogleDriveFilePermission,
                            GoogleDriveFileUpload)
 from framework.logger.providers import get_logger
 from googleapiclient.discovery import build
+from google.oauth2.credentials import Credentials
 from services.google_auth_service import GoogleAuthService
 
 logger = get_logger(__name__)
@@ -87,14 +88,18 @@ class GoogleDriveClient:
     ) -> Any:
         logger.info('Creating Google Drive client')
 
-        auth_client = await self._auth_service.get_credentials(
+        # Get token and create credentials manually
+        token = await self._auth_service.get_token(
             client_name='drive-client',
-            scopes=GoogleClientScope.Drive)
+            scopes=[GoogleClientScope.Drive])
+
+        # Create a temporary credentials object for the Google API client
+        creds = Credentials(token=token)
 
         client = build(
             'drive',
             'v3',
-            credentials=auth_client
+            credentials=creds
         )
 
         logger.info('Google Drive client created successfully')

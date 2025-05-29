@@ -357,22 +357,22 @@ class PodcastService:
         logger.info(f'Upload metadata: {file_metadata.to_dict()}')
 
         logger.info(f'Downloading episode audio')
-        response = await self.get_episode_audio(episode=downloaded_episode.episode)
-        downloaded_episode.size = len(response.content)
+        audio_response = await self.get_episode_audio(episode=downloaded_episode.episode)
+        downloaded_episode.size = len(audio_response.content)
 
-        logger.info(f'Downloaded bytes: {len(response.content)}')
+        logger.info(f'Downloaded bytes: {len(audio_response.content)}')
 
         # Throw if the audio file is less than 1KB - occasionally the
         # response is an error message but we get a 200 status anyway
-        if len(response.content) < 1024:
+        if len(audio_response.content) < 1024:
             raise PodcastServiceException(
-                f'Audio file is less than the threshold size to upload: {response}')
+                f'Audio file is less than the threshold size to upload: {audio_response}')
 
         # Wait for the session to be created
         await asyncio.sleep(1)
 
         logger.info(f'Getting buffer for episode')
-        with io.BytesIO(response.content) as buffer:
+        with io.BytesIO(audio_response.content) as buffer:
 
             # Create a resumable upload session for the file
             logger.info(f'Creating resumable upload session')
@@ -382,31 +382,47 @@ class PodcastService:
             buffer.seek(0)
 
             start_byte = 0
+            upload_response = None
+            total_size = downloaded_episode.size
             while True:
-                logger.info(f'Perent complete: {round(start_byte / downloaded_episode.size * 100, 2)}%')
+                percent_complete = round(start_byte / total_size * 100, 2) if total_size else 0
+                logger.info(f'Percent complete: {percent_complete}%')
 
                 chunk = buffer.read(UPLOAD_CHUNK_SIZE)
                 if not chunk:
                     logger.info(f'End of buffer reached')
                     break
 
-                response = await self._google_drive_client.upload_file_chunk(
+                upload_response = await self._google_drive_client.upload_file_chunk(
                     session_url=session_url,
                     chunk=chunk,
                     start_byte=start_byte,
-                    total_size=len(response.content))
+                    total_size=total_size)
+
+                if upload_response is None:
+                    logger.error('No response from upload_file_chunk')
+                    raise PodcastServiceException('No response from upload_file_chunk')
+
+                if upload_response.status_code not in [200, 201, 308]:
+                    logger.error(f'Chunk upload failed: {upload_response.status_code} {upload_response.text}')
+                    raise PodcastServiceException(f'Chunk upload failed: {upload_response.status_code}')
 
                 start_byte += len(chunk)
 
-                if response.status_code in [200, 201]:
+                # 308 = Resume Incomplete, 200/201 = Success
+                if upload_response.status_code in [200, 201]:
                     logger.info(f'Chunk upload successful')
                     break
 
-        if response is None:
+        if upload_response is None:
             logger.info(f'Invalid response on file upload completion')
             raise PodcastServiceException('Invalid response on file upload completion')
 
-        file_id = response.json().get('id')
+        try:
+            file_id = upload_response.json().get('id')
+        except Exception as ex:
+            logger.error(f'Failed to parse file ID from upload response: {ex}')
+            raise PodcastServiceException('No valid file ID returned from file upload')
 
         if none_or_whitespace(file_id):
             logger.info(f'No valid file ID returned')

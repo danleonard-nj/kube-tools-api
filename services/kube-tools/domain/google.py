@@ -3,6 +3,7 @@ import io
 import unicodedata
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from weakref import ref
 
 from bs4 import BeautifulSoup
 from framework.crypto.hashing import md5
@@ -456,84 +457,6 @@ def get_key(
 ) -> str:
     scopes = '-'.join(scopes)
     return f'{client_id}-{scopes}'
-
-
-class AuthClient(Serializable):
-    def __init__(
-        self,
-        client_name: str,
-        token: str,
-        refresh_token: str,
-        token_url: str,
-        client_id: str,
-        client_secret: str,
-        expiry: str,
-        timestamp: str
-    ):
-        self.client_name = client_name
-        self.token = token
-        self.refresh_token = refresh_token
-        self.token_url = token_url
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.expiry = expiry
-        self.timestamp = timestamp
-
-    @staticmethod
-    def from_client(
-        credentials: Credentials,
-        client_name: str
-    ):
-        return AuthClient(
-            client_name=client_name,
-            token=credentials.token,
-            refresh_token=credentials.refresh_token,
-            token_url=credentials.token_uri,
-            client_id=credentials.client_id,
-            client_secret=credentials.client_secret,
-            expiry=credentials.expiry.isoformat(),
-            timestamp=datetime.now().isoformat()
-        )
-
-    @staticmethod
-    def from_entity(
-        data: dict
-    ):
-        return AuthClient(
-            client_name=data.get('client_name'),
-            token=data.get('token'),
-            refresh_token=data.get('refresh_token'),
-            token_url=data.get('token_uri'),
-            client_id=data.get('client_id'),
-            client_secret=data.get('client_secret'),
-            expiry=data.get('expiry'),
-            timestamp=data.get('timestamp')
-        )
-
-    def get_selector(
-        self
-    ):
-        return {
-            'client_name': self.client_name
-        }
-
-    def get_credentials(
-        self,
-        scopes: List[str]
-    ):
-        return Credentials.from_authorized_user_info(
-            info=self.to_dict(),
-            scopes=scopes)
-
-    def update_credentials(
-        self,
-        credentials: Credentials
-    ):
-        self.token = credentials.token
-        self.refresh_token = credentials.refresh_token
-        self.token_url = credentials.token_uri
-        self.expiry = credentials.expiry
-        self.timestamp = DateTimeUtil.get_iso_date()
 
 
 class ProcessGmailRuleResponse(Serializable):

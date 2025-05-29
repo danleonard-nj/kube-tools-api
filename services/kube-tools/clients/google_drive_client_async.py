@@ -50,7 +50,7 @@ class GoogleDriveClientAsync:
             scopes=[GoogleClientScope.Drive])
 
         return {
-            'Authorization': f'Bearer {token.token}'
+            'Authorization': f'Bearer {token}'
         }
 
     async def create_resumable_upload_session(
