@@ -279,7 +279,7 @@ class GmailEmailRule(Serializable):
 
 class GoogleClientScope:
     Drive = 'https://www.googleapis.com/auth/drive'
-    Gmail = 'https://www.googleapis.com/auth/gmail.modify'
+    Gmail = 'https://mail.google.com/'
 
 
 class GoogleDriveDirectory:
