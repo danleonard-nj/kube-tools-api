@@ -7,6 +7,7 @@ from clients.gmail_client import GmailClient
 from clients.google_auth_client import GoogleAuthClient
 from clients.google_drive_client import GoogleDriveClient
 from clients.google_maps_client import GoogleMapsClient
+from clients.google_search_client import GoogleSearchClient
 from clients.identity_client import IdentityClient
 from clients.open_weather_client import OpenWeatherClient
 from clients.plaid_client import PlaidClient
@@ -32,6 +33,7 @@ from data.location_repository import (WeatherStationRepository,
 from data.mongo_export_repository import MongoExportRepository
 from data.podcast_repository import PodcastRepository
 from data.conversation_repository import ConversationRepository
+from data.sms_inbound_repository import InboundSMSRepository
 from data.weather_repository import WeatherRepository
 from domain.auth import AdRole, AuthPolicy
 from framework.abstractions.abstract_request import RequestContextProvider
@@ -67,6 +69,7 @@ from services.podcast_service import PodcastService
 from services.redis_service import RedisService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
 from services.conversation_service import ConversationService
+from services.robinhood_service import RobinhoodService
 from services.torrent_service import TorrentService
 from services.usage_service import UsageService
 from services.weather_service import WeatherService
@@ -145,6 +148,7 @@ def register_clients(
     descriptors.add_singleton(EmailGatewayClient)
     descriptors.add_singleton(StorageClient)
     descriptors.add_singleton(GoogleMapsClient)
+    descriptors.add_singleton(GoogleSearchClient)
     descriptors.add_singleton(EventClient)
     descriptors.add_singleton(GmailClient)
     descriptors.add_singleton(ChatGptServiceClient)
@@ -175,6 +179,7 @@ def register_repositories(
     descriptors.add_singleton(GooleCalendarEventRepository)
     descriptors.add_singleton(ConversationRepository)
     descriptors.add_singleton(GoogleAuthRepository)
+    descriptors.add_singleton(InboundSMSRepository)
 
 
 def register_services(
@@ -205,6 +210,7 @@ def register_services(
     descriptors.add_singleton(ChatGptService)
     descriptors.add_singleton(ConversationService)
     descriptors.add_singleton(CoinbaseService)
+    descriptors.add_singleton(RobinhoodService)
 
 
 class ContainerProvider(ProviderBase):

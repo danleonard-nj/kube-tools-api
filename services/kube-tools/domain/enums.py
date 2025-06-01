@@ -21,6 +21,7 @@ class BankKey(enum.StrEnum):
     SynchronySweetwater = 'synchrony-sweetwater'
     Bitcoin = 'coinbase-bitcoin'
     Solana = 'coinbase-solana'
+    Robinhood = 'robinhood'
 
     @classmethod
     def values(
@@ -84,6 +85,7 @@ class SyncType(enum.StrEnum):
     Email = 'email'
     Plaid = 'plaid'
     Coinbase = 'coinbase'
+    Robinhood = 'robinhood'
 
 
 class ProcessGmailRuleResultType(enum.StrEnum):
