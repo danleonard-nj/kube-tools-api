@@ -124,7 +124,12 @@ class GoogleSearchClient:
         self,
         stock_symbol: str,
         additional_terms: str = "",
+<<<<<<< HEAD
+        exclude_sites: Optional[List[str]] = None,
+        max_results: int = 10
+=======
         exclude_sites: Optional[List[str]] = None
+>>>>>>> main
     ) -> List[Dict]:
         """
         Search for financial news about a specific stock
@@ -141,7 +146,11 @@ class GoogleSearchClient:
         try:
             result = await self.search(
                 query=query,
+<<<<<<< HEAD
+                num_results=max_results,
+=======
                 num_results=10,
+>>>>>>> main
                 exclude_sites=exclude_sites
             )
 
@@ -163,7 +172,15 @@ class GoogleSearchClient:
             logger.error(f'Error searching finance news for {stock_symbol}: {str(e)}')
             return []
 
+<<<<<<< HEAD
+    async def search_market_conditions(
+        self,
+        exclude_sites: Optional[list[str]] = None,
+        max_search_results=5
+    ) -> list[dict]:
+=======
     async def search_market_conditions(self, exclude_sites: Optional[List[str]] = None) -> List[Dict]:
+>>>>>>> main
         """
         Search for current market conditions and trends
 
@@ -184,7 +201,11 @@ class GoogleSearchClient:
             try:
                 result = await self.search(
                     query=query,
+<<<<<<< HEAD
+                    num_results=max_search_results,
+=======
                     num_results=5,
+>>>>>>> main
                     exclude_sites=exclude_sites
                 )
                 logger.info(f'Google API raw result for query "{query}": {result}')
@@ -205,7 +226,11 @@ class GoogleSearchClient:
         logger.info(f'search_market_conditions returning {len(all_articles)} articles')
         return all_articles
 
+<<<<<<< HEAD
+    async def search_sector_analysis(self, sector: str, exclude_sites: Optional[List[str]] = None, max_search_results=10) -> List[Dict]:
+=======
     async def search_sector_analysis(self, sector: str, exclude_sites: Optional[List[str]] = None) -> List[Dict]:
+>>>>>>> main
         """
         Search for sector-specific analysis
 
@@ -220,7 +245,11 @@ class GoogleSearchClient:
         try:
             result = await self.search(
                 query=query,
+<<<<<<< HEAD
+                num_results=max_search_results,
+=======
                 num_results=5,
+>>>>>>> main
                 site_restrict='marketwatch.com OR seekingalpha.com OR morningstar.com',
                 exclude_sites=exclude_sites
             )

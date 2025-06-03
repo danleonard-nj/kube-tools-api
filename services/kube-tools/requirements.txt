@@ -23,5 +23,9 @@ pytest
 feedparser
 readability-lxml
 robin_stocks
+<<<<<<< HEAD
+markdown
+=======
 markdown
 sib-api-v3-sdk
+>>>>>>> main

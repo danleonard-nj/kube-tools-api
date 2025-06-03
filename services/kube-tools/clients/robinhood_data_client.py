@@ -29,7 +29,11 @@ class RobinhoodDataClient:
         """
         self._username = configuration.robinhood.get('username')
         self._password = configuration.robinhood.get('password')
+<<<<<<< HEAD
+        # Remove SMS repository from init
+=======
         self._inbound_sms_repository = inbound_sms_repository
+>>>>>>> main
         self._cache_client = cache_client
 
     async def login(self):
@@ -39,6 +43,19 @@ class RobinhoodDataClient:
         Returns:
             Dict with success status and MFA information
         """
+<<<<<<< HEAD
+        logger.info('Attempting to login to Robinhood for user: %s', self._username)
+
+        try:
+            logger.debug('Calling r.login without MFA')
+            r.login(
+                username=self._username,
+                password=self._password
+            )
+            return {
+                'success': True,
+                'error': None
+=======
         mfa_token = None
         logger.info('Attempting to login to Robinhood for user: %s', self._username)
 
@@ -83,11 +100,17 @@ class RobinhoodDataClient:
             return {
                 'success': True,
                 'mfa_required': mfa_token is not None
+>>>>>>> main
             }
         except Exception as e:
             logger.error('Error during login: %s', str(e))
             return {
                 'success': False,
+<<<<<<< HEAD
+                'error': str(e)
+            }
+
+=======
                 'mfa_required': False,
                 'error': str(e)
             }
@@ -119,6 +142,7 @@ class RobinhoodDataClient:
 
         return None
 
+>>>>>>> main
     async def get_portfolio_data(self):
         """
         Fetch comprehensive portfolio data from Robinhood
@@ -187,7 +211,11 @@ class RobinhoodDataClient:
 
     def calculate_total_portfolio_value(self, portfolio_data):
         """
+<<<<<<< HEAD
+        Calculate total portfolio value from holdings data and available cash.
+=======
         Calculate total portfolio value from holdings data and available cash
+>>>>>>> main
 
         Args:
             portfolio_data: Portfolio data from get_portfolio_data
@@ -198,6 +226,11 @@ class RobinhoodDataClient:
         logger.info('Calculating total portfolio value')
 
         try:
+<<<<<<< HEAD
+            # 1. Try to use total_equity from portfolio_profile if available and valid
+            portfolio_profile = portfolio_data.get('portfolio_profile', {})
+            total_equity = portfolio_profile.get('total_equity')
+=======
             total_value = 0.0
 
             # Get account profile for cash balance
@@ -206,10 +239,48 @@ class RobinhoodDataClient:
             # First, try to get the total equity from portfolio profile (most accurate)
             portfolio_profile = portfolio_data.get('portfolio_profile', {})
             total_equity = portfolio_profile.get('total_equity', '0.0')
+>>>>>>> main
             if total_equity:
                 try:
                     equity_value = float(total_equity)
                     if equity_value > 0:
+<<<<<<< HEAD
+                        logger.debug('Using total equity as portfolio value: $%.2f', equity_value)
+                        return equity_value
+                except (ValueError, TypeError):
+                    logger.warning('Invalid total equity value: %s', total_equity)
+
+            # 2. Otherwise, sum up all holdings' market_value or (quantity * price)
+            holdings = portfolio_data.get('holdings', {})
+            total_value = 0.0
+            for symbol, holding in holdings.items():
+                try:
+                    market_value = holding.get('market_value')
+                    if market_value:
+                        total_value += float(market_value)
+                        logger.debug('Added holding %s market value: $%.2f', symbol, float(market_value))
+                    else:
+                        quantity = float(holding.get('quantity', 0) or 0)
+                        price = float(holding.get('price', 0) or 0)
+                        holding_value = quantity * price
+                        total_value += holding_value
+                        logger.debug('Added holding %s calculated value: %.2f * %.2f = $%.2f',
+                                     symbol, quantity, price, holding_value)
+                except (ValueError, TypeError) as e:
+                    logger.warning('Invalid holding data for %s: %s', symbol, str(e))
+
+            # 3. Add available cash (try multiple common fields, add the first valid one)
+            account_profile = portfolio_data.get('account_profile', {})
+            for cash_field in ['portfolio_cash', 'buying_power', 'cash']:
+                cash_value = account_profile.get(cash_field)
+                if cash_value:
+                    try:
+                        cash_float = float(cash_value)
+                        if cash_float > 0:
+                            total_value += cash_float
+                            logger.debug('Added cash (%s): $%.2f', cash_field, cash_float)
+                            break  # Only add the first valid cash field
+=======
                         total_value = equity_value
                         logger.debug('Using total equity as portfolio value: $%.2f', equity_value)
                         return total_value
@@ -252,12 +323,16 @@ class RobinhoodDataClient:
                         logger.debug('Added cash (%s): $%.2f', cash_field, cash_float)
                         cash_added = True
                         break
+>>>>>>> main
                     except (ValueError, TypeError):
                         logger.warning('Invalid cash value for %s: %s', cash_field, cash_value)
 
             logger.info('Total portfolio value calculated: $%.2f', total_value)
             return total_value
+<<<<<<< HEAD
+=======
 
+>>>>>>> main
         except Exception as e:
             logger.error('Error calculating portfolio value: %s', str(e))
             return 0.0
