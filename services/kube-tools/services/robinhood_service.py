@@ -75,10 +75,6 @@ class RobinhoodService:
         try:
             # Use RobinhoodDataClient to get cached or fresh portfolio data
             portfolio_data = await self._robinhood_client.get_cached_portfolio_data(ttl=3600)
-<<<<<<< HEAD
-
-=======
->>>>>>> main
             if not portfolio_data or not portfolio_data.get('success', False):
                 # Login to Robinhood
                 login_result = await self._robinhood_client.login()
@@ -195,12 +191,8 @@ class RobinhoodService:
             try:
                 debug_report = DebugReport(
                     portfolio_data=portfolio_obj,
-<<<<<<< HEAD
                     # Use the original, unsummarized market_research for debug so links are preserved
                     market_research=market_research,  # <-- changed from summarized_market_research_obj
-=======
-                    market_research=summarized_market_research_obj,
->>>>>>> main
                     prompts=self._prompts,
                     gpt_analysis=pulse_analysis,
                     sources={}
