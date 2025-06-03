@@ -22,3 +22,5 @@ openai>=1.0.0
 pytest
 feedparser
 readability-lxml
+robin_stocks
+markdown
