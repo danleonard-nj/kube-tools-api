@@ -29,11 +29,7 @@ class RobinhoodDataClient:
         """
         self._username = configuration.robinhood.get('username')
         self._password = configuration.robinhood.get('password')
-<<<<<<< HEAD
         # Remove SMS repository from init
-=======
-        self._inbound_sms_repository = inbound_sms_repository
->>>>>>> main
         self._cache_client = cache_client
 
     async def login(self):
@@ -43,7 +39,6 @@ class RobinhoodDataClient:
         Returns:
             Dict with success status and MFA information
         """
-<<<<<<< HEAD
         logger.info('Attempting to login to Robinhood for user: %s', self._username)
 
         try:
@@ -55,94 +50,14 @@ class RobinhoodDataClient:
             return {
                 'success': True,
                 'error': None
-=======
-        mfa_token = None
-        logger.info('Attempting to login to Robinhood for user: %s', self._username)
-
-        try:
-            try:
-                logger.debug('Calling r.login without MFA')
-                r.login(
-                    username=self._username,
-                    password=self._password
-                )
-                logger.info('Login successful without MFA')
-            except r.robinhood.exceptions.TwoFactorRequired as e:
-                logger.warning('TwoFactorRequired exception caught: %s', str(e))
-
-                if not self._inbound_sms_repository:
-                    logger.error('SMS repository not available for MFA')
-                    return {
-                        'success': False,
-                        'mfa_required': True,
-                        'error': 'MFA required but SMS repository not available'
-                    }
-
-                mfa_token = await self._get_mfa_token()
-
-                if mfa_token:
-                    logger.debug('Calling r.login with MFA token')
-                    r.login(
-                        username=self._username,
-                        password=self._password,
-                        mfa_code=mfa_token
-                    )
-                    logger.info('Login successful with MFA')
-                else:
-                    logger.error('Failed to retrieve MFA token after 5 attempts')
-                    return {
-                        'success': False,
-                        'mfa_required': True,
-                        'error': 'MFA token not received'
-                    }
-
-            logger.debug('Returning login result: success=True, mfa_required=%s', mfa_token is not None)
-            return {
-                'success': True,
-                'mfa_required': mfa_token is not None
->>>>>>> main
             }
         except Exception as e:
             logger.error('Error during login: %s', str(e))
             return {
                 'success': False,
-<<<<<<< HEAD
                 'error': str(e)
             }
 
-=======
-                'mfa_required': False,
-                'error': str(e)
-            }
-
-    async def _get_mfa_token(self, max_attempts=5, delay_seconds=5):
-        """
-        Wait for and retrieve MFA token from SMS
-
-        Args:
-            max_attempts: Maximum number of attempts to check for SMS
-            delay_seconds: Delay between attempts in seconds
-
-        Returns:
-            MFA token if found, None otherwise
-        """
-        cycles = 0
-        while cycles < max_attempts:
-            logger.info('Waiting for MFA SMS (attempt %d/%d)', cycles + 1, max_attempts)
-            last_messages = await self._inbound_sms_repository.get_messages(limit=1)
-
-            if last_messages:
-                mfa_token = last_messages[0].body.strip()
-                logger.info('Received MFA token: %s', mfa_token)
-                return mfa_token
-
-            logger.debug(f'No MFA SMS received, sleeping for {delay_seconds} seconds')
-            await asyncio.sleep(delay_seconds)
-            cycles += 1
-
-        return None
-
->>>>>>> main
     async def get_portfolio_data(self):
         """
         Fetch comprehensive portfolio data from Robinhood
@@ -211,11 +126,7 @@ class RobinhoodDataClient:
 
     def calculate_total_portfolio_value(self, portfolio_data):
         """
-<<<<<<< HEAD
         Calculate total portfolio value from holdings data and available cash.
-=======
-        Calculate total portfolio value from holdings data and available cash
->>>>>>> main
 
         Args:
             portfolio_data: Portfolio data from get_portfolio_data
@@ -226,25 +137,13 @@ class RobinhoodDataClient:
         logger.info('Calculating total portfolio value')
 
         try:
-<<<<<<< HEAD
             # 1. Try to use total_equity from portfolio_profile if available and valid
             portfolio_profile = portfolio_data.get('portfolio_profile', {})
             total_equity = portfolio_profile.get('total_equity')
-=======
-            total_value = 0.0
-
-            # Get account profile for cash balance
-            account_profile = portfolio_data.get('account_profile', {})
-
-            # First, try to get the total equity from portfolio profile (most accurate)
-            portfolio_profile = portfolio_data.get('portfolio_profile', {})
-            total_equity = portfolio_profile.get('total_equity', '0.0')
->>>>>>> main
             if total_equity:
                 try:
                     equity_value = float(total_equity)
                     if equity_value > 0:
-<<<<<<< HEAD
                         logger.debug('Using total equity as portfolio value: $%.2f', equity_value)
                         return equity_value
                 except (ValueError, TypeError):
@@ -280,59 +179,11 @@ class RobinhoodDataClient:
                             total_value += cash_float
                             logger.debug('Added cash (%s): $%.2f', cash_field, cash_float)
                             break  # Only add the first valid cash field
-=======
-                        total_value = equity_value
-                        logger.debug('Using total equity as portfolio value: $%.2f', equity_value)
-                        return total_value
-                except (ValueError, TypeError):
-                    logger.warning('Invalid total equity value: %s', total_equity)
-
-            # If no valid equity data, calculate from individual holdings
-            holdings = portfolio_data.get('holdings', {})
-            for symbol, holding_data in holdings.items():
-                try:
-                    # First try to get market_value if available
-                    market_value = holding_data.get('market_value', '0.0')
-                    if market_value and market_value != '0.0':
-                        holding_value = float(market_value)
-                        total_value += holding_value
-                        logger.debug('Added holding %s market value: $%.2f', symbol, holding_value)
-                    else:
-                        # Calculate from quantity and price
-                        quantity = holding_data.get('quantity', '0')
-                        price = holding_data.get('price', '0')
-                        if quantity and price:
-                            quantity_float = float(quantity)
-                            price_float = float(price)
-                            holding_value = quantity_float * price_float
-                            total_value += holding_value
-                            logger.debug('Added holding %s calculated value: %.2f * %.2f = $%.2f',
-                                         symbol, quantity_float, price_float, holding_value)
-                except (ValueError, TypeError) as e:
-                    logger.warning('Invalid holding data for %s: %s', symbol, str(e))
-
-            # Add available cash (try multiple cash field names)
-            cash_fields = ['portfolio_cash', 'buying_power', 'cash']
-            cash_added = False
-            for cash_field in cash_fields:
-                cash_value = account_profile.get(cash_field, '0.0')
-                if cash_value and cash_value != '0.0' and not cash_added:
-                    try:
-                        cash_float = float(cash_value)
-                        total_value += cash_float
-                        logger.debug('Added cash (%s): $%.2f', cash_field, cash_float)
-                        cash_added = True
-                        break
->>>>>>> main
                     except (ValueError, TypeError):
                         logger.warning('Invalid cash value for %s: %s', cash_field, cash_value)
 
             logger.info('Total portfolio value calculated: $%.2f', total_value)
             return total_value
-<<<<<<< HEAD
-=======
-
->>>>>>> main
         except Exception as e:
             logger.error('Error calculating portfolio value: %s', str(e))
             return 0.0
