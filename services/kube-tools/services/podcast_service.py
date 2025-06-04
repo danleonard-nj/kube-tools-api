@@ -362,8 +362,8 @@ class PodcastService:
             await self.upload_file_async(downloaded_episode=downloaded_episode)
             episodes_to_add.append(episode)
             download_queue.append(downloaded_episode)
-            episodes_synced += 1
             existing_episode_ids.add(episode.episode_id)
+            episodes_synced += 1  # Only increment after a successful upload
         if episodes_to_add:
             show.episodes.extend(episodes_to_add)
             show.modified_date = DateTimeUtil.timestamp()

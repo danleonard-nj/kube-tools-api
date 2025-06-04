@@ -98,12 +98,12 @@ class MarketConditionsProcessor(BaseResearchProcessor):
                 prompt_lines.append("")
             prompt = "\n".join(prompt_lines)
             self._prompts['market_conditions_chunks'].append(prompt)
-            logger.info(f"[MarketConditionsProcessor] Sending prompt for chunk {idx+1} to GPT (first 100 chars): {prompt[:100]}")
+            logger.info(f"[MarketConditionsProcessor] Sending prompt for chunk {idx+1} to GPT")
             resp_content = await self._gpt_client.generate_completion(
                 prompt=prompt,
                 model="gpt-4o-mini"
             )
-            logger.info(f"[MarketConditionsProcessor] Received summary for chunk {idx+1} (first 100 chars): {resp_content[:100]}")
+            logger.info(f"[MarketConditionsProcessor] Received summary for chunk {idx+1}")
             chunk_summaries.append(resp_content)
         if len(chunk_summaries) == 1:
             return chunk_summaries[0]
@@ -112,12 +112,12 @@ class MarketConditionsProcessor(BaseResearchProcessor):
             for i, chunk_summary in enumerate(chunk_summaries, 1):
                 final_prompt += f"Summary {i}: {chunk_summary}\n"
             self._prompts['market_conditions_chunks'].append(final_prompt)
-            logger.info(f"[MarketConditionsProcessor] Sending final merge prompt to GPT (first 100 chars): {final_prompt[:100]}")
+            logger.info(f"[MarketConditionsProcessor] Sending final merge prompt to GPT")
             resp_content = await self._gpt_client.generate_completion(
                 prompt=final_prompt,
                 model="gpt-4o-mini"
             )
-            logger.info(f"[MarketConditionsProcessor] Received merged summary (first 100 chars): {resp_content[:100]}")
+            logger.info(f"[MarketConditionsProcessor] Received merged summary")
             return resp_content
 
 
@@ -169,12 +169,12 @@ class StockNewsProcessor(BaseResearchProcessor):
             prompt_lines.append("")
         prompt = "\n".join(prompt_lines)
         self._prompts.setdefault('stock_news', {})[symbol] = prompt
-        logger.info(f"[StockNewsProcessor] Sending prompt for {symbol} to GPT (first 100 chars): {prompt[:100]}")
+        logger.info(f"[StockNewsProcessor] Sending prompt for {symbol} to GPT")
         resp_content = await self._gpt_client.generate_completion(
             prompt=prompt,
             model="gpt-4o-mini"
         )
-        logger.info(f"[StockNewsProcessor] Received summary for {symbol} (first 100 chars): {resp_content[:100]}")
+        logger.info(f"[StockNewsProcessor] Received summary for {symbol}")
         return resp_content
 
 
@@ -230,12 +230,12 @@ class SectorAnalysisProcessor(BaseResearchProcessor):
             prompt_lines.append("")
         prompt = "\n".join(prompt_lines)
         self._prompts['sector_analysis'] = [prompt]
-        logger.info(f"[SectorAnalysisProcessor] Sending prompt to GPT (first 100 chars): {prompt[:100]}")
+        logger.info(f"[SectorAnalysisProcessor] Sending prompt to GPT")
         resp_content = await self._gpt_client.generate_completion(
             prompt=prompt,
             model="gpt-4o-mini"
         )
-        logger.info(f"[SectorAnalysisProcessor] Received summary (first 100 chars): {resp_content[:100]}")
+        logger.info(f"[SectorAnalysisProcessor] Received summary")
         return resp_content
 
 
@@ -293,12 +293,12 @@ class RssNewsProcessor(BaseResearchProcessor):
                 prompt_lines.append("")
             prompt = "\n".join(prompt_lines)
             self._prompts['rss_news_chunks'].append(prompt)
-            logger.info(f"[RssNewsProcessor] Sending prompt for chunk {idx+1} to GPT (first 100 chars): {prompt[:100]}")
+            logger.info(f"[RssNewsProcessor] Sending prompt for chunk {idx+1} to GPT")
             resp_content = await self._gpt_client.generate_completion(
                 prompt=prompt,
                 model="gpt-4o-mini"
             )
-            logger.info(f"[RssNewsProcessor] Received summary for chunk {idx+1} (first 100 chars): {resp_content[:100]}")
+            logger.info(f"[RssNewsProcessor] Received summary for chunk {idx+1}")
             chunk_summaries.append(resp_content)
         if len(chunk_summaries) == 1:
             return chunk_summaries[0]
@@ -307,12 +307,12 @@ class RssNewsProcessor(BaseResearchProcessor):
             for i, chunk_summary in enumerate(chunk_summaries, 1):
                 final_prompt += f"Summary {i}: {chunk_summary}\n"
             self._prompts['rss_news_chunks'].append(final_prompt)
-            logger.info(f"[RssNewsProcessor] Sending final merge prompt to GPT (first 100 chars): {final_prompt[:100]}")
+            logger.info(f"[RssNewsProcessor] Sending final merge prompt to GPT")
             resp_content = await self._gpt_client.generate_completion(
                 prompt=final_prompt,
                 model="gpt-4o-mini"
             )
-            logger.info(f"[RssNewsProcessor] Received merged summary (first 100 chars): {resp_content[:100]}")
+            logger.info(f"[RssNewsProcessor] Received merged summary")
             return resp_content
 
 
