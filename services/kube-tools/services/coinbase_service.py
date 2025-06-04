@@ -1,4 +1,3 @@
-import pandas as pd
 from clients.coinbase_client import CoinbaseClient
 from framework.configuration import Configuration
 from framework.logger import get_logger

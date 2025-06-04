@@ -1,15 +1,15 @@
-from framework.configuration import Configuration
 from clients.gpt_client import GPTClient
 from clients.robinhood_data_client import RobinhoodDataClient
+from domain.enums import BankKey, SyncType
+from models.email_config import EmailConfig
+from services.bank_service import BankService
 from services.market_research_processor import MarketResearchProcessor
 from services.email_generator import EmailGenerator
 from services.prompt_generator import PromptGenerator
-from clients.google_search_client import GoogleSearchClient
-from data.sms_inbound_repository import InboundSMSRepository
 from framework.clients.cache_client import CacheClientAsync
 from utilities.utils import DateTimeUtil
 from framework.logger import get_logger
-from models.robinhood_models import PortfolioData, MarketResearch, DebugReport
+from models.robinhood_models import PortfolioData, DebugReport
 from sib_api_v3_sdk import ApiClient, Configuration as SibConfiguration
 from sib_api_v3_sdk.api.transactional_emails_api import TransactionalEmailsApi
 from sib_api_v3_sdk.models import SendSmtpEmail
@@ -27,23 +27,22 @@ class RobinhoodService:
         prompt_generator: PromptGenerator,
         email_generator: EmailGenerator,
         cache_client: CacheClientAsync,
-        configuration: Configuration
+        email_config: EmailConfig,
+        bank_service: BankService
     ):
-        self._username = configuration.robinhood.get('username')
-        self._password = configuration.robinhood.get('password')
         self._robinhood_client = robinhood_client
         self._gpt_client = gpt_client
         self._market_research_processor = market_research_processor
         self._prompt_generator = prompt_generator
         self._email_generator = email_generator
         self._cache_client = cache_client
-        self._configuration = configuration
+        self._bank_service = bank_service
 
         self._prompts = {}
 
         # Sendinblue setup
-        self._sib_api_key = configuration.email.get('sendinblue_api_key')
-        self._sib_sender = {"email": configuration.email.get('from_email', configuration.email.get('from_email')), "name": "Kube Tools"}
+        self._sib_api_key = email_config.sendinblue_api_key.get_secret_value()
+        self._sib_sender = {"email": email_config.from_email, "name": "Kube Tools"}
         sib_config = SibConfiguration()
         sib_config.api_key['api-key'] = self._sib_api_key
         self._sib_client = ApiClient(sib_config)
@@ -70,7 +69,7 @@ class RobinhoodService:
 
     async def generate_daily_pulse(self) -> dict:
         """Generate a daily pulse report for Robinhood account using OpenAI GPT-4o"""
-        logger.info('Generating daily pulse report for user: %s', self._username)
+        logger.info('Generating daily pulse report')
 
         try:
             # Use RobinhoodDataClient to get cached or fresh portfolio data
@@ -100,6 +99,13 @@ class RobinhoodService:
 
             # Directly parse the raw data with the updated models
             portfolio_obj = PortfolioData.model_validate(portfolio_data['data'])
+
+            portfolio_balance = round(float(portfolio_obj.portfolio_profile.last_core_equity), 2)
+            await self._bank_service.capture_balance(
+                bank_key=BankKey.Robinhood,
+                balance=portfolio_balance,
+                sync_type=str(SyncType.Robinhood)
+            )
 
             # Fetch market research and news data using local method (with RSS support)
             logger.info('Fetching market research and current news')

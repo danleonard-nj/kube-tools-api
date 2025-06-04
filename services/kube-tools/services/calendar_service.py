@@ -1,10 +1,6 @@
 
 
-import calendar
-import json
 from math import e
-import stat
-from typing import Dict
 from data.google.google_calendar_repository import GooleCalendarEventRepository
 from domain.calendar import CalendarEvent
 from services.google_auth_service import GoogleAuthService
@@ -12,11 +8,8 @@ from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
-from framework.serialization import Serializable
-from framework.crypto.hashing import sha256
 from datetime import datetime, timedelta
 from dateutil import parser
-from framework.utilities.iter_utils import first
 
 logger = get_logger(__name__)
 

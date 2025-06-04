@@ -20,7 +20,7 @@ from framework.logger import get_logger
 from framework.utilities.iter_utils import first
 from services.coinbase_service import CoinbaseService
 from services.event_service import EventService
-from utilities.utils import DateTimeUtil, fire_task
+from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
 

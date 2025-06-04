@@ -6,6 +6,7 @@ from clients.event_client import EventClient
 from clients.gmail_client import GmailClient
 from clients.google_auth_client import GoogleAuthClient
 from clients.google_drive_client import GoogleDriveClient
+from clients.google_drive_client_async import GoogleDriveClientAsync
 from clients.google_maps_client import GoogleMapsClient
 from clients.google_search_client import GoogleSearchClient
 from clients.gpt_client import GPTClient
@@ -16,12 +17,12 @@ from clients.robinhood_data_client import RobinhoodDataClient
 from clients.storage_client import StorageClient
 from clients.torrent_client import TorrentClient
 from clients.twilio_gateway import TwilioGatewayClient
-from clients.google_drive_client_async import GoogleDriveClientAsync
 from data.api_event_repository import ApiEventRepository
 from data.bank_repository import (BankBalanceRepository,
                                   BankTransactionsRepository,
                                   BankWebhooksRepository)
 from data.chat_gpt_repository import ChatGptRepository
+from data.conversation_repository import ConversationRepository
 from data.google.google_auth_repository import GoogleAuthRepository
 from data.google.google_calendar_repository import GooleCalendarEventRepository
 from data.google.google_email_log_repository import GoogleEmailLogRepository
@@ -34,7 +35,6 @@ from data.location_repository import (WeatherStationRepository,
                                       ZipLatLongRepository)
 from data.mongo_export_repository import MongoExportRepository
 from data.podcast_repository import PodcastRepository
-from data.conversation_repository import ConversationRepository
 from data.sms_inbound_repository import InboundSMSRepository
 from data.weather_repository import WeatherRepository
 from domain.auth import AdRole, AuthPolicy
@@ -47,10 +47,11 @@ from framework.configuration.configuration import Configuration
 from framework.di.service_collection import ServiceCollection
 from framework.di.static_provider import ProviderBase
 from httpx import AsyncClient
-from motor.motor_asyncio import AsyncIOMotorClient
+from models.coinbase_config import CoinbaseConfig
+from models.email_config import EmailConfig
 from models.podcast_config import PodcastConfig
 from models.robinhood_models import RobinhoodConfig
-from models.coinbase_config import CoinbaseConfig
+from motor.motor_asyncio import AsyncIOMotorClient
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
 from services.api_event_service import ApiEventHistoryService
@@ -60,6 +61,7 @@ from services.bank_transaction_service import BankTransactionService
 from services.calendar_service import CalendarService
 from services.chat_gpt_service import ChatGptService
 from services.coinbase_service import CoinbaseService
+from services.conversation_service import ConversationService
 from services.email_generator import EmailGenerator
 from services.event_service import EventService
 from services.gmail_balance_sync_service import GmailBankSyncService
@@ -68,13 +70,16 @@ from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
 from services.google_drive_service import GoogleDriveService
 from services.location_history_service import LocationHistoryService
-from services.market_research_processor import MarketConditionsProcessor, MarketResearchProcessor, RssNewsProcessor, SectorAnalysisProcessor, StockNewsProcessor
+from services.market_research_processor import (MarketConditionsProcessor,
+                                                MarketResearchProcessor,
+                                                RssNewsProcessor,
+                                                SectorAnalysisProcessor,
+                                                StockNewsProcessor)
 from services.mongo_backup_service import MongoBackupService
 from services.podcast_service import PodcastService
 from services.prompt_generator import PromptGenerator
 from services.redis_service import RedisService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
-from services.conversation_service import ConversationService
 from services.robinhood_service import RobinhoodService
 from services.torrent_service import TorrentService
 from services.usage_service import UsageService
@@ -145,13 +150,19 @@ def register_configs(descriptors):
     descriptors.add_singleton(
         dependency_type=PodcastConfig,
         factory=lambda p: PodcastConfig.model_validate(
-            p.resolve(Configuration).podcasts)),
+            p.resolve(Configuration).podcasts))
 
     # Register custom Coinbase client config
     descriptors.add_singleton(
         dependency_type=CoinbaseConfig,
         factory=lambda p: CoinbaseConfig.model_validate(
-            p.resolve(Configuration).coinbase)),
+            p.resolve(Configuration).coinbase))
+
+    # Register custom Email config
+    descriptors.add_singleton(
+        dependency_type=EmailConfig,
+        factory=lambda p: EmailConfig.model_validate(
+            p.resolve(Configuration).email))
 
 
 def register_clients(
