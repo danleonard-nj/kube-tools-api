@@ -196,6 +196,45 @@ class Article(BaseModel):
     content: Optional[str] = None
     sector: Optional[str] = None
 
+    def to_prompt_block(self, idx=None):
+        lines = []
+        prefix = f"{idx}. " if idx is not None else ""
+        lines.append(f"{prefix}{self.title}")
+        if self.snippet:
+            lines.append(f"   {self.snippet}")
+        if self.source:
+            lines.append(f"   Source: {self.source}")
+        if self.content:
+            lines.append(f"   Content: {self.content}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def dict_to_prompt_block(article_dict, idx=None):
+        lines = []
+        prefix = f"{idx}. " if idx is not None else ""
+        lines.append(f"{prefix}{article_dict.get('title', '')}")
+        if article_dict.get('sector'):
+            lines.append(f"   Sector: {article_dict.get('sector', '').title()}")
+        if article_dict.get('snippet'):
+            lines.append(f"   {article_dict.get('snippet', '')}")
+        if article_dict.get('source'):
+            lines.append(f"   Source: {article_dict.get('source', '')}")
+        if article_dict.get('content'):
+            lines.append(f"   Content: {article_dict.get('content', '')}")
+        return "\n".join(lines)
+
+
+class SummarySection(BaseModel):
+    title: str
+    snippet: str
+
+
+class MarketResearchSummary(BaseModel):
+    market_conditions: List[SummarySection]
+    stock_news: Dict[str, List[SummarySection]]
+    sector_analysis: List[SummarySection]
+    search_errors: List[str]
+
 
 class MarketResearch(BaseModel):
     market_conditions: List[Article]
@@ -210,3 +249,21 @@ class DebugReport(BaseModel):
     prompts: Dict[str, Any]
     gpt_analysis: str
     sources: Dict[str, Any]
+
+
+class DailyPulseSearchConfig(BaseModel):
+    market_condition_max_results: int
+    stock_news_max_results: int
+    sector_analysis_max_results: int
+
+
+class DailyPulseConfig(BaseModel):
+    search: DailyPulseSearchConfig
+    exclude_sites: List[str]
+    rss_feeds: List[str]
+
+
+class RobinhoodConfig(BaseModel):
+    username: str
+    password: str
+    daily_pulse: DailyPulseConfig

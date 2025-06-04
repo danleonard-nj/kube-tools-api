@@ -6,6 +6,8 @@ from data.sms_inbound_repository import InboundSMSRepository
 from framework.logger import get_logger
 from framework.configuration import Configuration
 
+from models.robinhood_models import RobinhoodConfig
+
 logger = get_logger(__name__)
 
 
@@ -15,8 +17,8 @@ class RobinhoodDataClient:
     def __init__(
         self,
         configuration: Configuration,
-        inbound_sms_repository: InboundSMSRepository = None,
-        cache_client: CacheClientAsync = None
+        cache_client: CacheClientAsync,
+        robinhood_config: RobinhoodConfig
     ):
         """
         Initialize the Robinhood data client
@@ -27,8 +29,9 @@ class RobinhoodDataClient:
             inbound_sms_repository: Repository for retrieving MFA tokens
             cache_client: Optional cache client for caching responses
         """
-        self._username = configuration.robinhood.get('username')
-        self._password = configuration.robinhood.get('password')
+        self._username = robinhood_config.username
+        self._password = robinhood_config.password
+
         # Remove SMS repository from init
         self._cache_client = cache_client
 

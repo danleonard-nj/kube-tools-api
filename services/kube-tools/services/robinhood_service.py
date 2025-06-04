@@ -108,7 +108,6 @@ class RobinhoodService:
             # Summarize market research using MarketResearchProcessor
             summarized_market_research = await self._market_research_processor.summarize_market_research(market_research)
             # Convert to Pydantic MarketResearch
-            summarized_market_research_obj = MarketResearch.parse_obj(summarized_market_research)
             self._prompts = self._market_research_processor.get_prompts()
 
             def get_order_instrument_url(order):
@@ -159,7 +158,7 @@ class RobinhoodService:
 
             # Compile prompt for GPT-4o using PromptGenerator (async version)
             pulse_prompt = await self._prompt_generator.compile_daily_pulse_prompt_with_symbols(
-                portfolio_obj, summarized_market_research_obj, order_symbol_map
+                portfolio_obj, summarized_market_research, order_symbol_map
             )
             self._prompts['pulse_prompt'] = pulse_prompt
 
@@ -178,7 +177,7 @@ class RobinhoodService:
             html_body = self._email_generator.generate_daily_pulse_html_email(
                 analysis=pulse_analysis,
                 portfolio_summary=portfolio_obj,
-                market_research=summarized_market_research_obj
+                market_research=summarized_market_research
             )
             subject = self._email_generator.generate_daily_pulse_subject()
             await self._send_email_sendinblue(
@@ -220,9 +219,9 @@ class RobinhoodService:
                 'success': True,
                 'data': {
                     'analysis': pulse_analysis,
-                    'portfolio_summary': portfolio_obj.dict(),
+                    'portfolio_summary': portfolio_obj.model_dump(),
                     'generated_at': DateTimeUtil.get_iso_date(),
-                    'market_research': summarized_market_research_obj.dict()
+                    'market_research': summarized_market_research.model_dump(),
                 }
             }
 

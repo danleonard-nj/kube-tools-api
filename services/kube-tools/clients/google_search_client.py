@@ -12,6 +12,7 @@ import httpx
 import asyncio
 import tenacity
 from framework.clients.cache_client import CacheClientAsync
+from models.robinhood_models import Article
 
 logger = get_logger(__name__)
 
@@ -35,6 +36,13 @@ class GoogleSearchClient:
         self._api_key = configuration.google_search.get('api_key')
         self._search_engine_id = configuration.google_search.get('search_engine_id')
         self._base_url = 'https://www.googleapis.com/customsearch/v1'
+
+    def _append_exclude_sites_to_query(self, query, exclude_sites):
+        """Append -site: exclusions to the query string for Google Custom Search"""
+        if not exclude_sites:
+            return query
+        exclusion_str = ' '.join(f'-site:{site}' for site in exclude_sites)
+        return f'{query} {exclusion_str}'.strip()
 
     async def search(
         self,
@@ -75,8 +83,10 @@ class GoogleSearchClient:
 
         # Exclude sites from query if provided
         if exclude_sites:
+            logger.info(f"Excluding sites: {exclude_sites}")
             for site in exclude_sites:
                 query += f" -site:{site}"
+        logger.info(f"Final Google query: {query}")
         params['q'] = query  # Ensure the mutated query is sent to Google
 
         logger.info(f'Searching for: {query}')
@@ -120,13 +130,58 @@ class GoogleSearchClient:
             logger.error(f'Error during search: {str(e)}')
             raise GoogleSearchException(query, str(e))
 
+    async def search_market_conditions(
+        self,
+        exclude_sites: Optional[list[str]] = None,
+        max_results=5
+    ) -> list[Article]:
+        """
+        Search for current market conditions and trends
+
+        Returns:
+            List of market analysis articles
+        """
+        logger.info('search_market_conditions called')
+        queries = [
+            "stock market today analysis",
+            "market trends 2025",
+            "economic indicators today"
+        ]
+
+        all_articles = []
+        for query in queries:
+            logger.info(f'Running market conditions query: {query}')
+            try:
+                query = self._append_exclude_sites_to_query(query, exclude_sites)
+                result = await self.search(
+                    query=query,
+                    num_results=max_results,
+                    exclude_sites=exclude_sites
+                )
+                logger.info(f'Google API raw result for query "{query}": {result}')
+                items = result.get('items', [])
+                logger.info(f'Found {len(items)} items for query "{query}"')
+                for item in items:
+                    all_articles.append(Article(
+                        title=item.get('title', ''),
+                        link=item.get('link', ''),
+                        snippet=item.get('snippet', ''),
+                        source=item.get('displayLink', ''),
+                        # query_type is not a field on Article, so skip it
+                    ))
+            except Exception as e:
+                logger.error(f'Error searching market conditions for query "{query}": {str(e)}')
+                continue
+        logger.info(f'search_market_conditions returning {len(all_articles)} articles')
+        return all_articles
+
     async def search_finance_news(
         self,
         stock_symbol: str,
         additional_terms: str = "",
         exclude_sites: Optional[List[str]] = None,
         max_results: int = 10
-    ) -> List[Dict]:
+    ) -> List[Article]:
         """
         Search for financial news about a specific stock
 
@@ -150,13 +205,12 @@ class GoogleSearchClient:
             news_articles = []
 
             for item in items:
-                news_articles.append({
-                    'title': item.get('title', ''),
-                    'link': item.get('link', ''),
-                    'snippet': item.get('snippet', ''),
-                    'source': item.get('displayLink', ''),
-                    'published_date': item.get('pagemap', {}).get('metatags', [{}])[0].get('article:published_time', '')
-                })
+                news_articles.append(Article(
+                    title=item.get('title', ''),
+                    link=item.get('link', ''),
+                    snippet=item.get('snippet', ''),
+                    source=item.get('displayLink', ''),
+                ))
 
             return news_articles
 
@@ -164,53 +218,7 @@ class GoogleSearchClient:
             logger.error(f'Error searching finance news for {stock_symbol}: {str(e)}')
             return []
 
-    async def search_market_conditions(
-        self,
-        exclude_sites: Optional[list[str]] = None,
-        max_search_results=5
-    ) -> list[dict]:
-        """
-        Search for current market conditions and trends
-
-        Returns:
-            List of market analysis articles
-        """
-        logger.info('search_market_conditions called')
-        queries = [
-            "stock market today analysis",
-            "market trends 2025",
-            "economic indicators today"
-        ]
-
-        all_articles = []
-
-        for query in queries:
-            logger.info(f'Running market conditions query: {query}')
-            try:
-                result = await self.search(
-                    query=query,
-                    num_results=max_search_results,
-                    exclude_sites=exclude_sites
-                )
-                logger.info(f'Google API raw result for query "{query}": {result}')
-                items = result.get('items', [])
-                logger.info(f'Found {len(items)} items for query "{query}"')
-                for item in items:
-                    all_articles.append({
-                        'title': item.get('title', ''),
-                        'link': item.get('link', ''),
-                        'snippet': item.get('snippet', ''),
-                        'source': item.get('displayLink', ''),
-                        'query_type': query
-                    })
-            except Exception as e:
-                logger.error(f'Error searching market conditions for query "{query}": {str(e)}')
-                continue
-
-        logger.info(f'search_market_conditions returning {len(all_articles)} articles')
-        return all_articles
-
-    async def search_sector_analysis(self, sector: str, exclude_sites: Optional[List[str]] = None, max_search_results=10) -> List[Dict]:
+    async def search_sector_analysis(self, sector: str, exclude_sites: Optional[List[str]] = None, max_results=10) -> List[Article]:
         """
         Search for sector-specific analysis
 
@@ -223,10 +231,10 @@ class GoogleSearchClient:
         query = f"{sector} sector analysis stocks performance"
 
         try:
+            query = self._append_exclude_sites_to_query(query, exclude_sites)
             result = await self.search(
                 query=query,
-                num_results=max_search_results,
-                site_restrict='marketwatch.com OR seekingalpha.com OR morningstar.com',
+                num_results=max_results,
                 exclude_sites=exclude_sites
             )
 
@@ -234,13 +242,13 @@ class GoogleSearchClient:
             articles = []
 
             for item in items:
-                articles.append({
-                    'title': item.get('title', ''),
-                    'link': item.get('link', ''),
-                    'snippet': item.get('snippet', ''),
-                    'source': item.get('displayLink', ''),
-                    'sector': sector
-                })
+                articles.append(Article(
+                    title=item.get('title', ''),
+                    link=item.get('link', ''),
+                    snippet=item.get('snippet', ''),
+                    source=item.get('displayLink', ''),
+                    sector=sector
+                ))
 
             return articles
 
@@ -334,13 +342,6 @@ class GoogleSearchClient:
                 temperature=0.7
             )
             return response.choices[0].message.content.strip()
-
-    # Deprecated: Use summarize_articles_with_openai instead
-    async def summarize_articles_with_gpt(self, articles: List[Dict], chat_gpt_service) -> str:
-        """
-        DEPRECATED: Use summarize_articles_with_openai instead.
-        """
-        return await self.summarize_articles_with_openai(articles)
 
     async def fetch_article_content(self, url: str) -> Optional[str]:
         """
