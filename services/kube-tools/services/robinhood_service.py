@@ -116,13 +116,11 @@ class RobinhoodService:
                     return order.instrument if isinstance(order.instrument, str) else getattr(order.instrument, 'url', None)
                 return None
 
-            # Prefetch instrument symbols for recent orders
-            recent_orders = portfolio_obj.recent_orders[:5]
+            # Prefetch instrument symbols for recent orders (now 15)
+            recent_orders = portfolio_obj.recent_orders[:15]
             instrument_urls = set()
             for order in recent_orders:
                 url = get_order_instrument_url(order)
-                # if hasattr(order, 'instrument') and order.instrument:
-                #     url = order.instrument if isinstance(order.instrument, str) else getattr(order.instrument, 'url', None)
                 if url:
                     instrument_urls.add(url)
 

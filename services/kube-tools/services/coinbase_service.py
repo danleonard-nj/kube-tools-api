@@ -3,7 +3,7 @@ from clients.coinbase_client import CoinbaseClient
 from framework.configuration import Configuration
 from framework.logger import get_logger
 
-from domain.coinbase import GROUP_BY_AGGS, CoinbaseAccount, CoinbaseBalance
+from models.coinbase_account_models import CoinbaseAccount
 
 logger = get_logger(__name__)
 
@@ -20,44 +20,39 @@ class CoinbaseService:
 
     async def get_exchange_rates(
         self
-    ):
+    ) -> dict[str, float]:
         exchanges = dict()
 
         # TODO: Fetch asynchronously w/ task collection
         for currency in self._currencies:
             # Fetch USD exchange rates for currency
-            rates = await self._coinbase_client.get_exchange_rates(
-                currency=currency)
-
-            usd_exchange = rates.get('USD')
-            logger.info(f'Exchange rates for: {currency}: {usd_exchange}')
-
-            exchanges[currency] = float(usd_exchange)
+            exchanges[currency] = float(await self._coinbase_client.get_usd_exchange_rate(
+                currency=currency))
         return exchanges
 
     async def get_accounts(
         self
-    ) -> list[CoinbaseBalance]:
+    ) -> list[CoinbaseAccount]:
 
         logger.info(f'Getting accounts from coinbase for currencies: {self._currencies}')
 
-        data = await self._coinbase_client.get_accounts()
+        result = self._coinbase_client.get_accounts()
 
-        accounts = [CoinbaseAccount.from_coinbase_api(account)
-                    for account in data.get('data', [])]
+        account_data = result.get('accounts', [])
 
-        results = []
+        accounts: list[CoinbaseAccount] = []
+        for account in account_data:
+            accounts.append(CoinbaseAccount.model_validate(account))
+
+        accounts = [CoinbaseAccount.model_validate(account) for account in account_data if account.get('currency') in self._currencies]
+        results: list[CoinbaseAccount] = []
         exchanges = await self.get_exchange_rates()
 
-        for currency in self._currencies:
-            for account in accounts:
-                if account.currency_code == currency:
-                    account.usd_exchange = exchanges[currency]
-                    results.append(account)
+        for account in accounts:
+            exchange = exchanges.get(account.currency)
+            usd_amount = account.available_balance.parsed_balance * exchange
+            account.usd_exchange = exchange
+            account.usd_amount = usd_amount
+            account.balance = account.available_balance.parsed_balance
 
-        df = pd.DataFrame([x.to_dict() for x in results])
-        df = df[['currency_code', 'currency_name', 'balance', 'usd_exchange', 'usd_amount']]
-        df = df.groupby(['currency_code', 'currency_name']).agg(GROUP_BY_AGGS).reset_index()
-
-        return [CoinbaseBalance.from_dict(balance)
-                for balance in df.to_dict(orient='records')]
+        return accounts

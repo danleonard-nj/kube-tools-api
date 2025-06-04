@@ -181,9 +181,9 @@ CURRENT HOLDINGS:
                 'percentage_change': data.percentage or data.percent_change or '0'
             })
 
-        # Format recent orders
+        # Format recent orders (now 15)
         recent_activity = []
-        for order in recent_orders[:5]:  # Top 5 recent orders
+        for order in recent_orders[:15]:
             symbol = None
             instrument_url = None
             if hasattr(order, 'symbol') and order.symbol:

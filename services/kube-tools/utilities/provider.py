@@ -1,6 +1,6 @@
 from clients.azure_gateway_client import AzureGatewayClient
 from clients.chat_gpt_service_client import ChatGptServiceClient
-from clients.coinbase_client import CoinbaseClient
+from clients.coinbase_client import CoinbaseClient, CoinbaseRESTClient
 from clients.email_gateway_client import EmailGatewayClient
 from clients.event_client import EventClient
 from clients.gmail_client import GmailClient
@@ -50,6 +50,7 @@ from httpx import AsyncClient
 from motor.motor_asyncio import AsyncIOMotorClient
 from models.podcast_config import PodcastConfig
 from models.robinhood_models import RobinhoodConfig
+from models.coinbase_config import CoinbaseConfig
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
 from services.api_event_service import ApiEventHistoryService
@@ -146,6 +147,12 @@ def register_configs(descriptors):
         factory=lambda p: PodcastConfig.model_validate(
             p.resolve(Configuration).podcasts)),
 
+    # Register custom Coinbase client config
+    descriptors.add_singleton(
+        dependency_type=CoinbaseConfig,
+        factory=lambda p: CoinbaseConfig.model_validate(
+            p.resolve(Configuration).coinbase)),
+
 
 def register_clients(
     descriptors: ServiceCollection
@@ -170,6 +177,7 @@ def register_clients(
     descriptors.add_singleton(TorrentClient)
     descriptors.add_singleton(GoogleAuthClient)
     descriptors.add_singleton(CoinbaseClient)
+    descriptors.add_singleton(CoinbaseRESTClient)
 
 
 def register_repositories(

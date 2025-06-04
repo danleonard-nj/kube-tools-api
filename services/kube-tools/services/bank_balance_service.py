@@ -192,46 +192,54 @@ class BalanceSyncService:
 
         return balance
 
-    async def run_sync(
-        self
-    ):
+    async def run_sync(self) -> list:
+        """
+        Entry point for running a full sync of all balances.
+        """
         return await self.sync_balances()
 
-    async def sync_balances(
-        self,
-        run_async: bool = True
-    ):
-        logger.info(f'Running async: {run_async}')
-
+    async def sync_balances(self, run_async: bool = True) -> list:
+        """
+        Sync all Plaid and Coinbase accounts, either asynchronously or sequentially.
+        Returns a list of updated balances.
+        """
+        logger.info(f'Starting sync_balances (run_async={run_async})')
+        # Check which syncs are enabled
         sync_plaid_enabled, coinbase_enabled = await TaskCollection(
             self._feature_client.is_enabled(feature_key=Feature.PlaidSync),
-            self._feature_client.is_enabled(feature_key=Feature.CoinbaseSync)).run()
+            self._feature_client.is_enabled(feature_key=Feature.CoinbaseSync)
+        ).run()
 
         results = []
+        # Sync Plaid accounts if enabled
+        if sync_plaid_enabled:
+            plaid_results = await self._sync_accounts(
+                accounts=self._plaid_accounts,
+                sync_func=self.sync_plaid_account,
+                run_async=run_async,
+                label='Plaid'
+            )
+            results.extend(plaid_results)
+        # Sync Coinbase accounts if enabled
+        if coinbase_enabled:
+            coinbase_results = await self.sync_coinbase_accounts()
+            results.extend(coinbase_results)
+        logger.info(f'Sync complete: {len(results)} accounts updated')
+        return [x for x in results if x is not None]
 
+    async def _sync_accounts(self, accounts, sync_func, run_async: bool, label: str) -> list:
+        """
+        Helper to sync a list of accounts using the provided sync function.
+        Supports both async and sequential execution.
+        """
+        logger.info(f'Syncing {label} accounts (run_async={run_async})')
         if run_async:
-            # Sync all plaid accounts asynchronously
-            if sync_plaid_enabled:
-                logger.info('Syncing plaid accounts async')
-                results.extend(await TaskCollection(*[
-                    self.sync_plaid_account(account)
-                    for account in self._plaid_accounts]).run())
-
-            # Sync all coinbase accounts asynchronously
-            if coinbase_enabled:
-                logger.info('Syncing coinbase accounts async')
-                results.extend(await self.sync_coinbase_accounts())
+            return await TaskCollection(*[sync_func(account) for account in accounts]).run()
         else:
-            if sync_plaid_enabled:
-                logger.info('Syncing plaid accounts sequentially')
-                for account in self._plaid_accounts:
-                    results.append(await self.sync_plaid_account(account))
-
-            if coinbase_enabled:
-                logger.info('Syncing coinbase accounts sequentially')
-                results.extend(await self.sync_coinbase_accounts())
-
-        return results
+            results = []
+            for account in accounts:
+                results.append(await sync_func(account))
+            return results
 
     async def sync_plaid_account(
         self,
@@ -245,9 +253,10 @@ class BalanceSyncService:
         # Get the latest Plaid balance for the account
         latest_balance = await self.get_balance(
             bank_key=config.bank_key)
-            # sync_type=SyncType.Plaid)
+        # sync_type=SyncType.Plaid)
 
-        logger.info(f'Latest Plaid balance: {latest_balance.bank_key}: {latest_balance.timestamp}')
+        if latest_balance:
+            logger.info(f'Latest Plaid balance: {latest_balance.bank_key}: {latest_balance.timestamp}')
 
         delta = (
             DateTimeUtil.timestamp() - latest_balance.timestamp
@@ -291,7 +300,7 @@ class BalanceSyncService:
             # Get the Coinbase account for the currency code
             account = first(
                 coinbase_accounts,
-                lambda x: x.currency_code == config.currency_code)
+                lambda x: x.currency == config.currency_code)
 
             # No Coinbase account matching the currency code provided in the configuration
             if account is None:

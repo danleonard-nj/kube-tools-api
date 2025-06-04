@@ -94,11 +94,14 @@ class EmailGenerator:
             <div class='section'>
                 <h2><span class='icon-header'>🔄</span>Recent Trading Activity</h2>
                 <table class='activity-table'>
-                    <tr><th>Side</th><th>Symbol</th><th>Quantity</th><th>Price</th><th>State</th><th>Date</th></tr>
+                    <tr><th>Side</th><th>Symbol</th><th>Quantity</th><th>Price</th><th>State</th><th>Date</th><th>Time of Day</th></tr>
         """
-        for order in recent_orders[:5]:
+        for order in recent_orders[:15]:
             symbol = getattr(order, 'symbol', 'Unknown')
-            html += f"<tr><td>{getattr(order, 'side', '').capitalize()}</td><td>{symbol}</td><td>{order.quantity}</td><td>{format_currency(order.price)}</td><td>{order.state}</td><td>{str(order.created_at)[:10]}</td></tr>"
+            created_at = str(order.created_at) if order.created_at else ''
+            date_str = created_at[:10]
+            time_str = created_at[11:19] if len(created_at) > 10 else ''
+            html += f"<tr><td>{getattr(order, 'side', '').capitalize()}</td><td>{symbol}</td><td>{order.quantity}</td><td>{format_currency(order.price)}</td><td>{order.state}</td><td>{date_str}</td><td>{time_str}</td></tr>"
         html += """
                 </table>
             </div>
