@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod
 from clients.google_search_client import GoogleSearchClient
 from clients.gpt_client import GPTClient
 from framework.logger import get_logger
+from models.robinhood_models import Article, MarketResearch, RobinhoodConfig, SummarySection, MarketResearchSummary
 from models.robinhood_models import Article, MarketResearch, RobinhoodConfig, SummarySection, MarketResearchSummary
 from framework.configuration import Configuration
 
