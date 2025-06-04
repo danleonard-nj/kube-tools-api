@@ -24,3 +24,4 @@ feedparser
 readability-lxml
 robin_stocks
 markdown
+sib_api_v3_sdk
