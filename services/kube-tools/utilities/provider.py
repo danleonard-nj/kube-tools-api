@@ -38,7 +38,6 @@ from data.conversation_repository import ConversationRepository
 from data.sms_inbound_repository import InboundSMSRepository
 from data.weather_repository import WeatherRepository
 from domain.auth import AdRole, AuthPolicy
-from framework.abstractions.abstract_request import RequestContextProvider
 from framework.auth.azure import AzureAd
 from framework.auth.configuration import AzureAdConfiguration
 from framework.caching.memory_cache import MemoryCache
@@ -49,7 +48,7 @@ from framework.di.service_collection import ServiceCollection
 from framework.di.static_provider import ProviderBase
 from httpx import AsyncClient
 from motor.motor_asyncio import AsyncIOMotorClient
-from quart import Quart
+from models.robinhood_models import RobinhoodConfig
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
 from services.api_event_service import ApiEventHistoryService
@@ -67,7 +66,7 @@ from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
 from services.google_drive_service import GoogleDriveService
 from services.location_history_service import LocationHistoryService
-from services.market_research_processor import MarketResearchProcessor
+from services.market_research_processor import MarketConditionsProcessor, MarketResearchProcessor, RssNewsProcessor, SectorAnalysisProcessor, StockNewsProcessor
 from services.mongo_backup_service import MongoBackupService
 from services.podcast_service import PodcastService
 from services.prompt_generator import PromptGenerator
@@ -215,7 +214,29 @@ def register_services(
     descriptors.add_singleton(ChatGptService)
     descriptors.add_singleton(ConversationService)
     descriptors.add_singleton(CoinbaseService)
+
+
+def register_robinhood_services(
+    descriptors: ServiceCollection
+):
     descriptors.add_singleton(RobinhoodService)
+
+    descriptors.add_singleton(RobinhoodDataClient)
+    descriptors.add_singleton(GPTClient)
+
+    descriptors.add_singleton(PromptGenerator)
+    descriptors.add_singleton(EmailGenerator)
+
+    descriptors.add_singleton(MarketResearchProcessor)
+    descriptors.add_singleton(MarketConditionsProcessor)
+    descriptors.add_singleton(StockNewsProcessor)
+    descriptors.add_singleton(SectorAnalysisProcessor)
+    descriptors.add_singleton(RssNewsProcessor)
+
+    descriptors.add_singleton(
+        dependency_type=RobinhoodConfig,
+        factory=lambda p: RobinhoodConfig.model_validate(
+            p.resolve(Configuration).robinhood))
 
 
 class ContainerProvider(ProviderBase):
@@ -239,10 +260,7 @@ class ContainerProvider(ProviderBase):
         register_services(
             descriptors=descriptors)
 
-        descriptors.add_singleton(RobinhoodDataClient)
-        descriptors.add_singleton(MarketResearchProcessor)
-        descriptors.add_singleton(GPTClient)
-        descriptors.add_singleton(PromptGenerator)
-        descriptors.add_singleton(EmailGenerator)
+        register_robinhood_services(
+            descriptors=descriptors)
 
         return descriptors
