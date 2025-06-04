@@ -107,6 +107,6 @@ class GoogleAuthService:
             logger.info(f"[GoogleAuthService] Using valid token from DB for '{client_name}' (first 8: {str(creds.token)[:8]})")
 
         # Cache the token for 50 minutes (10 min before expiry)
-        await self._cache.set_cache(key=cache_key, value=creds.token, ttl=3000)
+        await self._cache.set_cache(key=cache_key, value=creds.token, ttl=60)
 
         return creds.token

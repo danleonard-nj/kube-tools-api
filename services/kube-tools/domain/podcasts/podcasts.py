@@ -6,6 +6,8 @@ from framework.logger import get_logger
 from framework.serialization import Serializable
 from framework.validators.nulls import none_or_whitespace
 
+from models.podcast_config import PodcastFeedConfig
+
 TITLE_FILENAME_REGEX = '[^A-Za-z0-9 ]+'
 
 logger = get_logger(__name__)
@@ -67,29 +69,34 @@ class Episode(Serializable):
         self,
         show_title
     ) -> str:
+        # Remove 'Private_to_Daniel_Leonard' (with or without underscores) from show and episode titles
         show = re.sub(TITLE_FILENAME_REGEX, '', show_title)
         name = re.sub(TITLE_FILENAME_REGEX, '', self.episode_title)
+        show = show.replace('Private to Daniel Leonard', '').strip()
 
-        return (
+        val = (
             show.replace(' ', '_')
             + '_'
             + name.replace(' ', '_')
             + '.mp3'
         )
 
+        return val
+
 
 class Feed:
     def __init__(
         self,
-        data
+        data: PodcastFeedConfig
     ):
-        self.name = data.get('name')
-        self.feed = data.get('feed')
-        self.type = data.get('type')
+        self.name = data.name
+        self.feed = data.feed
+        self.type = data.type
+        self.folder_name = data.folder_name
 
 
 class Show(Serializable):
-    @ property
+    @property
     def episode_ids(
         self
     ) -> List[str]:
@@ -112,7 +119,7 @@ class Show(Serializable):
         self.episodes = episodes
         self.modified_date = modified_date
 
-    @ classmethod
+    @classmethod
     def from_entity(
         cls,
         entity: Dict
@@ -124,7 +131,7 @@ class Show(Serializable):
             episodes=cls.get_entity_episodes(
                 episodes=entity.get('episodes')))
 
-    @ classmethod
+    @classmethod
     def get_entity_episodes(
         cls,
         episodes

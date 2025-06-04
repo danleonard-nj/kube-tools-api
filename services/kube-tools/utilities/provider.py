@@ -48,6 +48,7 @@ from framework.di.service_collection import ServiceCollection
 from framework.di.static_provider import ProviderBase
 from httpx import AsyncClient
 from motor.motor_asyncio import AsyncIOMotorClient
+from models.podcast_config import PodcastConfig
 from models.robinhood_models import RobinhoodConfig
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
@@ -136,6 +137,14 @@ def register_factories(
     descriptors.add_singleton(
         dependency_type=AsyncIOMotorClient,
         factory=configure_mongo_client)
+
+
+def register_configs(descriptors):
+    # Register custom podcast service configuration
+    descriptors.add_singleton(
+        dependency_type=PodcastConfig,
+        factory=lambda p: PodcastConfig.model_validate(
+            p.resolve(Configuration).podcasts)),
 
 
 def register_clients(
@@ -261,6 +270,9 @@ class ContainerProvider(ProviderBase):
             descriptors=descriptors)
 
         register_robinhood_services(
+            descriptors=descriptors)
+
+        register_configs(
             descriptors=descriptors)
 
         return descriptors

@@ -22,12 +22,14 @@ from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
 from framework.validators.nulls import none_or_whitespace
 from httpx import AsyncClient, Response
+from models.podcast_config import PodcastConfig
 from services.event_service import EventService
 from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
 
 UPLOAD_CHUNK_SIZE = 1024 * 1024 * 4  # 8MB
+MAX_EPISODE_DOWNLOADS = 10
 
 
 class PodcastServiceException(Exception):
@@ -43,11 +45,12 @@ class PodcastService:
         event_service: EventService,
         feature_client: FeatureClientAsync,
         configuration: Configuration,
-        http_client: AsyncClient
+        http_client: AsyncClient,
+        podcast_config: PodcastConfig
     ):
         self._configuration = configuration
-        self._random_delay = self._configuration.podcasts.get(
-            'random_delay')
+        self._random_delay = podcast_config.random_delay
+        self._rss_feeds = podcast_config.feeds
 
         self._podcast_repository = podcast_repository
         self._google_drive_client = google_drive_client
@@ -79,11 +82,12 @@ class PodcastService:
         feeds = self.get_feeds()
         results = list()
 
-        for feed in feeds:
+        for feed, folder_name in feeds:
             logger.info(f'Handling feed: {feed.name}')
             try:
                 res = await self.handle_feed(
-                    feed=feed)
+                    feed=feed,
+                    folder_name=folder_name)
 
                 # Only return shows with new eps
                 if res:
@@ -97,7 +101,8 @@ class PodcastService:
 
     async def handle_feed(
         self,
-        feed: Feed
+        feed: Feed,
+        folder_name: str | None = None
     ):
         ArgumentNullException.if_none(feed, 'feed')
 
@@ -105,7 +110,8 @@ class PodcastService:
 
         # Get episodes to download and show model
         downloads, show = await self._sync_feed(
-            rss_feed=feed)
+            rss_feed=feed,
+            folder_name=folder_name)
 
         if not any(downloads):
             logger.info(f'No new episodes for show')
@@ -127,20 +133,16 @@ class PodcastService:
 
     def get_feeds(
         self
-    ) -> List[Feed]:
+    ) -> List[tuple[Feed, str | None]]:
         '''
-        Get all configured RSS feeds
+        Get all configured RSS feeds, returning (Feed, folder_name) tuples
         '''
-
-        configuration = self._configuration.podcasts
-
-        if configuration is None:
-            raise PodcastConfigurationException(
-                'No podcast configuration found')
-
-        return [
-            Feed(x) for x in configuration.get('feeds')
-        ]
+        feeds = []
+        for x in self._rss_feeds:
+            feed = Feed(x)
+            folder_name = x.folder_name
+            feeds.append((feed, folder_name))
+        return feeds
 
     def _get_results_table(
             self,
@@ -193,9 +195,9 @@ class PodcastService:
             subject='Podcast Sync',
             data=self._get_results_table(episodes))
 
-        await self._event_service.dispatch_email_event(
-            endpoint=endpoint,
-            message=email_request.to_dict())
+        # await self._event_service.dispatch_email_event(
+        #     endpoint=endpoint,
+        #     message=email_request.to_dict())
 
     async def _get_feed_request(
         self,
@@ -281,7 +283,8 @@ class PodcastService:
 
     async def _sync_feed(
         self,
-        rss_feed: Feed
+        rss_feed: Feed,
+        folder_name: str | None = None
     ) -> Tuple[List[DownloadedEpisode], Show]:
 
         ArgumentNullException.if_none(rss_feed, 'rss_feed')
@@ -340,50 +343,115 @@ class PodcastService:
         logger.info(f'Entity episode count: {len(entity.episodes)}')
 
         # Use a set for fast episode existence checks (DSA improvement)
-        existing_episode_ids = set(ep.episode_id for ep in entity.episodes)
+        # Start with the DB entity's episodes list
+        db_episodes = list(entity.episodes)
+        db_episode_ids = set(ep.episode_id for ep in db_episodes)
+        to_add = []  # Episodes to add to DB (uploaded or found in Drive)
         download_queue = []
-        episodes_synced = 0
-        episodes_to_add = []  # Collect new episodes to add after loop
-        # Loop until no new episodes remain or sync cap is reached
-        while episodes_synced < 5:
-            new_episodes = [ep for ep in show.episodes if ep.episode_id not in existing_episode_ids]
-            if not new_episodes:
-                break
-            episode = new_episodes[0]
-            logger.info(f'Save episode: {episode.episode_title}')
+        if folder_name:
+            drive_folder_id = await self._resolve_drive_folder_id(folder_name)
+        else:
+            drive_folder_id = GoogleDriveDirectory.PodcastDirectoryId
+
+        # Find up to MAX_EPISODE_DOWNLOADS new episodes to process
+        new_episodes = [ep for ep in show.episodes if ep.episode_id not in db_episode_ids][:MAX_EPISODE_DOWNLOADS]
+        if not new_episodes:
+            return ([], show)
+
+        for episode in new_episodes:
             downloaded_episode = DownloadedEpisode(episode=episode, show=show)
             exists = await self._google_drive_client.file_exists(
-                directory_id=GoogleDriveDirectory.PodcastDirectoryId,
+                directory_id=drive_folder_id,
                 filename=downloaded_episode.get_filename())
             if exists:
-                logger.info(f'Episode already exists: {downloaded_episode.get_filename()}')
-                existing_episode_ids.add(episode.episode_id)
-                continue
-            await self.upload_file_async(downloaded_episode=downloaded_episode)
-            episodes_to_add.append(episode)
-            download_queue.append(downloaded_episode)
-            episodes_synced += 1
-            existing_episode_ids.add(episode.episode_id)
-        if episodes_to_add:
-            show.episodes.extend(episodes_to_add)
-            show.modified_date = DateTimeUtil.timestamp()
-            await self._podcast_repository.update(
-                selector=show.get_selector(),
-                values=show.to_dict())
+                to_add.append(episode)
+            else:
+                try:
+                    await self.upload_file_async(downloaded_episode=downloaded_episode, drive_folder_path=folder_name)
+                    to_add.append(episode)
+                    download_queue.append(downloaded_episode)
+                except Exception as ex:
+                    logger.error(f'Upload failed for episode: {episode.episode_title} - {ex}')
+
+        # Deduplicate and update DB ONCE
+        all_episodes = db_episodes + [ep for ep in to_add if ep.episode_id not in db_episode_ids]
+        show.episodes = all_episodes
+        show.modified_date = DateTimeUtil.timestamp()
+        await self._podcast_repository.update(
+            selector=show.get_selector(),
+            values=show.to_dict())
+
         return (download_queue, show)
+
+    async def _resolve_drive_folder_id(self, folder_path: str) -> str:
+        """
+        Given a folder path like 'Podcasts/CBB', resolve and create (if needed) the folder structure in Google Drive and return the final folder's ID.
+        """
+        if not folder_path or folder_path.strip() == "":
+            return GoogleDriveDirectory.PodcastDirectoryId
+
+        # Split path and start from root Podcasts folder
+        parts = folder_path.strip("/\\").split("/")
+        parent_id = GoogleDriveDirectory.PodcastDirectoryId
+        for part in parts:
+            # Check if folder exists under parent_id
+            headers = await self._google_drive_client._get_auth_headers()
+            query = {
+                'q': f"'{parent_id}' in parents and name = '{part}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                'fields': 'files(id, name)',
+                'pageSize': 1
+            }
+            resp = await self._google_drive_client._http_client.get(
+                "https://www.googleapis.com/drive/v3/files",
+                headers=headers,
+                params=query
+            )
+            if resp.status_code != 200:
+                logger.error(f"Failed to check existence of folder '{part}': {resp.status_code} {resp.text}")
+                raise PodcastServiceException(f"Failed to check existence of folder '{part}': {resp.status_code} {resp.text}")
+            files = resp.json().get('files', [])
+            if files:
+                parent_id = files[0]['id']
+            else:
+                # Create the folder
+                folder_metadata = {
+                    'name': part,
+                    'mimeType': 'application/vnd.google-apps.folder',
+                    'parents': [parent_id]
+                }
+                create_resp = await self._google_drive_client._http_client.post(
+                    "https://www.googleapis.com/drive/v3/files",
+                    headers=headers,
+                    json=folder_metadata
+                )
+                if create_resp.status_code not in [200, 201]:
+                    logger.error(f"Failed to create folder '{part}': {create_resp.status_code} {create_resp.text}")
+                    raise PodcastServiceException(f"Failed to create folder '{part}': {create_resp.status_code} {create_resp.text}")
+                create_json = create_resp.json()
+                if 'id' not in create_json:
+                    logger.error(f"No 'id' in folder creation response for '{part}': {create_json}")
+                    raise PodcastServiceException(f"No 'id' in folder creation response for '{part}': {create_json}")
+                parent_id = create_json['id']
+        return parent_id
 
     async def upload_file_async(
         self,
         downloaded_episode: DownloadedEpisode,
+        drive_folder_path: str = None
     ) -> None:
         '''
         Upload podcast audio to Google Drive
         '''
         ArgumentNullException.if_none(downloaded_episode, 'episode')
 
+        # Use the provided drive_folder_path if given, else default to root
+        if drive_folder_path:
+            parent_id = await self._resolve_drive_folder_id(drive_folder_path)
+        else:
+            parent_id = GoogleDriveDirectory.PodcastDirectoryId
         file_metadata = GoogleDriveUploadRequest(
             name=downloaded_episode.get_filename(),
-            parents=[GoogleDriveDirectory.PodcastDirectoryId])
+            parents=[parent_id])
 
         logger.info(f'Upload metadata: {file_metadata.to_dict()}')
 
@@ -434,7 +502,7 @@ class PodcastService:
 
         if not isinstance(session_url, str) or none_or_whitespace(session_url):
             logger.error(f'Failed to create valid session URL after all retries')
-            raise PodcastServiceException('Failed to create a valid resumable upload session URL')
+            raise PodcastServiceException('Failed to create a valid resumable upload session')
         try:
             file_id = await self._upload_chunks(session_url, audio_bytes, downloaded_episode.size)
         except Exception as ex:
