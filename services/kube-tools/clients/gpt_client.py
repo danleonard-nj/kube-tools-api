@@ -1,12 +1,17 @@
 import hashlib
-import logging
 import openai
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 
+
 from framework.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def md5(text: str) -> str:
+    """Generate an MD5 hash for the given text."""
+    return hashlib.md5(text.encode('utf-8')).hexdigest()
 
 
 class GPTClient:
@@ -25,6 +30,8 @@ class GPTClient:
         self._cache_client = cache_client
         self._client = openai.AsyncOpenAI(api_key=self._api_key)
 
+        self.count = 0
+
     async def generate_completion(self, prompt: str, model: str = "gpt-4o-mini",
                                   temperature: float = 0.7, use_cache: bool = True,
                                   cache_ttl: int = 3600):
@@ -36,11 +43,17 @@ class GPTClient:
             model: The model to use (default: gpt-3.5-turbo)
             temperature: Temperature parameter (default: 0.7)
             use_cache: Whether to use caching (default: True)
-            cache_ttl: Time to live for cached responses in seconds (default: 1 hour)
-
-        Returns:
+            cache_ttl: Time to live for cached responses in seconds (default: 1 hour)        Returns:
             The generated text
         """
+
+        _hash = md5(prompt)
+
+        logger.info(f'##: P:{_hash}:\n{prompt[:25]}...\n')
+
+        with open(f'./prompts/prompt_{_hash}.txt', 'w', encoding='utf-8') as f:
+            f.write(prompt)
+
         # Check cache if available and enabled
         if use_cache and self._cache_client:
             cached_response = await self._get_cached_response(prompt, model)
@@ -49,7 +62,7 @@ class GPTClient:
                 return cached_response
 
         # Generate new response
-        logger.info(f"Generating new response using {model}")
+        logger.info(f"Generating new response using {model}: {prompt[:25]}...")
         try:
             response = await self._client.chat.completions.create(
                 model=model,
@@ -61,6 +74,10 @@ class GPTClient:
             # Cache the response if caching is enabled
             if use_cache and self._cache_client:
                 await self._cache_response(prompt, content, model, cache_ttl)
+
+            with open(f'./prompts/response_{md5(prompt)}.txt', 'w', encoding='utf-8') as f:
+                f.write(content)
+            self.count += 1
 
             return content
         except Exception as e:

@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 class EmailGenerator:
     """Class for generating HTML emails for various reports"""
 
-    def generate_daily_pulse_html_email(self, analysis, portfolio_summary: PortfolioData, market_research: MarketResearch):
+    def generate_daily_pulse_html_email(self, analysis, portfolio_summary: PortfolioData, market_research: MarketResearch, trade_performance=None, trade_outlook=None):
         """
         Generate a beautiful HTML email for the daily pulse report
 
@@ -47,9 +47,9 @@ class EmailGenerator:
             h1 {{ color: #2a5298; }}
             h2 {{ color: #1e3c72; border-bottom: 1px solid #e0e0e0; padding-bottom: 4px; }}
             .section {{ margin-bottom: 32px; }}
-            .holdings-table, .activity-table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
-            .holdings-table th, .holdings-table td, .activity-table th, .activity-table td {{ border: 1px solid #e0e0e0; padding: 8px; text-align: left; }}
-            .holdings-table th, .activity-table th {{ background: #f0f4fa; }}
+            .holdings-table, .activity-table, .trade-performance-table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+            .holdings-table th, .holdings-table td, .activity-table th, .activity-table td, .trade-performance-table th, .trade-performance-table td {{ border: 1px solid #e0e0e0; padding: 8px; text-align: left; }}
+            .holdings-table th, .activity-table th, .trade-performance-table th {{ background: #f0f4fa; }}
             .positive {{ color: #2e8b57; }}
             .negative {{ color: #c0392b; }}
             .market-section {{ background: #f6f8fc; border-radius: 8px; padding: 16px; margin-top: 10px; }}
@@ -72,29 +72,9 @@ class EmailGenerator:
             </div>
             <div class='divider'></div>
             <div class='section'>
-                <h2><span class='icon-header'>📊</span>Current Holdings</h2>
-                <table class='holdings-table'>
-                    <tr>
-                        <th>Symbol</th><th>Quantity</th><th>Avg Buy Price</th><th>Current Price</th><th>Total Return</th><th>% Change</th>
-                    </tr>
-        """
-        for symbol, data in holdings.items():
-            pct = getattr(data, 'percentage', '0')
-            try:
-                pct_val = float(pct)
-                pct_class = 'positive' if pct_val >= 0 else 'negative'
-                pct_str = f"<span class='{pct_class}'>{pct_val:.2f}%</span>"
-            except Exception:
-                pct_str = pct
-            html += f"<tr><td>{symbol}</td><td>{data.quantity}</td><td>{format_currency(data.average_buy_price)}</td><td>{format_currency(data.price)}</td><td>{format_currency(getattr(data, 'total_return', 0))}</td><td>{pct_str}</td></tr>"
-        html += """
-                </table>
-            </div>
-            <div class='divider'></div>
-            <div class='section'>
-                <h2><span class='icon-header'>🔄</span>Recent Trading Activity</h2>
+                <h2><span class='icon-header'>📊</span>Trading Activity</h2>
                 <table class='activity-table'>
-                    <tr><th>Side</th><th>Symbol</th><th>Quantity</th><th>Price</th><th>State</th><th>Date</th><th>Time of Day</th></tr>
+                    <tr><th>Side</th><th>Symbol</th><th>Quantity</th><th>Price</th><th>Status</th><th>Date</th><th>Time</th></tr>
         """
         for order in recent_orders[:15]:
             symbol = getattr(order, 'symbol', 'Unknown')
@@ -102,6 +82,38 @@ class EmailGenerator:
             date_str = created_at[:10]
             time_str = created_at[11:19] if len(created_at) > 10 else ''
             html += f"<tr><td>{getattr(order, 'side', '').capitalize()}</td><td>{symbol}</td><td>{order.quantity}</td><td>{format_currency(order.price)}</td><td>{order.state}</td><td>{date_str}</td><td>{time_str}</td></tr>"
+        html += """
+                </table>
+            </div>
+            <div class='divider'></div>
+            <div class='section'>
+                <h2><span class='icon-header'>🔎</span>Recent Trade Performance & Outlook</h2>
+                <table class='trade-performance-table'>
+                    <tr><th>Side</th><th>Symbol</th><th>Trade Price</th><th>Current Price</th><th>Result</th><th>Outlook</th></tr>
+        """
+        if trade_performance:
+            for row in trade_performance:
+                # Defensive: use .get and fallback to '-' if missing
+                side = row.get('side', '-')
+                symbol = row.get('symbol', '-')
+                trade_price = row.get('trade_price')
+                current_price = row.get('current_price')
+                gain = row.get('gain')
+                pct = row.get('pct')
+                result_status = row.get('result_status')
+                outlook = row.get('outlook', '')
+                # Format result string as HTML
+                if result_status == 'up':
+                    result_str = f"<span class='positive'>+{gain:.2f} ({pct:.2f}%)</span>"
+                elif result_status == 'down':
+                    result_str = f"<span class='negative'>{gain:.2f} ({pct:.2f}%)</span>"
+                elif result_status == 'even':
+                    result_str = f"<span style='color:#888;'>0.00 (0.00%)</span>"
+                else:
+                    result_str = "-"
+                html += f"<tr><td>{side}</td><td>{symbol}</td><td>{format_currency(trade_price) if trade_price is not None else '-'}" \
+                        f"</td><td>{format_currency(current_price) if current_price is not None else '-'}" \
+                        f"</td><td>{result_str}</td><td style='font-size:13px;color:#333;'>{outlook}</td></tr>"
         html += """
                 </table>
             </div>
@@ -122,10 +134,12 @@ class EmailGenerator:
                     html += f"<li><b>{article.title}:</b> {article.snippet}</li>"
                 html += "</ul>"
         if market_research.sector_analysis:
-            html += f"<b>Sector Analysis:</b><ul>"
+            html += f"<b>Sector Analysis:</b><div style='margin-top: 10px;'>"
             for article in market_research.sector_analysis:
-                html += f"<li><b>{article.title}:</b> {article.snippet}</li>"
-            html += "</ul>"
+                # Convert markdown to HTML for proper sector formatting
+                formatted_snippet = str(markdown.markdown(article.snippet)) if article.snippet else ""
+                html += f"<div>{formatted_snippet}</div>"
+            html += "</div>"
         if market_research.search_errors:
             html += f"<b>Note:</b> {'; '.join(market_research.search_errors)}<br>"
         html += f"""

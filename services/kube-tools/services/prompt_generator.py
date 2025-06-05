@@ -5,6 +5,24 @@ logger = get_logger(__name__)
 
 
 class PromptGenerator:
+    def __init__(
+        self
+    ):
+        self._count = 0
+
+    def _passthrough_save_prompt(self, prompt: str) -> str:
+        """
+        Save the prompt to a file or database for future reference.
+        This is a placeholder for actual implementation.
+        # """
+        # # Here you would implement the logic to save the prompt
+        # # For now, we just log it
+        # logger.info(f"Saving prompt: {prompt}")
+        # with open(f'./prompts/prompt_{self._count}.txt', 'w') as f:
+        #     f.write(prompt)
+        # self._count += 1
+        return prompt
+
     """Class for generating prompts for GPT models"""
 
     def compile_daily_pulse_prompt(self, portfolio_data: PortfolioData, summarized_market_research: MarketResearch = None) -> str:
@@ -132,7 +150,7 @@ CURRENT HOLDINGS:
 \nMake the analysis actionable, specific, and tailored to this portfolio's current composition. Include reasoning for all recommendations and consider both technical and fundamental analysis perspectives. Format the response in clear sections with bullet points, icons, and short paragraphs for easy reading.
 \nInclude a closing section with key takeaways and a positive, motivational note.\n\nThe report should look like a premium financial newsletter!\n"""
 
-        return prompt
+        return self._passthrough_save_prompt(prompt)
 
     async def compile_daily_pulse_prompt_with_symbols(
             self, portfolio_data: PortfolioData,
@@ -263,4 +281,47 @@ CURRENT HOLDINGS:
 \nMake the analysis actionable, specific, and tailored to this portfolio's current composition. Include reasoning for all recommendations and consider both technical and fundamental analysis perspectives. Format the response in clear sections with bullet points, icons, and short paragraphs for easy reading.
 \nInclude a closing section with key takeaways and a positive, motivational note.\n\nThe report should look like a premium financial newsletter!\n"""
 
-        return prompt
+        return self._passthrough_save_prompt(prompt)
+
+    def generate_trade_outlook_prompt(self, trade: dict, news_summary: str = None, sector_summary: str = None) -> str:
+        """
+        Generate a prompt for individual trade outlook analysis
+        """
+        pct_str = f"{trade['pct']:.2f}%" if trade['pct'] is not None else "N/A"
+
+        trade_prompt = (
+            f"Trade details: Side: {trade['side']}, Symbol: {trade['symbol']}, Quantity: {trade['quantity']}, "
+            f"Trade Price: {trade['trade_price']}, Current Price: {trade['current_price']}, "
+            f"Gain: {trade['gain']}, Percent: {pct_str}. "
+        )
+
+        if news_summary:
+            trade_prompt += f"\nRecent news for {trade['symbol']}: {news_summary}\n"
+
+        if sector_summary:
+            trade_prompt += f"\nSector context: {sector_summary}\n"
+
+        trade_prompt += "Write a short, 1 sentence outlook or opinion for this trade."
+
+        return self._passthrough_save_prompt(trade_prompt)
+
+    def generate_trade_outlook_summary_prompt(self, trade_rows: list, trade_stats: dict) -> str:
+        """
+        Generate a prompt for overall trade performance summary
+
+        Args:
+            trade_rows: List of trade data dictionaries
+            trade_stats: Statistics dictionary with keys like 'total_gain', 'total_loss', etc.
+
+        Returns:
+            Formatted prompt string for trade summary
+        """
+        trade_outlook_prompt = (
+            f"Here is a table of recent trades (side, symbol, quantity, price, gain/loss):\n"
+            f"{trade_rows}\n"
+            f"Total gain: {trade_stats['total_gain']:.2f}, Total loss: {trade_stats['total_loss']:.2f}, "
+            f"Wins: {trade_stats['win_count']}, Losses: {trade_stats['loss_count']}. "
+            f"Write a short, natural language summary and outlook for these trades."
+        )
+
+        return self._passthrough_save_prompt(trade_outlook_prompt)

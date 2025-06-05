@@ -61,6 +61,56 @@ class RobinhoodDataClient:
                 'error': str(e)
             }
 
+    async def get_order_symbol_mapping(self, recent_orders):
+        """
+        Get mapping of instrument URLs to stock symbols for recent orders
+
+        Args:
+            recent_orders: List of recent orders to get symbols for
+
+        Returns:
+            Tuple of (order_symbol_map, cache_hits, cache_misses)
+        """
+        def get_order_instrument_url(order):
+            """Helper function to extract instrument URL from order"""
+            if hasattr(order, 'instrument') and order.instrument:
+                return order.instrument if isinstance(order.instrument, str) else getattr(order.instrument, 'url', None)
+            return None
+
+        # Prefetch instrument symbols for recent orders
+        instrument_urls = set()
+        for order in recent_orders:
+            url = get_order_instrument_url(order)
+            if url:
+                instrument_urls.add(url)
+
+        order_symbol_map = {}
+
+        for url in instrument_urls:
+            try:
+                logger.info(f'Attempting to fetch symbol for instrument URL: {url}')
+                symbol = ''
+                cache_key = f"robinhood_symbol:instrument:{url}"
+                cached = await self._cache_client.get_cache(cache_key)
+                if cached:
+                    logger.info(f'Using cached symbol for {url}: {cached}')
+                    symbol = cached
+                else:
+                    logger.info(f'Fetching symbol for {url} from Robinhood')
+                    symbol = r.stocks.get_symbol_by_url(url)
+                    logger.info(f'Fetched symbol for {url}: {symbol}')
+                    await self._cache_client.set_cache(
+                        cache_key,
+                        symbol,
+                        ttl=60)
+
+                order_symbol_map[url] = symbol
+            except Exception as ex:
+                logger.error(f'Failed to fetch symbol for {url}: {ex}')
+                order_symbol_map[url] = 'Unknown'
+
+        return order_symbol_map
+
     async def get_portfolio_data(self):
         """
         Fetch comprehensive portfolio data from Robinhood

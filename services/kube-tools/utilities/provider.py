@@ -80,7 +80,8 @@ from services.podcast_service import PodcastService
 from services.prompt_generator import PromptGenerator
 from services.redis_service import RedisService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
-from services.robinhood_service import RobinhoodService
+from services.conversation_service import ConversationService
+from services.robinhood_service import EmailConfig, RobinhoodService
 from services.torrent_service import TorrentService
 from services.usage_service import UsageService
 from services.weather_service import WeatherService
@@ -158,11 +159,11 @@ def register_configs(descriptors):
         factory=lambda p: CoinbaseConfig.model_validate(
             p.resolve(Configuration).coinbase))
 
-    # Register custom Email config
+    # Register custom Coinbase client config
     descriptors.add_singleton(
         dependency_type=EmailConfig,
         factory=lambda p: EmailConfig.model_validate(
-            p.resolve(Configuration).email))
+            p.resolve(Configuration).email)),
 
 
 def register_clients(
