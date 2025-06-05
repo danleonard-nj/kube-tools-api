@@ -26,3 +26,4 @@ robin_stocks
 markdown
 sib_api_v3_sdk
 coinbase-advanced-py
+pydantic[email]
