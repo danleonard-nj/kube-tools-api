@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple, Any, Set
+from typing import Dict, List, Optional, Tuple, Any, Set, Set
 from pydantic import BaseModel, SecretStr, Field
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -258,7 +258,7 @@ class CaptureBalanceStage(DomainStage):
 
 
 class FetchMarketResearchStage(DomainStage):
-    """Retrieve raw market research data."""
+    """Retrieve raw market research data using market research pipeline."""
 
     async def execute(self, context: PulseContext) -> StageResult:
         result = StageResult()
@@ -268,19 +268,39 @@ class FetchMarketResearchStage(DomainStage):
             return result
 
         try:
-            logger.info('Fetching market research data')
+            logger.info('Fetching market research data via market research pipeline')
+
+            # Market research processor runs its own pipeline internally
             context.raw_market_research = await self.service._market_research_processor.get_market_research_data(
                 context.portfolio_obj.model_dump()
             )
 
+            # Market research pipeline metrics can be captured here
+            research_metrics = getattr(self.service._market_research_processor, '_last_pipeline_metrics', {})
+            if research_metrics:
+                context.performance_metrics['market_research_pipeline'] = research_metrics
+
         except Exception as e:
-            result.add_error(f"Failed to fetch market research: {str(e)}")
+            # Market research failure shouldn't kill the main pipeline
+            result.add_warning(f"Market research pipeline failed: {str(e)}")
+            # Provide fallback empty research data
+            context.raw_market_research = self._create_empty_market_research()
 
         return result
 
+    def _create_empty_market_research(self):
+        """Create empty market research data as fallback."""
+        from models.robinhood_models import MarketResearch
+        return MarketResearch.model_validate({
+            'market_conditions': [],
+            'stock_news': {},
+            'sector_analysis': [],
+            'search_errors': ['Market research pipeline unavailable']
+        })
+
 
 class SummarizeMarketResearchStage(DomainStage):
-    """Summarize and structure market research for downstream use."""
+    """Summarize and structure market research using market research pipeline."""
 
     async def execute(self, context: PulseContext) -> StageResult:
         result = StageResult()
@@ -290,18 +310,38 @@ class SummarizeMarketResearchStage(DomainStage):
             return result
 
         try:
-            logger.info('Summarizing market research data')
+            logger.info('Summarizing market research data via market research pipeline')
+
+            # Market research processor runs its summarization pipeline internally
             context.summarized_market_research = await self.service._market_research_processor.summarize_market_research(
                 context.raw_market_research
             )
 
-            # Store prompts for debugging
-            context.prompts.update(self.service._market_research_processor.get_prompts())
+            # Store prompts for debugging (from market research pipeline)
+            research_prompts = self.service._market_research_processor.get_prompts()
+            context.prompts.update(research_prompts)
+
+            # Capture market research pipeline metrics
+            summary_metrics = getattr(self.service._market_research_processor, '_last_summary_metrics', {})
+            if summary_metrics:
+                context.performance_metrics['market_research_summary_pipeline'] = summary_metrics
 
         except Exception as e:
-            result.add_error(f"Failed to summarize market research: {str(e)}")
+            result.add_warning(f"Market research summarization pipeline failed: {str(e)}")
+            # Provide fallback empty summary
+            context.summarized_market_research = self._create_empty_market_research_summary()
 
         return result
+
+    def _create_empty_market_research_summary(self):
+        """Create empty market research summary as fallback."""
+        from models.robinhood_models import MarketResearchSummary
+        return MarketResearchSummary.model_validate({
+            'market_conditions': [],
+            'stock_news': {},
+            'sector_analysis': [],
+            'search_errors': ['Market research summarization unavailable']
+        })
 
 
 class EnrichOrdersStage(DomainStage):

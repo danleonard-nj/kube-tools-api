@@ -70,11 +70,7 @@ from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
 from services.google_drive_service import GoogleDriveService
 from services.location_history_service import LocationHistoryService
-from services.market_research_processor import (MarketConditionsProcessor,
-                                                MarketResearchProcessor,
-                                                RssNewsProcessor,
-                                                SectorAnalysisProcessor,
-                                                StockNewsProcessor)
+from services.market_research_processor import MarketResearchProcessor
 from services.mongo_backup_service import MongoBackupService
 from services.podcast_service import PodcastService
 from services.prompt_generator import PromptGenerator
@@ -257,10 +253,6 @@ def register_robinhood_services(
     descriptors.add_singleton(EmailGenerator)
 
     descriptors.add_singleton(MarketResearchProcessor)
-    descriptors.add_singleton(MarketConditionsProcessor)
-    descriptors.add_singleton(StockNewsProcessor)
-    descriptors.add_singleton(SectorAnalysisProcessor)
-    descriptors.add_singleton(RssNewsProcessor)
 
     descriptors.add_singleton(
         dependency_type=RobinhoodConfig,
