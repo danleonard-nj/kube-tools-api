@@ -9,3 +9,5 @@ services/kube-tools/.VSCodeCounter/*
 services/kube-tools/scripts/get_google_refresh_token.py
 services/kube-tools/scripts/plaid_link.py
 services/kube-tools/scripts/google_credentials.json
+services/kube-tools/services/market_research_processor.py
+services/kube-tools/prompts/*

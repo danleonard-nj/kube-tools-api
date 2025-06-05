@@ -325,3 +325,28 @@ CURRENT HOLDINGS:
         )
 
         return self._passthrough_save_prompt(trade_outlook_prompt)
+
+    def generate_sector_analysis_summary_prompt(self, valuable_articles: list) -> str:
+        """
+        Generate a prompt for summarizing sector analysis articles in a structured markdown format.
+        Args:
+            valuable_articles: List of Article objects or dicts with sector analysis content.
+        Returns:
+            Formatted prompt string for sector analysis summary.
+        """
+        prompt_lines = [
+            "Summarize the following sector analysis articles in a structured markdown format. "
+            "Start with the header '### Sector Analysis Summary' followed by dedicated sections for each major sector. "
+            "Use markdown headers like '**Technology Sector**', '**Healthcare Sector**', '**Financial Services Sector**', and '**Energy Sector**' for each section. "
+            "Provide 2-3 concise sentences for each sector covering key trends, major companies, and performance indicators. "
+            "End with a brief concluding sentence about sector dynamics and growth opportunities.\n"
+        ]
+        for i, article in enumerate(valuable_articles, 1):
+            if hasattr(article, 'to_prompt_block'):
+                prompt_lines.append(article.to_prompt_block(i))
+            else:
+                # fallback for dict-like articles
+                prompt_lines.append(getattr(type(article), 'dict_to_prompt_block', lambda a, idx: str(a))(article, i))
+            prompt_lines.append("")
+        prompt = "\n".join(prompt_lines)
+        return self._passthrough_save_prompt(prompt)

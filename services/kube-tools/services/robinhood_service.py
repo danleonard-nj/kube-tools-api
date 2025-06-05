@@ -1,8 +1,13 @@
-from typing import Dict, List, Optional, Tuple, Any
-from pydantic import BaseModel, SecretStr
+from typing import Dict, List, Optional, Tuple, Any, Set
+from pydantic import BaseModel, SecretStr, Field
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+import asyncio
+import time
 from clients.gpt_client import GPTClient
 from clients.robinhood_data_client import RobinhoodDataClient
 from domain.enums import BankKey, SyncType
+from domain.gpt import GPTModel
 from services.bank_service import BankService
 from services.market_research_processor import MarketResearchProcessor
 from services.email_generator import EmailGenerator
@@ -43,142 +48,291 @@ class EmailConfig(BaseModel):
     from_email: str  # Email address to send from
 
 
-class RobinhoodService:
-    """Service for Robinhood portfolio analysis and daily pulse reports."""
+class StageResult(BaseModel):
+    """Result of a pipeline stage execution."""
+    success: bool = True
+    errors: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    can_continue: bool = True
+    execution_time_ms: float = 0.0
 
-    # Constants
-    CACHE_TTL_MINUTES = 60  # 1 hour
-    MAX_RECENT_ORDERS = 15
-    MAX_TRADE_PERFORMANCE_ORDERS = 10
-    DEFAULT_EMAIL_RECIPIENT = 'dcl525@gmail.com'
+    def add_error(self, error: str, critical: bool = True) -> None:
+        """Add an error to the result."""
+        self.errors.append(error)
+        self.success = False
+        if critical:
+            self.can_continue = False
 
-    def __init__(
-        self,
-        robinhood_client: RobinhoodDataClient,
-        gpt_client: GPTClient,
-        market_research_processor: MarketResearchProcessor,
-        prompt_generator: PromptGenerator,
-        email_generator: EmailGenerator,
-        cache_client: CacheClientAsync,
-        email_config: EmailConfig,
-        bank_service: BankService
-    ) -> None:
-        """Initialize the RobinhoodService with required dependencies."""
-        self._robinhood_client = robinhood_client
-        self._gpt_client = gpt_client
-        self._market_research_processor = market_research_processor
-        self._prompt_generator = prompt_generator
-        self._email_generator = email_generator
-        self._cache_client = cache_client
-        self._bank_service = bank_service
+    def add_warning(self, warning: str) -> None:
+        """Add a warning to the result."""
+        self.warnings.append(warning)
 
-        self._prompts: Dict[str, str] = {}
 
-        # Initialize Sendinblue email client
-        self._setup_email_client(email_config)
+class PipelineConfig(BaseModel):
+    """Configuration for pipeline execution."""
+    skip_stages: Set[str] = Field(default_factory=set)
+    retry_config: Dict[str, int] = Field(default_factory=dict)  # stage_name -> max_retries
+    fail_fast: bool = False
+    max_recent_orders: int = 15
+    max_trade_performance_orders: int = 10
+    cache_ttl_minutes: int = 60
 
-        # Performance tracking
-        self.search_count = 0
-        self.gpt_tokens = 0
 
-    def _setup_email_client(self, email_config: EmailConfig) -> None:
-        """Initialize Sendinblue email client configuration."""
+class PulseContext(BaseModel):
+    """Context object that flows through the pipeline stages."""
+    # Configuration
+    config: PipelineConfig = Field(default_factory=PipelineConfig)
+
+    # Input data
+    portfolio_obj: Optional[PortfolioData] = None
+    raw_market_research: Optional[Any] = None
+
+    # Processed data
+    summarized_market_research: Optional[Any] = None
+    enriched_orders: List[Order] = Field(default_factory=list)
+    trade_analysis: List[TradeAnalysis] = Field(default_factory=list)
+    trade_stats: Dict[str, Any] = Field(default_factory=dict)
+    trade_outlook: str = ""
+    pulse_analysis: str = ""
+    order_symbol_map: Dict[str, str] = Field(default_factory=dict)
+
+    # Execution metadata
+    stage_results: Dict[str, StageResult] = Field(default_factory=dict)
+    performance_metrics: Dict[str, float] = Field(default_factory=dict)
+    prompts: Dict[str, str] = Field(default_factory=dict)
+    gpt_tokens: int = 0
+    search_count: int = 0
+
+    # Computed properties
+    @property
+    def has_critical_errors(self) -> bool:
+        """Check if any stage has critical errors."""
+        return any(not result.can_continue for result in self.stage_results.values())
+
+    @property
+    def total_execution_time(self) -> float:
+        """Total execution time across all stages."""
+        return sum(result.execution_time_ms for result in self.stage_results.values())
+
+    def add_stage_result(self, stage_name: str, result: StageResult) -> None:
+        """Add a stage result to the context."""
+        self.stage_results[stage_name] = result
+
+    def should_skip_stage(self, stage_name: str) -> bool:
+        """Check if a stage should be skipped."""
+        return stage_name in self.config.skip_stages
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
+class PipelineStage(ABC):
+    """Abstract base class for pipeline stages."""
+
+    def __init__(self, name: str):
+        self.name = name
+
+    @abstractmethod
+    async def execute(self, context: PulseContext) -> StageResult:
+        """Execute the stage logic."""
+        pass
+
+    async def run(self, context: PulseContext) -> StageResult:
+        """Run the stage with timing and error handling."""
+        if context.should_skip_stage(self.name):
+            result = StageResult(success=True)
+            result.warnings.append(f"Stage {self.name} was skipped")
+            return result
+
+        start_time = time.time()
         try:
-            self._sib_api_key = email_config.sendinblue_api_key.get_secret_value()
-            self._sib_sender = {"email": email_config.from_email, "name": "Kube Tools"}
-
-            sib_config = SibConfiguration()
-            sib_config.api_key['api-key'] = self._sib_api_key
-            self._sib_client = ApiClient(sib_config)
-            self._sib_email_api = TransactionalEmailsApi(self._sib_client)
-
-            logger.info("Sendinblue email client initialized successfully")
+            result = await self.execute(context)
+            result.execution_time_ms = (time.time() - start_time) * 1000
+            return result
         except Exception as e:
-            logger.error(f"Failed to initialize Sendinblue client: {e}")
-            raise
+            logger.error(f"Stage {self.name} failed: {e}", exc_info=True)
+            result = StageResult()
+            result.add_error(f"Stage {self.name} failed: {str(e)}")
+            result.execution_time_ms = (time.time() - start_time) * 1000
+            return result
 
-    async def _send_email_sendinblue(self, recipient: str, subject: str, html_body: str) -> None:
-        """Send email via Sendinblue API."""
-        email = SendSmtpEmail(
-            to=[{"email": recipient}],
-            sender=self._sib_sender,
-            subject=subject,
-            html_content=html_body
-        )
 
-        self._sib_email_api.send_transac_email(email)
-        logger.info(f"Email sent successfully to {recipient}")
+class DomainStage(PipelineStage):
+    """Base class for domain-specific stages that need service dependencies."""
 
-    async def _get_or_fetch_portfolio_data(self) -> Optional[PortfolioData]:
-        """Get portfolio data from cache or fetch fresh from Robinhood."""
-        # Try to get cached data first
-        portfolio_data = await self._robinhood_client.get_cached_portfolio_data(
-            ttl=self.CACHE_TTL_MINUTES
-        )
+    def __init__(self, name: str, service: 'RobinhoodService'):
+        super().__init__(name)
+        self.service = service
 
-        if not portfolio_data or not portfolio_data.get('success', False):
-            logger.info("Cache miss - fetching fresh portfolio data")
 
-            # Login to Robinhood if not cached
-            login_result = await self._robinhood_client.login()
-            if not login_result.get('success', False):
-                logger.error('Failed to login to Robinhood')
-                return None
+class InitializationStage(DomainStage):
+    """Initialize the pipeline environment."""
 
-            # Fetch fresh portfolio data
-            portfolio_data = await self._robinhood_client.get_portfolio_data()
-            if not portfolio_data.get('success', False):
-                logger.error('Failed to fetch portfolio data')
-                return None
-
-            # Cache the fresh data
-            await self._cache_client.set_json(
-                "robinhood_account_data",
-                portfolio_data,
-                ttl=self.CACHE_TTL_MINUTES
-            )
-        else:
-            logger.info("Using cached portfolio data")
-
-        # Parse and validate the portfolio data
-        portfolio_obj = PortfolioData.model_validate(portfolio_data['data'])
-        return portfolio_obj
-
-    async def _capture_portfolio_balance(self, portfolio_obj: PortfolioData) -> None:
-        """Extract and store portfolio balance for tracking."""
+    async def execute(self, context: PulseContext) -> StageResult:
+        result = StageResult()
         try:
-            portfolio_balance = round(float(portfolio_obj.portfolio_profile.last_core_equity), 2)
-            await self._bank_service.capture_balance(
+            # Reset GPT call count
+            self.service._gpt_client.count = 0
+
+            # Clean up and create prompts directory
+            if os.path.exists('./prompts'):
+                shutil.rmtree('./prompts')
+            os.makedirs('./prompts', exist_ok=True)
+
+            logger.info('Pipeline initialization completed')
+        except Exception as e:
+            result.add_error(f"Initialization failed: {str(e)}")
+
+        return result
+
+
+class FetchPortfolioStage(DomainStage):
+    """Fetch and validate portfolio data from cache or API."""
+
+    async def execute(self, context: PulseContext) -> StageResult:
+        result = StageResult()
+
+        try:
+            # Try to get cached data first
+            portfolio_data = await self.service._robinhood_client.get_cached_portfolio_data(
+                ttl=context.config.cache_ttl_minutes
+            )
+
+            if not portfolio_data or not portfolio_data.get('success', False):
+                logger.info("Cache miss - fetching fresh portfolio data")
+
+                # Login to Robinhood if not cached
+                login_result = await self.service._robinhood_client.login()
+                if not login_result.get('success', False):
+                    result.add_error('Failed to login to Robinhood')
+                    return result
+
+                # Fetch fresh portfolio data
+                portfolio_data = await self.service._robinhood_client.get_portfolio_data()
+                if not portfolio_data.get('success', False):
+                    result.add_error('Failed to fetch portfolio data')
+                    return result
+
+                # Cache the fresh data
+                await self.service._cache_client.set_json(
+                    "robinhood_account_data",
+                    portfolio_data,
+                    ttl=context.config.cache_ttl_minutes
+                )
+            else:
+                logger.info("Using cached portfolio data")
+
+            # Parse and validate the portfolio data
+            context.portfolio_obj = PortfolioData.model_validate(portfolio_data['data'])
+            logger.info("Portfolio data fetched and validated successfully")
+
+        except Exception as e:
+            result.add_error(f"Failed to fetch portfolio data: {str(e)}")
+
+        return result
+
+
+class CaptureBalanceStage(DomainStage):
+    """Capture and store the current portfolio balance."""
+
+    async def execute(self, context: PulseContext) -> StageResult:
+        result = StageResult()
+
+        if not context.portfolio_obj:
+            result.add_error("No portfolio data available for balance capture")
+            return result
+
+        try:
+            portfolio_balance = round(float(context.portfolio_obj.portfolio_profile.last_core_equity), 2)
+            await self.service._bank_service.capture_balance(
                 bank_key=BankKey.Robinhood,
                 balance=portfolio_balance,
                 sync_type=str(SyncType.Robinhood)
             )
             logger.info(f"Portfolio balance captured: ${portfolio_balance:,.2f}")
+
         except (ValueError, TypeError, AttributeError) as e:
-            logger.error(f"Failed to capture portfolio balance - data format issue: {e}", exc_info=True)
+            result.add_error(f"Failed to capture portfolio balance - data format issue: {str(e)}")
 
-    async def _get_market_research_and_summary(self, portfolio_data: Dict[str, Any]) -> Any:
-        """Fetch and summarize market research data."""
+        return result
+
+
+class FetchMarketResearchStage(DomainStage):
+    """Retrieve raw market research data."""
+
+    async def execute(self, context: PulseContext) -> StageResult:
+        result = StageResult()
+
+        if not context.portfolio_obj:
+            result.add_error("No portfolio data available for market research")
+            return result
+
         try:
-            logger.info('Fetching market research and current news')
-            market_research = await self._market_research_processor.get_market_research_data(portfolio_data)
+            logger.info('Fetching market research data')
+            context.raw_market_research = await self.service._market_research_processor.get_market_research_data(
+                context.portfolio_obj.model_dump()
+            )
 
-            # Summarize the research data
-            summarized_market_research = await self._market_research_processor.summarize_market_research(market_research)
+        except Exception as e:
+            result.add_error(f"Failed to fetch market research: {str(e)}")
+
+        return result
+
+
+class SummarizeMarketResearchStage(DomainStage):
+    """Summarize and structure market research for downstream use."""
+
+    async def execute(self, context: PulseContext) -> StageResult:
+        result = StageResult()
+
+        if not context.raw_market_research:
+            result.add_error("No raw market research data available for summarization")
+            return result
+
+        try:
+            logger.info('Summarizing market research data')
+            context.summarized_market_research = await self.service._market_research_processor.summarize_market_research(
+                context.raw_market_research
+            )
 
             # Store prompts for debugging
-            self._prompts.update(self._market_research_processor.get_prompts())
+            context.prompts.update(self.service._market_research_processor.get_prompts())
 
-            return summarized_market_research
         except Exception as e:
-            logger.error(f"Failed to get market research: {e}")
-            raise
+            result.add_error(f"Failed to summarize market research: {str(e)}")
+
+        return result
+
+
+class EnrichOrdersStage(DomainStage):
+    """Enrich recent orders with symbol information."""
+
+    async def execute(self, context: PulseContext) -> StageResult:
+        result = StageResult()
+
+        if not context.portfolio_obj:
+            result.add_error("No portfolio data available for order enrichment")
+            return result
+
+        try:
+            recent_orders = context.portfolio_obj.recent_orders[:context.config.max_recent_orders]
+            context.enriched_orders = await self._enrich_orders_with_symbols(recent_orders)
+
+            # Also build order symbol map for later use
+            context.order_symbol_map = await self.service._robinhood_client.get_order_symbol_mapping(
+                context.enriched_orders
+            )
+
+        except Exception as e:
+            result.add_error(f"Failed to enrich orders: {str(e)}")
+
+        return result
 
     async def _enrich_orders_with_symbols(self, recent_orders: List[Order]) -> List[Order]:
         """Enrich order objects with symbol information."""
         try:
             # Get symbol mapping from data client
-            order_symbol_map = await self._robinhood_client.get_order_symbol_mapping(recent_orders)
+            order_symbol_map = await self.service._robinhood_client.get_order_symbol_mapping(recent_orders)
 
             # Apply symbol mapping to orders
             for order in recent_orders:
@@ -208,6 +362,27 @@ class RobinhoodService:
 
         return getattr(order.instrument, 'url', None)
 
+
+class TradePerformanceStage(DomainStage):
+    """Analyze recent trades for performance metrics."""
+
+    async def execute(self, context: PulseContext) -> StageResult:
+        result = StageResult()
+
+        if not context.enriched_orders or not context.portfolio_obj:
+            result.add_error("Missing required data for trade performance analysis")
+            return result
+
+        try:
+            context.trade_analysis, context.trade_stats = self._build_trade_performance_summary(
+                context.enriched_orders, context.portfolio_obj.holdings
+            )
+
+        except Exception as e:
+            result.add_error(f"Failed to analyze trade performance: {str(e)}")
+
+        return result
+
     def _build_trade_performance_summary(
         self,
         recent_orders: List[Order],
@@ -221,7 +396,7 @@ class RobinhoodService:
         loss_count = 0
 
         # Process the most recent filled orders
-        filled_orders = [order for order in recent_orders[:self.MAX_TRADE_PERFORMANCE_ORDERS]
+        filled_orders = [order for order in recent_orders[:self.service.MAX_TRADE_PERFORMANCE_ORDERS]
                          if order.state.upper() == 'FILLED']
 
         for order in filled_orders:
@@ -307,28 +482,37 @@ class RobinhoodService:
             state=order.state,
         )
 
-    async def _generate_trade_outlooks(
-        self,
-        trade_rows: List[TradeAnalysis],
-        portfolio_obj: PortfolioData,
-        summarized_market_research: Any
-    ) -> List[TradeAnalysis]:
-        """Generate AI-powered outlooks for individual trades."""
-        # Build lookups for efficient data access
-        stock_news_lookup = self._build_stock_news_lookup(summarized_market_research)
-        sector_lookup, fallback_sector_summary = self._build_sector_lookup(summarized_market_research)
 
-        for trade in trade_rows:
-            try:
-                outlook = await self._generate_single_trade_outlook(
-                    trade, portfolio_obj, stock_news_lookup, sector_lookup, fallback_sector_summary
-                )
-                trade.outlook = outlook
-            except Exception as e:
-                logger.error(f"Failed to generate outlook for trade {trade.symbol}: {e}", exc_info=True)
-                trade.outlook = f"(Could not generate outlook: {str(e)})"
+class TradeOutlooksStage(DomainStage):
+    """Generate AI-powered outlooks for individual trades."""
 
-        return trade_rows
+    async def execute(self, context: PulseContext) -> StageResult:
+        result = StageResult()
+
+        if not context.trade_analysis or not context.portfolio_obj or not context.summarized_market_research:
+            result.add_error("Missing required data for trade outlook generation")
+            return result
+
+        try:
+            # Build lookups for efficient data access
+            stock_news_lookup = self._build_stock_news_lookup(context.summarized_market_research)
+            sector_lookup, fallback_sector_summary = self._build_sector_lookup(context.summarized_market_research)
+
+            for trade in context.trade_analysis:
+                try:
+                    outlook = await self._generate_single_trade_outlook(
+                        trade, context.portfolio_obj, stock_news_lookup, sector_lookup, fallback_sector_summary
+                    )
+                    trade.outlook = outlook
+                except Exception as e:
+                    logger.error(f"Failed to generate outlook for trade {trade.symbol}: {e}", exc_info=True)
+                    trade.outlook = f"(Could not generate outlook: {str(e)})"
+                    result.add_warning(f"Failed to generate outlook for {trade.symbol}")
+
+        except Exception as e:
+            result.add_error(f"Failed to generate trade outlooks: {str(e)}")
+
+        return result
 
     def _build_stock_news_lookup(self, summarized_market_research: Any) -> Dict[str, Optional[str]]:
         """Build a lookup dictionary for stock news by symbol."""
@@ -381,206 +565,382 @@ class RobinhoodService:
             sector_summary = fallback_sector_summary
 
         # Generate trade outlook prompt
-        trade_prompt = self._prompt_generator.generate_trade_outlook_prompt(
+        trade_prompt = self.service._prompt_generator.generate_trade_outlook_prompt(
             trade=trade.model_dump(),
             news_summary=news_summary,
             sector_summary=sector_summary
         )
 
         # Get AI-generated outlook
-        outlook = await self._gpt_client.generate_completion(
+        outlook = await self.service._gpt_client.generate_completion(
             prompt=trade_prompt,
-            model="gpt-4o-mini",
+            model=GPTModel.GPT_4O_MINI,
             temperature=0.6,
             use_cache=False
         )
 
         return outlook
 
-    async def _generate_overall_trade_outlook(
-        self,
-        trade_rows: List[TradeAnalysis],
-        trade_stats: Dict[str, Any]
-    ) -> str:
-        """Generate overall trade performance outlook using AI."""
-        trade_outlook_prompt = self._prompt_generator.generate_trade_outlook_summary_prompt(
-            trade_rows=[trade.model_dump() for trade in trade_rows],
-            trade_stats=trade_stats
-        )
 
-        trade_outlook = await self._gpt_client.generate_completion(
-            prompt=trade_outlook_prompt,
-            model="gpt-4o-mini",
-            temperature=0.6,
-            use_cache=False
-        )
+class OverallTradeOutlookStage(DomainStage):
+    """Generate an overall summary of trade performance."""
 
-        return trade_outlook
+    async def execute(self, context: PulseContext) -> StageResult:
+        result = StageResult()
 
-    async def _generate_main_pulse_analysis(
-        self,
-        portfolio_obj: PortfolioData,
-        summarized_market_research: Any,
-        order_symbol_map: Dict[str, str]
-    ) -> str:
-        """Generate the main daily pulse analysis using AI."""
+        if not context.trade_analysis or not context.trade_stats:
+            result.add_error("Missing trade analysis data for overall outlook generation")
+            return result
+
+        try:
+            trade_outlook_prompt = self.service._prompt_generator.generate_trade_outlook_summary_prompt(
+                trade_rows=[trade.model_dump() for trade in context.trade_analysis],
+                trade_stats=context.trade_stats
+            )
+
+            context.trade_outlook = await self.service._gpt_client.generate_completion(
+                prompt=trade_outlook_prompt,
+                model=GPTModel.GPT_4_1_MINI,
+                temperature=0.6,
+                use_cache=False
+            )
+
+        except Exception as e:
+            result.add_error(f"Failed to generate overall trade outlook: {str(e)}")
+
+        return result
+
+
+class PulseAnalysisStage(DomainStage):
+    """Generate the main daily pulse analysis using AI."""
+
+    async def execute(self, context: PulseContext) -> StageResult:
+        result = StageResult()
+
+        if not context.portfolio_obj or not context.summarized_market_research or not context.order_symbol_map:
+            result.add_error("Missing required data for pulse analysis generation")
+            return result
+
         try:
             # Compile prompt for GPT analysis
-            pulse_prompt = await self._prompt_generator.compile_daily_pulse_prompt_with_symbols(
-                portfolio_obj, summarized_market_research, order_symbol_map
+            pulse_prompt = await self.service._prompt_generator.compile_daily_pulse_prompt_with_symbols(
+                context.portfolio_obj, context.summarized_market_research, context.order_symbol_map
             )
-            self._prompts['pulse_prompt'] = pulse_prompt
+            context.prompts['pulse_prompt'] = pulse_prompt
 
             # Generate analysis using GPT
-            pulse_analysis = await self._gpt_client.generate_completion(
+            context.pulse_analysis = await self.service._gpt_client.generate_completion(
                 prompt=pulse_prompt,
-                model="gpt-4o",
+                model=GPTModel.GPT_4_1,
                 temperature=0.7,
                 use_cache=False
             )
 
-            return pulse_analysis
         except Exception as e:
-            logger.error(f"Failed to generate main pulse analysis: {e}")
-            raise
+            result.add_error(f"Failed to generate pulse analysis: {str(e)}")
 
-    async def _send_pulse_emails(
-        self,
-        pulse_analysis: str,
-        portfolio_obj: PortfolioData,
-        summarized_market_research: Any,
-        trade_rows: List[TradeAnalysis],
-        trade_outlook: str,
-        market_research: Any
-    ) -> None:
-        """Send daily pulse and debug emails."""
-        # Generate and send main pulse email
-        html_body = self._email_generator.generate_daily_pulse_html_email(
-            analysis=pulse_analysis,
-            portfolio_summary=portfolio_obj,
-            market_research=summarized_market_research,
-            trade_performance=[trade.model_dump() for trade in trade_rows],
-            trade_outlook=trade_outlook
-        )
+        return result
 
-        subject = self._email_generator.generate_daily_pulse_subject()
-        await self._send_email_sendinblue(
-            recipient=self.DEFAULT_EMAIL_RECIPIENT,
-            subject=subject,
-            html_body=html_body
-        )
 
-        # Send debug email
-        await self._send_debug_email(pulse_analysis, portfolio_obj, market_research)
+class SendEmailsStage(DomainStage):
+    """Send the daily pulse and debug emails."""
 
-    async def _send_debug_email(
-        self,
-        pulse_analysis: str,
-        portfolio_obj: PortfolioData,
-        market_research: Any
-    ) -> None:
+    async def execute(self, context: PulseContext) -> StageResult:
+        result = StageResult()
+
+        required_data = [
+            context.pulse_analysis,
+            context.portfolio_obj,
+            context.summarized_market_research,
+            context.trade_analysis,
+            context.trade_outlook,
+            context.raw_market_research
+        ]
+
+        if not all(required_data):
+            result.add_error("Missing required data for email sending")
+            return result
+
+        try:
+            # Generate and send main pulse email
+            html_body = self.service._email_generator.generate_daily_pulse_html_email(
+                analysis=context.pulse_analysis,
+                portfolio_summary=context.portfolio_obj,
+                market_research=context.summarized_market_research,
+                trade_performance=[trade.model_dump() for trade in context.trade_analysis],
+                trade_outlook=context.trade_outlook
+            )
+
+            subject = self.service._email_generator.generate_daily_pulse_subject()
+            await self.service._send_email_sendinblue(
+                recipient=self.service.DEFAULT_EMAIL_RECIPIENT,
+                subject=subject,
+                html_body=html_body
+            )
+
+            # Send debug email
+            await self._send_debug_email(context)
+
+        except Exception as e:
+            result.add_error(f"Failed to send emails: {str(e)}")
+
+        return result
+
+    async def _send_debug_email(self, context: PulseContext) -> None:
         """Send admin debug email with detailed information."""
         try:
             debug_report = DebugReport(
-                portfolio_data=portfolio_obj,
-                market_research=market_research,
-                prompts=self._prompts,
-                gpt_analysis=pulse_analysis,
+                portfolio_data=context.portfolio_obj,
+                market_research=context.raw_market_research,
+                prompts=context.prompts,
+                gpt_analysis=context.pulse_analysis,
                 sources={}
             )
 
             stats = {
-                'search_count': self.search_count,
-                'gpt_tokens': self.gpt_tokens
+                'search_count': context.search_count,
+                'gpt_tokens': context.gpt_tokens,
+                'total_execution_time_ms': context.total_execution_time
             }
 
-            html_debug = self._email_generator.generate_admin_debug_html_report(debug_report, stats)
-            await self._send_email_sendinblue(
-                recipient=self.DEFAULT_EMAIL_RECIPIENT,
+            html_debug = self.service._email_generator.generate_admin_debug_html_report(debug_report, stats)
+            await self.service._send_email_sendinblue(
+                recipient=self.service.DEFAULT_EMAIL_RECIPIENT,
                 subject='ADMIN DEBUG: Pulse Full Debug Info',
                 html_body=html_debug
             )
 
             # Clean up stored prompts
-            self._market_research_processor.clear_prompts()
-            self._prompts = {}
+            self.service._market_research_processor.clear_prompts()
+            context.prompts = {}
 
         except Exception as e:
             logger.error(f"Failed to send admin debug report email: {e}", exc_info=True)
 
-    async def generate_daily_pulse(self) -> Dict[str, Any]:
+
+class CleanupStage(DomainStage):
+    """Clean up resources and perform final tasks."""
+
+    async def execute(self, context: PulseContext) -> StageResult:
+        result = StageResult()
+
+        try:
+            # Update context with final metrics
+            context.gpt_tokens = getattr(self.service._gpt_client, 'count', 0)
+            context.search_count = getattr(self.service, 'search_count', 0)
+
+            logger.info(f'Pipeline completed - Total execution time: {context.total_execution_time:.2f}ms')
+
+        except Exception as e:
+            result.add_warning(f"Cleanup issues: {str(e)}")
+
+        return result
+
+
+class PipelineExecutor:
+    """Executes a pipeline of stages with error handling and retry logic."""
+
+    def __init__(self):
+        self.logger = get_logger(__name__)
+
+    async def execute_pipeline(
+        self,
+        stages: List[PipelineStage],
+        context: PulseContext
+    ) -> PulseContext:
+        """Execute a pipeline of stages sequentially."""
+        self.logger.info(f"Starting pipeline execution with {len(stages)} stages")
+
+        for stage in stages:
+            # Check if we should fail fast
+            if context.config.fail_fast and context.has_critical_errors:
+                self.logger.error(f"Stopping pipeline due to critical errors before stage {stage.name}")
+                break
+
+            # Execute stage with retry logic
+            result = await self._execute_stage_with_retry(stage, context)
+            context.add_stage_result(stage.name, result)
+
+            # Log stage completion
+            status = "SUCCESS" if result.success else "FAILED"
+            self.logger.info(f"Stage {stage.name} {status} - {result.execution_time_ms:.2f}ms")
+
+            if result.errors:
+                for error in result.errors:
+                    self.logger.error(f"Stage {stage.name} error: {error}")
+
+            if result.warnings:
+                for warning in result.warnings:
+                    self.logger.warning(f"Stage {stage.name} warning: {warning}")
+
+        self.logger.info(f"Pipeline execution completed - Total time: {context.total_execution_time:.2f}ms")
+        return context
+
+    async def _execute_stage_with_retry(
+        self,
+        stage: PipelineStage,
+        context: PulseContext
+    ) -> StageResult:
+        """Execute a stage with retry logic."""
+        max_retries = context.config.retry_config.get(stage.name, 0)
+
+        for attempt in range(max_retries + 1):
+            if attempt > 0:
+                self.logger.info(f"Retrying stage {stage.name} - attempt {attempt + 1}/{max_retries + 1}")
+
+            result = await stage.run(context)
+
+            # If successful or can't continue, return result
+            if result.success or not result.can_continue:
+                return result
+
+            # If this was the last attempt, return the failed result
+            if attempt == max_retries:
+                return result
+
+            # Wait before retry (simple exponential backoff)
+            await asyncio.sleep(2 ** attempt)
+
+        return result
+
+
+class RobinhoodService:
+    """Service for Robinhood portfolio analysis and daily pulse reports."""
+
+    # Constants
+    CACHE_TTL_MINUTES = 60  # 1 hour
+    MAX_RECENT_ORDERS = 15
+    MAX_TRADE_PERFORMANCE_ORDERS = 10
+    DEFAULT_EMAIL_RECIPIENT = 'dcl525@gmail.com'
+
+    def __init__(
+        self,
+        robinhood_client: RobinhoodDataClient,
+        gpt_client: GPTClient,
+        market_research_processor: MarketResearchProcessor,
+        prompt_generator: PromptGenerator,
+        email_generator: EmailGenerator,
+        cache_client: CacheClientAsync,
+        email_config: EmailConfig,
+        bank_service: BankService
+    ) -> None:
+        """Initialize the RobinhoodService with required dependencies."""
+        self._robinhood_client = robinhood_client
+        self._gpt_client = gpt_client
+        self._market_research_processor = market_research_processor
+        self._prompt_generator = prompt_generator
+        self._email_generator = email_generator
+        self._cache_client = cache_client
+        self._bank_service = bank_service
+
+        # Initialize Sendinblue email client
+        self._setup_email_client(email_config)
+
+        # Performance tracking
+        self.search_count = 0
+        self.gpt_tokens = 0
+
+        # Initialize pipeline executor
+        self._pipeline_executor = PipelineExecutor()
+
+    def _setup_email_client(self, email_config: EmailConfig) -> None:
+        """Initialize Sendinblue email client configuration."""
+        try:
+            self._sib_api_key = email_config.sendinblue_api_key.get_secret_value()
+            self._sib_sender = {"email": email_config.from_email, "name": "Kube Tools"}
+
+            sib_config = SibConfiguration()
+            sib_config.api_key['api-key'] = self._sib_api_key
+            self._sib_client = ApiClient(sib_config)
+            self._sib_email_api = TransactionalEmailsApi(self._sib_client)
+
+            logger.info("Sendinblue email client initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Sendinblue client: {e}")
+            raise
+
+    async def _send_email_sendinblue(self, recipient: str, subject: str, html_body: str) -> None:
+        """Send email via Sendinblue API."""
+        email = SendSmtpEmail(
+            to=[{"email": recipient}],
+            sender=self._sib_sender,
+            subject=subject,
+            html_content=html_body
+        )
+
+        self._sib_email_api.send_transac_email(email)
+        logger.info(f"Email sent successfully to {recipient}")
+
+    def _create_pipeline_stages(self) -> List[PipelineStage]:
+        """Create and return the list of pipeline stages."""
+        return [
+            InitializationStage("initialization", self),
+            FetchPortfolioStage("fetch_portfolio", self),
+            CaptureBalanceStage("capture_balance", self),
+            FetchMarketResearchStage("fetch_market_research", self),
+            SummarizeMarketResearchStage("summarize_market_research", self),
+            EnrichOrdersStage("enrich_orders", self),
+            TradePerformanceStage("trade_performance", self),
+            TradeOutlooksStage("trade_outlooks", self),
+            OverallTradeOutlookStage("overall_trade_outlook", self),
+            PulseAnalysisStage("pulse_analysis", self),
+            SendEmailsStage("send_emails", self),
+            CleanupStage("cleanup", self),
+        ]
+
+    async def generate_daily_pulse(self, config: Optional[PipelineConfig] = None) -> Dict[str, Any]:
         """
-        Generate a comprehensive daily pulse report for Robinhood account.
+        Generate a comprehensive daily pulse report for Robinhood account using pipeline pattern.
 
         Returns dict with success status and generated data.
         """
-        logger.info('Starting daily pulse report generation')
+        logger.info('Starting daily pulse report generation with pipeline pattern')
 
         try:
-            self._gpt_client.count = 0  # Reset GPT call count for this run
-            if os.path.exists('./prompts'):
-                shutil.rmtree('./prompts')
-            os.makedirs('./prompts', exist_ok=True)
+            # Initialize context and configuration
+            if config is None:
+                config = PipelineConfig()
 
-            # Step 1: Get portfolio data
-            portfolio_obj = await self._get_or_fetch_portfolio_data()
-            if not portfolio_obj:
-                return {'success': False, 'error': 'Failed to fetch portfolio data'}
+            context = PulseContext(config=config)
 
-            # Step 2: Capture portfolio balance
-            await self._capture_portfolio_balance(portfolio_obj)
+            # Create and execute pipeline
+            stages = self._create_pipeline_stages()
+            context = await self._pipeline_executor.execute_pipeline(stages, context)
 
-            # Step 3: Get market research (fetch ONCE)
-            raw_market_research = await self._market_research_processor.get_market_research_data(
-                portfolio_obj.model_dump()
-            )
-            summarized_market_research = await self._get_market_research_and_summary(
-                portfolio_obj.model_dump()
-            )
+            # Check for critical failures
+            if context.has_critical_errors:
+                error_messages = []
+                for stage_name, result in context.stage_results.items():
+                    if not result.can_continue:
+                        error_messages.extend(result.errors)
 
-            # Step 4: Process recent orders
-            recent_orders = portfolio_obj.recent_orders[:self.MAX_RECENT_ORDERS]
-            recent_orders = await self._enrich_orders_with_symbols(recent_orders)
+                return {
+                    'success': False,
+                    'error': f"Pipeline failed with critical errors: {'; '.join(error_messages)}",
+                    'stage_results': {name: result.model_dump() for name, result in context.stage_results.items()}
+                }
 
-            # Step 5: Generate trade performance analysis
-            trade_rows, trade_stats = self._build_trade_performance_summary(
-                recent_orders, portfolio_obj.holdings
-            )
-
-            # Step 6: Generate AI-powered trade outlooks
-            trade_rows = await self._generate_trade_outlooks(
-                trade_rows, portfolio_obj, summarized_market_research
-            )
-
-            # Step 7: Generate overall trade outlook
-            trade_outlook = await self._generate_overall_trade_outlook(trade_rows, trade_stats)
-
-            # Step 8: Generate main pulse analysis
-            order_symbol_map = await self._robinhood_client.get_order_symbol_mapping(recent_orders)
-            pulse_analysis = await self._generate_main_pulse_analysis(
-                portfolio_obj, summarized_market_research, order_symbol_map
-            )
-
-            # Step 9: Send emails (use the same raw_market_research)
-            await self._send_pulse_emails(
-                pulse_analysis, portfolio_obj, summarized_market_research,
-                trade_rows, trade_outlook, raw_market_research
-            )
-
-            logger.info('Daily pulse report generated successfully')
+            logger.info('Daily pulse report generated successfully via pipeline')
 
             return {
                 'success': True,
                 'data': {
-                    'analysis': pulse_analysis,
-                    'portfolio_summary': portfolio_obj.model_dump(),
+                    'analysis': context.pulse_analysis,
+                    'portfolio_summary': context.portfolio_obj.model_dump() if context.portfolio_obj else None,
                     'generated_at': DateTimeUtil.get_iso_date(),
-                    'market_research': summarized_market_research.model_dump(),
+                    'market_research': context.summarized_market_research.model_dump() if context.summarized_market_research else None,
+                    'execution_metrics': {
+                        'total_time_ms': context.total_execution_time,
+                        'gpt_tokens': context.gpt_tokens,
+                        'search_count': context.search_count,
+                        'stages_executed': len(context.stage_results),
+                        'stage_results': {name: result.model_dump() for name, result in context.stage_results.items()}
+                    }
                 }
             }
 
         except Exception as e:
-            logger.error(f"Failed to generate daily pulse: {e}", exc_info=True)
+            logger.error(f"Failed to generate daily pulse via pipeline: {e}", exc_info=True)
             return {
                 'success': False,
                 'error': str(e)

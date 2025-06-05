@@ -2,10 +2,12 @@ from abc import ABC, abstractmethod
 from clients.google_search_client import GoogleSearchClient
 from clients.gpt_client import GPTClient
 from framework.logger import get_logger
+from domain.gpt import GPTModel
 from models.robinhood_models import Article, MarketResearch, RobinhoodConfig, SummarySection, MarketResearchSummary
 from framework.configuration import Configuration
 import feedparser
 from bs4 import BeautifulSoup
+from services.prompt_generator import PromptGenerator
 
 logger = get_logger(__name__)
 
@@ -87,7 +89,7 @@ Respond with only one word: 'valuable' or 'junk'.
                     logger.info(f'Classifying snippet: {snippet}')
                     result = await self._gpt_client.generate_completion(
                         prompt=prompt,
-                        model="gpt-3.5-turbo",
+                        model=GPTModel.GPT_3_5_TURBO,
                         temperature=0.0,
                         use_cache=True
                     )
@@ -252,6 +254,7 @@ class SectorAnalysisProcessor(BaseResearchProcessor):
         self._google_search_client = google_search_client
         self._exclude_sites = config.daily_pulse.exclude_sites
         self._max_results = config.daily_pulse.search.sector_analysis_max_results
+        self._prompt_generator = PromptGenerator()
 
     async def fetch_and_enrich(self):
         major_sectors = ['technology', 'healthcare', 'finance', 'energy']
@@ -286,20 +289,7 @@ class SectorAnalysisProcessor(BaseResearchProcessor):
         if not valuable_articles:
             self._prompts['sector_analysis'] = ['No valuable sector analysis to summarize.']
             return 'No valuable sector analysis to summarize.'
-        prompt_lines = [
-            "Summarize the following sector analysis articles in a structured markdown format. "
-            "Start with the header '### Sector Analysis Summary' followed by dedicated sections for each major sector. "
-            "Use markdown headers like '**Technology Sector**', '**Healthcare Sector**', '**Financial Services Sector**', and '**Energy Sector**' for each section. "
-            "Provide 2-3 concise sentences for each sector covering key trends, major companies, and performance indicators. "
-            "End with a brief concluding sentence about sector dynamics and growth opportunities.\n"
-        ]
-        for i, article in enumerate(valuable_articles, 1):
-            if hasattr(article, 'to_prompt_block'):
-                prompt_lines.append(article.to_prompt_block(i))
-            else:
-                prompt_lines.append(Article.dict_to_prompt_block(article, i))
-            prompt_lines.append("")
-        prompt = "\n".join(prompt_lines)
+        prompt = self._prompt_generator.generate_sector_analysis_summary_prompt(valuable_articles)
         self._prompts['sector_analysis'] = [prompt]
         logger.info(f"[SectorAnalysisProcessor] Sending prompt to GPT")
         resp_content = await self._gpt_client.generate_completion(
