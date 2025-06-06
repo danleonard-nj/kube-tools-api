@@ -62,7 +62,6 @@ from services.calendar_service import CalendarService
 from services.chat_gpt_service import ChatGptService
 from services.coinbase_service import CoinbaseService
 from services.conversation_service import ConversationService
-from services.email_generator import EmailGenerator
 from services.event_service import EventService
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
@@ -70,14 +69,15 @@ from services.gmail_service import GmailService
 from services.google_auth_service import GoogleAuthService
 from services.google_drive_service import GoogleDriveService
 from services.location_history_service import LocationHistoryService
-from services.market_research_processor import MarketResearchProcessor
 from services.mongo_backup_service import MongoBackupService
 from services.podcast_service import PodcastService
-from services.prompt_generator import PromptGenerator
 from services.redis_service import RedisService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
 from services.conversation_service import ConversationService
-from services.robinhood_service import EmailConfig, RobinhoodService
+from services.robinhood.email_generator import EmailGenerator
+from services.robinhood.market_research_processor import MarketResearchProcessor
+from services.robinhood.prompt_generator import PromptGenerator
+from services.robinhood.robinhood_service import RobinhoodService
 from services.torrent_service import TorrentService
 from services.usage_service import UsageService
 from services.weather_service import WeatherService

@@ -3,7 +3,9 @@ from framework.di.service_provider import ServiceProvider
 from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
 
-from services.robinhood_service import RobinhoodService
+from models.robinhood_models import RobinhoodConfig
+from services.robinhood.robinhood_service import PipelineConfig, RobinhoodService
+
 
 robinhood_bp = MetaBlueprint('robinhood_bp', __name__)
 
@@ -28,7 +30,11 @@ async def robinhood_accounts(container: ServiceProvider):
 async def robinhood_daily_pulse(container: ServiceProvider):
     service: RobinhoodService = container.resolve(RobinhoodService)
 
-    return await service.generate_daily_pulse()
+    robinhood_config = container.resolve(RobinhoodConfig)
+    pipeline = PipelineConfig(
+        robinhood_config=robinhood_config)
+
+    return await service.generate_daily_pulse(config=pipeline)
 
 
 @robinhood_bp.configure('/api/robinhood/balance/sync', methods=['POST'], auth_scheme=AuthPolicy.Default)

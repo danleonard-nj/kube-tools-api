@@ -8,14 +8,15 @@ from clients.gpt_client import GPTClient
 from clients.robinhood_data_client import RobinhoodDataClient
 from domain.enums import BankKey, SyncType
 from domain.gpt import GPTModel
+from models.email_config import EmailConfig
 from services.bank_service import BankService
-from services.market_research_processor import MarketResearchProcessor
-from services.email_generator import EmailGenerator
-from services.prompt_generator import PromptGenerator
 from framework.clients.cache_client import CacheClientAsync
+from services.robinhood.email_generator import EmailGenerator
+from services.robinhood.market_research_processor import MarketResearchProcessor
+from services.robinhood.prompt_generator import PromptGenerator
 from utilities.utils import DateTimeUtil
 from framework.logger import get_logger
-from models.robinhood_models import Holding, Order, PortfolioData, DebugReport
+from models.robinhood_models import Holding, Order, PortfolioData, DebugReport, RobinhoodConfig
 from sib_api_v3_sdk import ApiClient, Configuration as SibConfiguration
 from sib_api_v3_sdk.api.transactional_emails_api import TransactionalEmailsApi
 from sib_api_v3_sdk.models import SendSmtpEmail
@@ -40,12 +41,6 @@ class TradeAnalysis(BaseModel):
     date: str
     datetime: Optional[str] = None  # New field for full datetime
     state: str
-
-
-class EmailConfig(BaseModel):
-    """Configuration for email settings."""
-    sendinblue_api_key: SecretStr  # Secret key for Sendinblue API
-    from_email: str  # Email address to send from
 
 
 class StageResult(BaseModel):
@@ -76,6 +71,7 @@ class PipelineConfig(BaseModel):
     max_recent_orders: int = 15
     max_trade_performance_orders: int = 10
     cache_ttl_minutes: int = 60
+    robinhood_config: RobinhoodConfig = None
 
 
 class PulseContext(BaseModel):
@@ -243,13 +239,14 @@ class CaptureBalanceStage(DomainStage):
             return result
 
         try:
-            portfolio_balance = round(float(context.portfolio_obj.portfolio_profile.last_core_equity), 2)
-            await self.service._bank_service.capture_balance(
-                bank_key=BankKey.Robinhood,
-                balance=portfolio_balance,
-                sync_type=str(SyncType.Robinhood)
-            )
-            logger.info(f"Portfolio balance captured: ${portfolio_balance:,.2f}")
+            # portfolio_balance = round(float(context.portfolio_obj.portfolio_profile.last_core_equity), 2)
+            # await self.service._bank_service.capture_balance(
+            #     bank_key=BankKey.Robinhood,
+            #     balance=portfolio_balance,
+            #     sync_type=str(SyncType.Robinhood)
+            # )
+            # logger.info(f"Portfolio balance captured: ${portfolio_balance:,.2f}")
+            pass
 
         except (ValueError, TypeError, AttributeError) as e:
             result.add_error(f"Failed to capture portfolio balance - data format issue: {str(e)}")
@@ -272,7 +269,8 @@ class FetchMarketResearchStage(DomainStage):
 
             # Market research processor runs its own pipeline internally
             context.raw_market_research = await self.service._market_research_processor.get_market_research_data(
-                context.portfolio_obj.model_dump()
+                context.portfolio_obj.model_dump(),
+                context.config.robinhood_config
             )
 
             # Market research pipeline metrics can be captured here
@@ -312,9 +310,11 @@ class SummarizeMarketResearchStage(DomainStage):
         try:
             logger.info('Summarizing market research data via market research pipeline')
 
-            # Market research processor runs its summarization pipeline internally
+            # ✅ CRITICAL: Pass portfolio_data to enable structured data generation
+            portfolio_data = context.portfolio_obj.model_dump() if context.portfolio_obj else {}
             context.summarized_market_research = await self.service._market_research_processor.summarize_market_research(
-                context.raw_market_research
+                context.raw_market_research,
+                portfolio_data  # ✅ This enables structured portfolio/trading data generation
             )
 
             # Store prompts for debugging (from market research pipeline)
@@ -326,22 +326,30 @@ class SummarizeMarketResearchStage(DomainStage):
             if summary_metrics:
                 context.performance_metrics['market_research_summary_pipeline'] = summary_metrics
 
+            # ✅ NEW: Add logging to see if structured data was generated
+            if context.summarized_market_research:
+                portfolio_sections = context.summarized_market_research.portfolio_summary
+                trading_sections = context.summarized_market_research.trading_summary
+
+                logger.info(f"Market research summarization completed:")
+                logger.info(f"  - Portfolio sections: {len(portfolio_sections)}")
+                logger.info(f"  - Trading sections: {len(trading_sections)}")
+
+                # Log if structured data was detected
+                for section in portfolio_sections:
+                    if isinstance(section.snippet, dict):
+                        logger.info(f"  - ✅ Portfolio structured data detected: {list(section.snippet.keys())}")
+
+                for section in trading_sections:
+                    if isinstance(section.snippet, dict):
+                        logger.info(f"  - ✅ Trading structured data detected: {list(section.snippet.keys())}")
+
         except Exception as e:
             result.add_warning(f"Market research summarization pipeline failed: {str(e)}")
             # Provide fallback empty summary
             context.summarized_market_research = self._create_empty_market_research_summary()
 
         return result
-
-    def _create_empty_market_research_summary(self):
-        """Create empty market research summary as fallback."""
-        from models.robinhood_models import MarketResearchSummary
-        return MarketResearchSummary.model_validate({
-            'market_conditions': [],
-            'stock_news': {},
-            'sector_analysis': [],
-            'search_errors': ['Market research summarization unavailable']
-        })
 
 
 class EnrichOrdersStage(DomainStage):
@@ -538,11 +546,40 @@ class TradeOutlooksStage(DomainStage):
             stock_news_lookup = self._build_stock_news_lookup(context.summarized_market_research)
             sector_lookup, fallback_sector_summary = self._build_sector_lookup(context.summarized_market_research)
 
+            def get_trade_key(trade): return f'{trade.symbol}-{trade.datetime}'
+
+            results = dict()
+            tasks = []
+            sem = asyncio.Semaphore(10)  # Limit concurrent AI calls
+
+            async def generate_single_trade_outlook(**kwargs) -> None:
+                key = get_trade_key(kwargs['trade'])
+                logger.info(f'Generating outlook for trade {key}')
+                result = await self._generate_single_trade_outlook(
+                    **kwargs)
+                results[key] = result
+
+            for trade in context.trade_analysis:
+                if not trade.symbol or not trade.datetime:
+                    logger.warning(f"Skipping trade with missing symbol or datetime: {trade}")
+                    continue
+
+                tasks.append(generate_single_trade_outlook(
+                    trade=trade,
+                    portfolio_obj=context.portfolio_obj,
+                    stock_news_lookup=stock_news_lookup,
+                    sector_lookup=sector_lookup,
+                    fallback_sector_summary=fallback_sector_summary
+                ))
+
+            await asyncio.gather(*tasks)
+
             for trade in context.trade_analysis:
                 try:
-                    outlook = await self._generate_single_trade_outlook(
-                        trade, context.portfolio_obj, stock_news_lookup, sector_lookup, fallback_sector_summary
-                    )
+                    # outlook = await self._generate_single_trade_outlook(
+                    #     trade, context.portfolio_obj, stock_news_lookup, sector_lookup, fallback_sector_summary
+                    # )
+                    outlook = results.get(get_trade_key(trade), None)
                     trade.outlook = outlook
                 except Exception as e:
                     logger.error(f"Failed to generate outlook for trade {trade.symbol}: {e}", exc_info=True)
@@ -705,10 +742,10 @@ class SendEmailsStage(DomainStage):
             # Generate and send main pulse email
             html_body = self.service._email_generator.generate_daily_pulse_html_email(
                 analysis=context.pulse_analysis,
-                portfolio_summary=context.portfolio_obj,
-                market_research=context.summarized_market_research,
+                portfolio_data=context.portfolio_obj,  # ✅ Changed parameter name
+                market_research_summary=context.summarized_market_research,  # ✅ Changed parameter name and type
                 trade_performance=[trade.model_dump() for trade in context.trade_analysis],
-                trade_outlook=context.trade_outlook
+                trade_outlook=context.trade_outlook,
             )
 
             subject = self.service._email_generator.generate_daily_pulse_subject()
