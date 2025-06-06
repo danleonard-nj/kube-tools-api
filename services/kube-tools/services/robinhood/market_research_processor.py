@@ -11,7 +11,7 @@ from clients.google_search_client import GoogleSearchClient
 from clients.gpt_client import GPTClient
 from framework.logger import get_logger
 from domain.gpt import GPTModel
-from models.robinhood_models import Article, Holding, MarketResearch, RobinhoodConfig, SummarySection, MarketResearchSummary
+from models.robinhood_models import Article, Holding, MarketResearch, RobinhoodConfig, SectionTitle, SummarySection, MarketResearchSummary
 from framework.configuration import Configuration
 import feedparser
 from framework.clients.cache_client import CacheClientAsync
@@ -436,7 +436,7 @@ class FetchTruthSocialStage(ResearchDomainStage):
                         continue
 
                     # Clean content from HTML
-                    content = entry.get('summary', '') or entry.get('description', '')
+                    content = entry.get('title', '') or entry.get('description', '')
                     if content:
                         content = BeautifulSoup(content, 'lxml').get_text(separator=' ', strip=True)
 
@@ -1243,23 +1243,23 @@ class MarketResearchProcessor:
             # Create summary sections using structured data
             portfolio_summary = []
             if context.portfolio_summary_data:
-                portfolio_summary = [SummarySection(title='Portfolio Holdings', snippet=context.portfolio_summary_data)]
+                portfolio_summary = [SummarySection(title=SectionTitle.PORTFOLIO_SUMMARY, snippet=context.portfolio_summary_data)]
 
             trading_summary = []
             if context.trading_summary_data:
-                trading_summary = [SummarySection(title='Trading Summary & Performance', snippet=context.trading_summary_data)]
+                trading_summary = [SummarySection(title=SectionTitle.TRADING_SUMMARY_AND_PERFORMANCE, snippet=context.trading_summary_data)]
 
             # Convert to final summary format
             summary = {
                 'market_conditions': [
-                    SummarySection(title='Market Conditions Summary', snippet=context.market_conditions_summary)
+                    SummarySection(title=SectionTitle.MARKET_CONDITIONS_SUMMARY, snippet=context.market_conditions_summary)
                 ] if context.market_conditions_summary else [],
                 'stock_news': {
                     symbol: [SummarySection(title=f'{symbol} News Summary', snippet=summary)]
                     for symbol, summary in context.stock_news_summaries.items()
                 },
                 'sector_analysis': [
-                    SummarySection(title='Sector Analysis Summary', snippet=context.sector_analysis_summary)
+                    SummarySection(title=SectionTitle.SECTOR_ANALYSIS, snippet=context.sector_analysis_summary)
                 ] if context.sector_analysis_summary else [],
                 'truth_social_summary': self._create_truth_social_summary_sections(context.truth_social_insights),
                 'portfolio_summary': portfolio_summary,
@@ -1287,42 +1287,437 @@ class MarketResearchProcessor:
                 'search_errors': [f'Pipeline summarization failed: {str(e)}']
             })
 
+    # def _create_truth_social_summary_sections(self, insights: Optional[Any]) -> List[SummarySection]:
+    #     """Create summary sections for Truth Social insights."""
+    #     if not insights:
+    #         return []
+
+    #     # Handle both dict (from database) and TruthSocialInsights object
+    #     if isinstance(insights, dict):
+    #         market_relevant_count = len(insights.get('market_relevant_posts', []))
+    #         trend_significant_count = len(insights.get('trend_significant_posts', []))
+    #         total_analyzed = insights.get('total_posts_analyzed', 0)
+    #         date_range = insights.get('date_range', 'recent period')
+    #     else:
+    #         market_relevant_count = len(insights.market_relevant_posts)
+    #         trend_significant_count = len(insights.trend_significant_posts)
+    #         total_analyzed = insights.total_posts_analyzed
+    #         date_range = insights.date_range
+
+    #     sections = []
+
+    #     # Market-relevant posts section
+    #     if market_relevant_count > 0:
+    #         market_content = f"Analysis of {market_relevant_count} market-relevant posts from {date_range}"
+    #         sections.append(SummarySection(title='Presidential Market Insights', snippet=market_content))
+
+    #     # Trend-significant posts section
+    #     if trend_significant_count > 0:
+    #         trend_content = f"Analysis of {trend_significant_count} trend-significant posts covering key policy themes"
+    #         sections.append(SummarySection(title='Presidential Policy Trends', snippet=trend_content))
+
+    #     # Summary section
+    #     if market_relevant_count > 0 or trend_significant_count > 0:
+    #         total_significant = market_relevant_count + trend_significant_count
+    #         summary_content = f"Analyzed {total_analyzed} presidential posts from {date_range}. Found {total_significant} posts with market or policy significance."
+    #         sections.append(SummarySection(title='Truth Social Analysis Summary', snippet=summary_content))
+
+    #     return sections
+
     def _create_truth_social_summary_sections(self, insights: Optional[Any]) -> List[SummarySection]:
-        """Create summary sections for Truth Social insights."""
+        """Create streamlined summary sections for Truth Social insights with HTML formatting."""
         if not insights:
             return []
 
         # Handle both dict (from database) and TruthSocialInsights object
         if isinstance(insights, dict):
-            market_relevant_count = len(insights.get('market_relevant_posts', []))
-            trend_significant_count = len(insights.get('trend_significant_posts', []))
+            market_relevant_posts = insights.get('market_relevant_posts', [])
+            trend_significant_posts = insights.get('trend_significant_posts', [])
             total_analyzed = insights.get('total_posts_analyzed', 0)
             date_range = insights.get('date_range', 'recent period')
+            sentiment_analysis = insights.get('sentiment_analysis', {})
+            market_impact_score = insights.get('market_impact_score', 0)
         else:
-            market_relevant_count = len(insights.market_relevant_posts)
-            trend_significant_count = len(insights.trend_significant_posts)
+            market_relevant_posts = insights.market_relevant_posts
+            trend_significant_posts = insights.trend_significant_posts
             total_analyzed = insights.total_posts_analyzed
             date_range = insights.date_range
+            sentiment_analysis = getattr(insights, 'sentiment_analysis', {})
+            market_impact_score = getattr(insights, 'market_impact_score', 0)
 
         sections = []
 
-        # Market-relevant posts section
-        if market_relevant_count > 0:
-            market_content = f"Analysis of {market_relevant_count} market-relevant posts from {date_range}"
-            sections.append(SummarySection(title='Presidential Market Insights', snippet=market_content))
+        # 1. Executive Summary
+        if market_relevant_posts or trend_significant_posts:
+            total_significant = len(market_relevant_posts) + len(trend_significant_posts)
+            impact_level = "High" if market_impact_score > 7 else "Medium" if market_impact_score > 4 else "Low"
 
-        # Trend-significant posts section
-        if trend_significant_count > 0:
-            trend_content = f"Analysis of {trend_significant_count} trend-significant posts covering key policy themes"
-            sections.append(SummarySection(title='Presidential Policy Trends', snippet=trend_content))
+            # Get dominant sentiment
+            dominant_sentiment = "Neutral"
+            if sentiment_analysis and sentiment_analysis.get('scores'):
+                sentiment_scores = sentiment_analysis['scores']
+                dominant_sentiment = max(sentiment_scores.keys(), key=lambda k: sentiment_scores[k])
 
-        # Summary section
-        if market_relevant_count > 0 or trend_significant_count > 0:
-            total_significant = market_relevant_count + trend_significant_count
-            summary_content = f"Analyzed {total_analyzed} presidential posts from {date_range}. Found {total_significant} posts with market or policy significance."
-            sections.append(SummarySection(title='Truth Social Analysis Summary', snippet=summary_content))
+            executive_summary = f"""
+            <div class="highlight">
+                <h3><span class="icon-header">🏛️</span>Presidential Intelligence Brief</h3>
+                
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-label">Period</div>
+                        <div class="metric-value">{date_range}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Posts Analyzed</div>
+                        <div class="metric-value">{total_analyzed}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Market-Relevant</div>
+                        <div class="metric-value">{len(market_relevant_posts)}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Impact Level</div>
+                        <div class="metric-value">{impact_level} ({market_impact_score}/10)</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <strong>Sentiment:</strong> <span class="{'positive' if dominant_sentiment.lower() == 'positive' else 'negative' if dominant_sentiment.lower() == 'negative' else ''}">{dominant_sentiment.title()}</span>
+                </div>
+                
+                <div style="margin-top: 16px;">
+                    <strong>Key Findings:</strong>
+                    <ul style="margin: 8px 0; padding-left: 20px;">
+                        <li>{total_significant} posts with market/policy implications identified</li>
+                        <li>Primary focus: Economic policy, regulatory matters, trade relations</li>
+                        <li>Market sentiment trending {dominant_sentiment.lower()} with potential volatility signals</li>
+                    </ul>
+                </div>
+            </div>
+            """
+
+            sections.append(SummarySection(title=SectionTitle.PRESIDENTIAL_INTELLIGENCE_BRIEF, snippet=executive_summary))
+
+        # 2. TOP IMPACT POSTS TABLE
+        if market_relevant_posts or trend_significant_posts:
+            top_posts_table = self._create_top_impact_posts_html_table(market_relevant_posts, trend_significant_posts)
+            if top_posts_table:
+                sections.append(SummarySection(title=SectionTitle.TOP_IMPACT_POSTS, snippet=top_posts_table))
+
+        # 3. Market Impact & Policy Analysis (Combined)
+        if market_relevant_posts:
+            combined_analysis = self._analyze_market_and_policy_combined_html(market_relevant_posts, trend_significant_posts, sentiment_analysis)
+            sections.append(SummarySection(title=SectionTitle.MARKET_IMPACT_POLICY_ANALYSIS, snippet=combined_analysis))
+
+        # 4. Trading Strategy Implications
+        if market_relevant_posts or trend_significant_posts:
+            strategy_implications = self._generate_simplified_trading_implications_html(market_impact_score, sentiment_analysis)
+            sections.append(SummarySection(title=SectionTitle.TRADING_STRATEGY_IMPLICATIONS, snippet=strategy_implications))
 
         return sections
+
+    def _create_top_impact_posts_html_table(self, market_posts: List[Any], trend_posts: List[Any]) -> Optional[str]:
+        """Create HTML table for top impact Truth Social posts."""
+        try:
+            # Combine and sort posts by impact score
+            all_posts = []
+
+            # Process market-relevant posts
+            for post in market_posts:
+                if isinstance(post, dict):
+                    original_post = post.get('original_post', {})
+                    market_impact_score = 8 if post.get('market_impact', False) else 0
+                    analysis = post.get('market_analysis', '')
+                else:
+                    original_post = post.original_post
+                    market_impact_score = 8 if post.market_impact else 0
+                    analysis = post.market_analysis or ''
+
+                all_posts.append({
+                    'post': original_post,
+                    'impact_score': market_impact_score,
+                    'type': 'Market',
+                    'analysis': analysis
+                })
+
+            # Process trend-significant posts
+            for post in trend_posts:
+                if isinstance(post, dict):
+                    original_post = post.get('original_post', {})
+                    trend_impact_score = 6 if post.get('trend_significance', False) else 0
+                    analysis = post.get('trend_analysis', '')
+                else:
+                    original_post = post.original_post
+                    trend_impact_score = 6 if post.trend_significance else 0
+                    analysis = post.trend_analysis or ''
+
+                # Only add if not already added as market post
+                post_id = original_post.get('post_id') if isinstance(original_post, dict) else getattr(original_post, 'post_id', '')
+                if not any(p['post'].get('post_id') == post_id or getattr(p['post'], 'post_id', '') == post_id for p in all_posts):
+                    all_posts.append({
+                        'post': original_post,
+                        'impact_score': trend_impact_score,
+                        'type': 'Policy',
+                        'analysis': analysis
+                    })
+
+            # Sort by impact score and take top 10
+            all_posts.sort(key=lambda x: x['impact_score'], reverse=True)
+            top_posts = all_posts[:10]
+
+            if not top_posts:
+                return None
+
+            # Create HTML table
+            html = f"""
+            <div class="pipeline-section">
+                <table class="trade-performance-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 8%;">Rank</th>
+                            <th style="width: 12%;">Date/Time</th>
+                            <th style="width: 10%;">Type</th>
+                            <th style="width: 8%;">Impact</th>
+                            <th style="width: 40%;">Post Content</th>
+                            <th style="width: 22%;">Analysis</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            """
+
+            for i, post_data in enumerate(top_posts, 1):
+                post = post_data['post']
+
+                # Extract post data
+                if isinstance(post, dict):
+                    date = post.get('published_date', 'Unknown')
+                    content = post.get('content', post.get('title', ''))
+                    link = post.get('link', '')
+                else:
+                    date = getattr(post, 'published_date', 'Unknown')
+                    content = getattr(post, 'content', '') or getattr(post, 'title', '')
+                    link = getattr(post, 'link', '')
+
+                # Format date
+                if hasattr(date, 'strftime'):
+                    formatted_date = date.strftime('%m/%d %H:%M')
+                elif isinstance(date, str) and date != 'Unknown':
+                    try:
+                        from datetime import datetime
+                        parsed_date = datetime.fromisoformat(date.replace('Z', '+00:00'))
+                        formatted_date = parsed_date.strftime('%m/%d %H:%M')
+                    except:
+                        formatted_date = date
+                else:
+                    formatted_date = str(date)
+
+                # Truncate content for table display
+                # truncated_content = content[:150] + '...' if len(content) > 150 else content
+                # truncated_content = ' '.join(truncated_content.split())  # Clean whitespace
+
+                # Truncate analysis
+                # analysis_text = post_data['analysis'][:100] + '...' if len(post_data['analysis']) > 100 else post_data['analysis']
+                analysis_text = post_data['analysis']
+
+                # Impact score styling
+                impact_score = post_data['impact_score']
+                impact_class = 'positive' if impact_score >= 7 else 'negative' if impact_score <= 3 else ''
+
+                # Type badge styling
+                # type_badge_style = 'background: #e8f5e8; color: #0d7833; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;' if post_data[
+                type_badge_style = 'color: #0d7833; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;' if post_data[
+                    'type'] == 'Market' else 'background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;'
+
+                html += f"""
+                        <tr>
+                            <td style="text-align: center; font-weight: 600;">{i}</td>
+                            <td style="font-size: 13px;">{formatted_date}</td>
+                            <td><span style="{type_badge_style}">{post_data['type']}</span></td>
+                            <td style="text-align: center;"><span class="{impact_class}" style="font-weight: 600;">{impact_score}/10</span></td>
+                            <td style="font-size: 13px; line-height: 1.4;">{content}</td>
+                            <td style="font-size: 12px; color: #5f6368; line-height: 1.3;">{analysis_text}</td>
+                        </tr>
+                """
+
+            html += """
+                    </tbody>
+                </table>
+            </div>
+            """
+
+            return html
+
+        except Exception as e:
+            logger.error(f"Failed to create top impact posts HTML table: {e}")
+            return None
+
+    def _analyze_market_and_policy_combined_html(self, market_posts: List[Any], policy_posts: List[Any], sentiment_analysis: dict) -> str:
+        """Combined analysis of market impact and policy trends in HTML format."""
+
+        # Sentiment breakdown
+        sentiment_html = ""
+        if sentiment_analysis.get('scores'):
+            scores = sentiment_analysis['scores']
+            bullish_pct = int(scores.get('positive', 0) * 100)
+            bearish_pct = int(scores.get('negative', 0) * 100)
+            neutral_pct = int(scores.get('neutral', 0) * 100)
+
+            sentiment_html = f"""
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Bullish Sentiment</div>
+                    <div class="metric-value positive">{bullish_pct}%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Bearish Sentiment</div>
+                    <div class="metric-value negative">{bearish_pct}%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Neutral Sentiment</div>
+                    <div class="metric-value">{neutral_pct}%</div>
+                </div>
+            </div>
+            """
+
+        # Get top 3 most impactful posts
+        all_posts = market_posts + policy_posts
+        top_posts_html = ""
+
+        for i, post in enumerate(all_posts[:3]):
+            if isinstance(post, dict):
+                original_post = post.get('original_post', {})
+                content = original_post.get('content', '')
+                timestamp = original_post.get('published_date', 'Recent')
+                impact_score = 8 if post.get('market_impact', False) else 6
+                analysis = post.get('market_analysis') or post.get('trend_analysis', '')
+            else:
+                original_post = post.original_post
+                content = getattr(original_post, 'content', '')
+                timestamp = getattr(original_post, 'published_date', 'Recent')
+                impact_score = 8 if post.market_impact else 6
+                analysis = post.market_analysis or post.trend_analysis or ''
+
+            # Format timestamp
+            if hasattr(timestamp, 'strftime'):
+                formatted_time = timestamp.strftime('%m/%d %H:%M')
+            else:
+                formatted_time = str(timestamp)
+
+            impact_class = 'positive' if impact_score >= 7 else ''
+
+            # <div style="background: #f8f9fa; border-left: 4px solid #2a5298; padding: 16px; margin-bottom: 12px; border-radius: 4px;">
+            top_posts_html += f"""
+            <div style="border-left: 4px solid #2a5298; padding: 16px; margin-bottom: 12px; border-radius: 4px;">
+                <div style="font-weight: 600; color: #2a5298; margin-bottom: 8px;">
+                    {formatted_time} • <span class="{impact_class}">Impact: {impact_score}/10</span>
+                </div>
+                <div style="font-style: italic; margin-bottom: 8px; line-height: 1.4;">
+                    "{content}"
+                </div>
+                <div style="font-size: 13px; color: #5f6368;">
+                    <strong>Analysis:</strong> {analysis}
+                </div>
+            </div>
+            """
+
+        analysis_html = f"""
+        <div class="market-section">
+            <h4 style="color: #2a5298; margin-top: 0;">Market-Moving Communications</h4>
+            
+            {sentiment_html}
+            
+            <h4 style="color: #2a5298; margin-top: 24px; margin-bottom: 16px;">Top Impact Posts</h4>
+            {top_posts_html}
+            
+            <div style="background: #e8f0fe; padding: 16px; border-radius: 8px; margin-top: 20px;">
+                <h4 style="color: #1e3c72; margin-top: 0;">Key Takeaways</h4>
+                <ul style="margin: 0; padding-left: 20px; color: #2a5298;">
+                    <li>Monitor affected sectors for volatility in next 24-48 hours</li>
+                    <li>Watch for follow-up policy announcements or clarifications</li>
+                    <li>Consider position adjustments based on sentiment shifts</li>
+                </ul>
+            </div>
+        </div>
+        """
+
+        return analysis_html
+
+    def _generate_simplified_trading_implications_html(self, impact_score: float, sentiment_analysis: dict) -> str:
+        """Generate trading strategy implications in HTML format."""
+
+        # Risk assessment
+        if impact_score >= 7:
+            risk_level = "HIGH RISK"
+            risk_color = "#d73e2a"
+            risk_icon = "🔴"
+            risk_advice = "Reduce position sizes, consider hedging"
+        elif impact_score >= 4:
+            risk_level = "MEDIUM RISK"
+            risk_color = "#f9ab00"
+            risk_icon = "🟡"
+            risk_advice = "Normal positions with enhanced monitoring"
+        else:
+            risk_level = "LOW RISK"
+            risk_color = "#0d7833"
+            risk_icon = "🟢"
+            risk_advice = "Standard trading strategies viable"
+
+        # Sentiment-based strategy
+        strategy_note = ""
+        if sentiment_analysis.get('scores'):
+            sentiment_scores = sentiment_analysis['scores']
+            dominant = max(sentiment_scores.keys(), key=lambda k: sentiment_scores[k])
+
+            if dominant == 'positive':
+                strategy_note = "Bullish sentiment supports growth stocks and risk-on assets"
+            elif dominant == 'negative':
+                strategy_note = "Bearish sentiment favors defensive positions and safe havens"
+            else:
+                strategy_note = "Neutral sentiment suggests range-bound trading opportunities"
+
+        implications_html = f"""
+        <div class="pipeline-section">
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Risk Level</div>
+                    <div class="metric-value" style="color: {risk_color};">{risk_icon} {risk_level}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Impact Score</div>
+                    <div class="metric-value">{impact_score}/10</div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 20px;">
+                <h4 style="color: #2a5298; margin-bottom: 12px;">Strategy Guidance</h4>
+                <div style="background: #f6f8fc; padding: 16px; border-radius: 8px; border-left: 4px solid {risk_color};">
+                    <div style="font-weight: 600; margin-bottom: 8px;">{risk_advice}</div>
+                    <div style="margin-bottom: 12px;">• {strategy_note}</div>
+                    <div>• Plan for increased volatility in first hour post-announcement</div>
+                    <div>• Tech/Energy/Healthcare sectors most likely to be affected</div>
+                    <div>• Consider 50-75% normal position sizing during high-impact periods</div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 20px;">
+                <h4 style="color: #2a5298; margin-bottom: 12px;">Key Timing Windows</h4>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-label">Pre-Market</div>
+                        <div class="metric-value" style="font-size: 16px;">4:00-9:30 AM EST</div>
+                        <div style="font-size: 12px; color: #5f6368; margin-top: 4px;">Watch futures reaction</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Market Open</div>
+                        <div class="metric-value" style="font-size: 16px;">9:30-10:00 AM EST</div>
+                        <div style="font-size: 12px; color: #5f6368; margin-top: 4px;">Highest volatility window</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+
+        return implications_html
 
     def get_prompts(self) -> Dict[str, Any]:
         """Get stored prompts for debugging."""

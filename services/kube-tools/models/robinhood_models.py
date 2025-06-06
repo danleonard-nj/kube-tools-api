@@ -9,11 +9,16 @@ MAX_ARTICLE_CHUNK_SIZE = 10000
 class SectionTitle:
     """Enum-like class for section names."""
     MARKET_CONDITIONS = "Market Conditions"
+    MARKET_CONDITIONS_SUMMARY = "Market Conditions Summary"
     STOCK_NEWS = "Stock News"
     SECTOR_ANALYSIS = "Sector Analysis"
     TRUTH_SOCIAL = "Truth Social"
     PORTFOLIO_SUMMARY = "Portfolio Holdings"
-    TRADING_SUMMARY = "Trading Summary & Performance"
+    TRADING_SUMMARY_AND_PERFORMANCE = "Trading Performance & Summary"
+    PRESIDENTIAL_INTELLIGENCE_BRIEF = "Presidential Intelligence Brief"
+    TOP_IMPACT_POSTS = "Top Impact Posts"
+    MARKET_IMPACT_POLICY_ANALYSIS = "Market Impact & Policy Analysis"
+    TRADING_STRATEGY_IMPLICATIONS = "Trading Strategy Implications"
 
 
 class Holding(BaseModel):
@@ -241,6 +246,7 @@ class SummarySection(BaseModel):
     """Summary section that can contain either text or structured data."""
     title: str
     snippet: Union[str, Dict[str, Any]]  # Now supports both text and structured data
+    table_data: Optional[List[Dict[str, Any]]] = None  # For structured data tables
 
     class Config:
         # Allow arbitrary types for flexibility

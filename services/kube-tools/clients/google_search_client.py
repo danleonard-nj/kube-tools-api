@@ -158,7 +158,6 @@ class GoogleSearchClient:
                     num_results=max_results,
                     exclude_sites=exclude_sites
                 )
-                logger.info(f'Google API raw result for query "{query}": {result}')
                 items = result.get('items', [])
                 logger.info(f'Found {len(items)} items for query "{query}"')
                 for item in items:

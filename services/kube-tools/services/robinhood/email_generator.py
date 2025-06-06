@@ -4,7 +4,7 @@ import json
 import html
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from framework.logger import get_logger
-from models.robinhood_models import MarketResearch, MarketResearchSummary, PortfolioData, DebugReport, SummarySection
+from models.robinhood_models import MarketResearch, MarketResearchSummary, PortfolioData, DebugReport, SectionTitle, SummarySection
 
 if TYPE_CHECKING:
     from models.robinhood_models import TruthSocialInsights
@@ -429,19 +429,32 @@ class EmailGenerator:
         if not summary_sections:
             return ""
 
+        presidential_sections = [
+            SectionTitle.PRESIDENTIAL_INTELLIGENCE_BRIEF,
+            SectionTitle.TOP_IMPACT_POSTS,
+            SectionTitle.MARKET_IMPACT_POLICY_ANALYSIS,
+            SectionTitle.TRADING_STRATEGY_IMPLICATIONS
+        ]
+
         html_parts = []
         for section in summary_sections:
             title = html.escape(str(section.title))
             snippet = section.snippet
 
             # Check if this is structured portfolio data
-            if title == "Portfolio Holdings" and isinstance(snippet, dict):
+            if section.title == SectionTitle.PORTFOLIO_SUMMARY and isinstance(snippet, dict):
                 html_parts.append(self._generate_portfolio_holdings_section(snippet))
                 continue
 
-            # Check if this is structured trading data
-            if title == "Trading Summary & Performance" and isinstance(snippet, dict):
-                html_parts.append(self._generate_trading_activity_section(snippet))
+            # TODO: SKIPPING THIS SECTION IT'S A DUPLICATE
+            # TODO: Remove any code that generates this section
+            if section.title == SectionTitle.TRADING_SUMMARY_AND_PERFORMANCE and isinstance(snippet, dict):
+                # html_parts.append(self._generate_trading_activity_section(snippet))
+                continue
+
+            if section.title in presidential_sections:
+                logger.info(f'Appending raw HTML for section: {title}')
+                html_parts.append(snippet)
                 continue
 
             # Handle string/text content (existing logic)
@@ -455,6 +468,7 @@ class EmailGenerator:
                 return len(table_lines) >= max(2, len(lines) // 2)
 
             def try_render_html_table(text):
+                logger.info(f'Attempting to render HTML table for section: {section.title}')
                 lines = [l for l in text.strip().splitlines() if l.strip()]
                 if len(lines) < 2:
                     return None
