@@ -12,14 +12,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def wrap_div(content, div_name):
-    return f'''
-        <div class='{div_name}'>
-            {content}
-        </div>
-    '''
-
-
 class EmailGenerator:
     """Class for generating HTML emails for various reports"""
 
@@ -244,88 +236,6 @@ class EmailGenerator:
                 .metrics-grid {
                     grid-template-columns: 1fr;
                 }
-                
-                /* Markdown content styling - matches table aesthetics */
-                .markdown-content {
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                    line-height: 1.6;
-                }
-
-                /* Main section headers with emojis (📈 PORTFOLIO HEALTH ASSESSMENT) */
-                .markdown-content p:first-child,
-                .markdown-content p:has(> strong:only-child) {
-                    background: linear-gradient(135deg, #2a5298 0%, #1e3c72 100%);
-                    color: white;
-                    padding: 16px 20px;
-                    margin: 32px 0 20px 0;
-                    border-radius: 8px;
-                    font-size: 18px;
-                    font-weight: 700;
-                    letter-spacing: 0.5px;
-                    box-shadow: 0 3px 12px rgba(42, 82, 152, 0.2);
-                    text-align: left;
-                }
-
-                /* Content sections - match your market-section styling */
-                .markdown-content p:not(:first-child) {
-                    background: linear-gradient(135deg, #f6f8fc 0%, #e8f0fe 100%);
-                    border-left: 4px solid #2a5298;
-                    border-radius: 10px;
-                    padding: 20px;
-                    margin: 16px 0;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-                    line-height: 1.7;
-                    color: #374151;
-                    font-size: 14px;
-                    white-space: pre-line; /* Preserves line breaks for bullet points */
-                }
-
-                /* Subheadings within paragraphs (Overall Portfolio Performance Analysis:) */
-                .markdown-content strong {
-                    color: #2a5298;
-                    font-size: 16px;
-                    font-weight: 600;
-                    display: block;
-                    margin-top: 16px;
-                    margin-bottom: 8px;
-                    padding-bottom: 4px;
-                    border-bottom: 1px solid #e0e6ed;
-                }
-
-                /* Special section coloring based on keywords */
-                .markdown-content p:contains("RECOMMENDATIONS"),
-                .markdown-content p:contains("STRATEGIC") {
-                    background: linear-gradient(135deg, #fff7e6 0%, #fef3e2 100%);
-                    border-left: 4px solid #f59e0b;
-                    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.1);
-                }
-
-                .markdown-content p:contains("ACTION ITEMS"),
-                .markdown-content p:contains("CLOSING SUMMARY") {
-                    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-                    border-left: 4px solid #10b981;
-                    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
-                }
-
-                /* Mobile responsive adjustments */
-                @media only screen and (max-width: 600px) {
-                    .markdown-content p:first-child,
-                    .markdown-content p:has(> strong:only-child) {
-                        padding: 12px 16px;
-                        font-size: 16px;
-                        margin: 24px 0 16px 0;
-                    }
-                    
-                    .markdown-content p:not(:first-child) {
-                        padding: 16px;
-                        font-size: 13px;
-                    }
-                    
-                    .markdown-content strong {
-                        font-size: 14px;
-                        margin-top: 12px;
-                    }
-                }
             }
         """
 
@@ -341,14 +251,14 @@ class EmailGenerator:
 
     def _generate_portfolio_holdings_section(self, portfolio_data: Dict[str, Any]) -> str:
         """Generate portfolio holdings section with proper HTML table."""
-        # if not portfolio_data or isinstance(portfolio_data, str):
-        #     # Handle legacy text format or errors
-        #     return f"""
-        #         <div class='section pipeline-section'>
-        #             <h2><span class='icon-header'>💼</span>Portfolio Holdings</h2>
-        #             <div class='pipeline-table'>{html.escape(str(portfolio_data))}</div>
-        #         </div>
-        #     """
+        if not portfolio_data or isinstance(portfolio_data, str):
+            # Handle legacy text format or errors
+            return f"""
+                <div class='section pipeline-section'>
+                    <h2><span class='icon-header'>💼</span>Portfolio Holdings</h2>
+                    <div class='pipeline-table'>{html.escape(str(portfolio_data))}</div>
+                </div>
+            """
 
         holdings = portfolio_data.get('holdings', [])
         total_value = portfolio_data.get('total_value', 0)
@@ -704,12 +614,6 @@ class EmailGenerator:
         """Generate the pulse analysis section HTML."""
         try:
             formatted_analysis = markdown.markdown(str(analysis))
-
-            formatted_analysis = wrap_div(formatted_analysis, 'markdown-content')
-
-            with open('analysis_rendered_markdown.html', 'w', encoding='utf-8') as file:
-                file.write(str(formatted_analysis))
-
         except Exception as e:
             logger.warning(f"Failed to format markdown for analysis: {e}")
             formatted_analysis = html.escape(str(analysis))
