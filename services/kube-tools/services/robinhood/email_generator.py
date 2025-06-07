@@ -133,7 +133,6 @@ class EmailGenerator:
             }
             
             .pipeline-section { 
-                background: #ffffff; 
                 border-radius: 10px; 
                 padding: 20px; 
                 margin-top: 16px; 

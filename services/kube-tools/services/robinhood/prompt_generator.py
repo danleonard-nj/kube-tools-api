@@ -65,7 +65,9 @@ class PromptGenerator:
                 'average_buy_price': data.average_buy_price or '0',
                 'current_price': data.price or '0',
                 'total_return': data.equity_change or '0',
-                'percentage_change': data.percentage or data.percent_change or '0'
+                # Use intraday percent change
+                'percentage_change': data.intraday_percent_change
+                # 'percentage_change': data.percentage or data.percent_change or '0'
             })
 
         # Format recent orders

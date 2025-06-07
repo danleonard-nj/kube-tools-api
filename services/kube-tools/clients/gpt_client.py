@@ -49,10 +49,10 @@ class GPTClient:
 
         _hash = md5(prompt)
 
-        logger.info(f'##: P:{_hash}:\n{prompt[:25]}...\n')
+        # logger.info(f'##: P:{_hash}:\n{prompt[:25]}...\n')
 
-        with open(f'./prompts/prompt_{_hash}.txt', 'w', encoding='utf-8') as f:
-            f.write(prompt)
+        # with open(f'./prompts/prompt_{_hash}.txt', 'w', encoding='utf-8') as f:
+        #     f.write(prompt)
 
         # Check cache if available and enabled
         if use_cache and self._cache_client:

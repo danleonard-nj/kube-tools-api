@@ -310,11 +310,10 @@ class SummarizeMarketResearchStage(DomainStage):
         try:
             logger.info('Summarizing market research data via market research pipeline')
 
-            # ✅ CRITICAL: Pass portfolio_data to enable structured data generation
             portfolio_data = context.portfolio_obj.model_dump() if context.portfolio_obj else {}
             context.summarized_market_research = await self.service._market_research_processor.summarize_market_research(
                 context.raw_market_research,
-                portfolio_data  # ✅ This enables structured portfolio/trading data generation
+                portfolio_data
             )
 
             # Store prompts for debugging (from market research pipeline)
@@ -326,7 +325,6 @@ class SummarizeMarketResearchStage(DomainStage):
             if summary_metrics:
                 context.performance_metrics['market_research_summary_pipeline'] = summary_metrics
 
-            # ✅ NEW: Add logging to see if structured data was generated
             if context.summarized_market_research:
                 portfolio_sections = context.summarized_market_research.portfolio_summary
                 trading_sections = context.summarized_market_research.trading_summary

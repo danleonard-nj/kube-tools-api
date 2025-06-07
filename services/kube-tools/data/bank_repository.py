@@ -20,7 +20,6 @@ class BankBalanceRepository(MongoRepositoryAsync):
         bank_key: str,
         sync_type: str = None
     ) -> dict:
-
         query = GetBalanceByBankKeyQuery(
             bank_key=bank_key,
             sync_type=sync_type)

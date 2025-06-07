@@ -283,7 +283,9 @@ class TruthSocialInsights(BaseModel):
     all_posts_analyzed: Dict[str, TruthSocialPost] = Field(default_factory=dict)
     total_posts_analyzed: int = 0
     date_range: str = ""
+    sentiment_analysis: Optional[Dict[str, Any]] = None
     analysis_errors: List[str] = Field(default_factory=list)
+    market_impact_score: float = 0.0
 
 
 class MarketResearchSummary(BaseModel):
@@ -341,41 +343,6 @@ class RobinhoodConfig(BaseModel):
     username: str
     password: str
     daily_pulse: DailyPulseConfig
-
-
-# === TRUTH SOCIAL DATA MODELS ===
-
-class TruthSocialPost(BaseModel):
-    """Individual Truth Social post data."""
-    title: str
-    content: str
-    published_date: datetime
-    link: str
-    post_id: str
-
-    def get_key(self) -> str:
-        """Generate unique key for this post."""
-        return f"{self.published_date.strftime('%Y%m%d')}_{self.post_id}"
-
-
-class AnalyzedPost(BaseModel):
-    """Truth Social post with AI analysis attached."""
-    original_post: TruthSocialPost
-    market_impact: bool = False
-    market_analysis: Optional[str] = None
-    trend_significance: bool = False
-    trend_analysis: Optional[str] = None
-    analysis_timestamp: datetime = Field(default_factory=datetime.now)
-
-
-class TruthSocialInsights(BaseModel):
-    """Complete Truth Social analysis results."""
-    market_relevant_posts: List[AnalyzedPost] = Field(default_factory=list)
-    trend_significant_posts: List[AnalyzedPost] = Field(default_factory=list)
-    all_posts_analyzed: Dict[str, TruthSocialPost] = Field(default_factory=dict)
-    total_posts_analyzed: int = 0
-    date_range: str = ""
-    analysis_errors: List[str] = Field(default_factory=list)
 
 
 class ResearchStageResult(BaseModel):

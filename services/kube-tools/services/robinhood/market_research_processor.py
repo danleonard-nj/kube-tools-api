@@ -1,22 +1,28 @@
-from typing import Dict, List, Optional, Any, Set, Tuple
-import uuid
-import httpx
-from pydantic import BaseModel, Field
-from abc import ABC, abstractmethod
 import asyncio
-import time
 import json
+import time
+import uuid
+from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+import feedparser
+import httpx
+from bs4 import BeautifulSoup
 from clients.google_search_client import GoogleSearchClient
 from clients.gpt_client import GPTClient
-from framework.logger import get_logger
 from domain.gpt import GPTModel
-from models.robinhood_models import Article, Holding, MarketResearch, RobinhoodConfig, SectionTitle, SummarySection, MarketResearchSummary
-from framework.configuration import Configuration
-import feedparser
 from framework.clients.cache_client import CacheClientAsync
-from bs4 import BeautifulSoup
-
+from framework.configuration import Configuration
+from framework.logger import get_logger
+from models.robinhood_models import (AnalyzedPost, Article, Holding,
+                                     MarketResearch, MarketResearchSummary,
+                                     ResearchStageResult, RobinhoodConfig,
+                                     SectionTitle, SummarySection,
+                                     TruthSocialInsights, TruthSocialPost)
+from pydantic import BaseModel, Field
+from services.robinhood.html_generator import \
+    create_truth_social_summary_sections
 from services.robinhood.prompt_generator import PromptGenerator
 
 logger = get_logger(__name__)
@@ -25,61 +31,86 @@ DEFAULT_RSS_FEEDS = []
 MAX_ARTICLE_CHUNK_SIZE = 10000
 
 
-# === TRUTH SOCIAL DATA MODELS ===
-
-class TruthSocialPost(BaseModel):
-    """Individual Truth Social post data."""
-    title: str
-    content: str
-    published_date: datetime
-    link: str
-    post_id: str
-
-    def get_key(self) -> str:
-        """Generate unique key for this post."""
-        return f"{self.published_date.strftime('%Y%m%d')}_{self.post_id}"
+def parse_gpt_response_json(response: str) -> dict:
+    text = response.replace('```json', '').replace('```', '').strip()
+    return json.loads(text)
 
 
-class AnalyzedPost(BaseModel):
-    """Truth Social post with AI analysis attached."""
-    original_post: TruthSocialPost
-    market_impact: bool = False
-    market_analysis: Optional[str] = None
-    trend_significance: bool = False
-    trend_analysis: Optional[str] = None
-    analysis_timestamp: datetime = Field(default_factory=datetime.now)
+def generate_truth_post_single_post_analysis_prompt(post: TruthSocialPost) -> str:
+    return f"""
+    You are a financial analyst. Analyze this presidential post for significance.
+
+    Post Date: {post.published_date.strftime('%Y-%m-%d')}
+    Post Content: "{post.content}"
+
+    Determine:
+    1. Market Impact (true/false): Does this have direct market/economic implications?
+    2. If Market Impact = true: Provide 2-3 sentence analysis of market implications
+    3. Trend Significance (true/false): Does this represent an important policy/messaging trend?
+    4. If Trend Significance = true: Provide 2-3 sentence analysis of the trend
+
+    Respond ONLY in valid JSON format (without ```json or ```):
+    {{
+        "market_impact": true/false,
+        "market_analysis": "analysis if market_impact is true, otherwise null",
+        "trend_significance": true/false, 
+        "trend_analysis": "analysis if trend_significance is true, otherwise null"
+    }}
+    """
 
 
-class TruthSocialInsights(BaseModel):
-    """Complete Truth Social analysis results."""
-    market_relevant_posts: List[AnalyzedPost] = Field(default_factory=list)
-    trend_significant_posts: List[AnalyzedPost] = Field(default_factory=list)
-    all_posts_analyzed: Dict[str, TruthSocialPost] = Field(default_factory=dict)
-    total_posts_analyzed: int = 0
-    date_range: str = ""
-    analysis_errors: List[str] = Field(default_factory=list)
+def generate_trut_social_market_implication_analysis_prompt(all_content: str) -> str:
+    return f"""
+    Analyze the overall sentiment of these presidential communications for financial market implications.
+
+    Content to analyze:
+    {all_content[:5000]}  # Limit content to avoid token limits
+
+    Provide sentiment breakdown as percentages that sum to 100%.
+
+    Respond ONLY in valid JSON format:
+    {{
+        "scores": {{
+            "positive": 0.0-1.0,
+            "negative": 0.0-1.0, 
+            "neutral": 0.0-1.0
+        }},
+        "dominant": "positive|negative|neutral",
+        "market_themes": ["theme1", "theme2", "theme3"],
+        "confidence": 0.0-1.0
+    }}
+    """
 
 
-class ResearchStageResult(BaseModel):
-    """Result of a research pipeline stage execution."""
-    success: bool = True
-    errors: List[str] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list)
-    can_continue: bool = True
-    execution_time_ms: float = 0.0
-    items_processed: int = 0
-    items_skipped: int = 0
+def generate_filter_article_prompt(snippet: str, type_label: str) -> str:
+    """Generate prompt for filtering articles based on content."""
+    return f"""
+    You are an expert financial news analyst. Strictly classify short {type_label} snippets as either 'valuable' (contains specific, actionable, or newsworthy information for investors) or 'junk' (generic, marketing, navigation, or not useful for investment decisions).
 
-    def add_error(self, error: str, critical: bool = True) -> None:
-        """Add an error to the result."""
-        self.errors.append(error)
-        self.success = False
-        if critical:
-            self.can_continue = False
+    Examples:
+    Junk: "Get the latest Visa Inc. (V) stock news and headlines to help you in your trading and investing decisions."
+    Junk: "Fitch Ratings is a leading provider of credit ratings, commentary and research for global capital markets."
+    Valuable: "Visa Inc. shares rose 2% after the company reported better-than-expected quarterly earnings and raised its full-year outlook."
+    Valuable: "23andMe will hold a second auction for its data assets as part of a restructuring plan."
 
-    def add_warning(self, warning: str) -> None:
-        """Add a warning to the result."""
-        self.warnings.append(warning)
+    Now classify this snippet:
+    Snippet: {snippet}
+
+    Respond with only one word: 'valuable' or 'junk'.
+    """
+
+
+def generate_article_chunk_summary_prompt(chunk: List[Article], type_label: str) -> str:
+    prompt_lines = [
+        f"Summarize the following {type_label} articles in a concise, clear paragraph. "
+        "Highlight key trends and sentiment. Ignore marketing/advertising content.\n"
+    ]
+
+    for i, article in enumerate(chunk, 1):
+        prompt_lines.append(article.to_prompt_block(i))
+        prompt_lines.append("")
+
+    return "\n".join(prompt_lines)
 
 
 class ResearchPipelineConfig(BaseModel):
@@ -205,7 +236,7 @@ class FetchRssArticlesStage(ResearchDomainStage):
     async def execute(self, context: ResearchContext) -> ResearchStageResult:
         result = ResearchStageResult()
 
-        mapping = await self.processor._fetch_rss_articles_content(urls=self.processor._rss_feeds or DEFAULT_RSS_FEEDS)
+        # mapping = await self.processor._fetch_rss_articles_content(urls=self.processor._rss_feeds or DEFAULT_RSS_FEEDS)
 
         try:
             rss_feeds = self.processor._rss_feeds or DEFAULT_RSS_FEEDS
@@ -213,8 +244,7 @@ class FetchRssArticlesStage(ResearchDomainStage):
 
             for url in rss_feeds:
                 logger.info(f'Processing RSS feed: {url}')
-                content = mapping.get(url)
-                feed = feedparser.parse(content)
+                feed = feedparser.parse(url)
 
                 for idx, entry in enumerate(feed.entries[:context.config.rss_content_fetch_limit]):
                     if self.processor._is_excluded(entry.get('link', '')):
@@ -548,26 +578,7 @@ class AnalyzeTruthSocialSignificanceStage(ResearchDomainStage):
 
     async def _analyze_single_post(self, post: TruthSocialPost) -> Dict[str, Any]:
         """Analyze a single post for market impact and trend significance."""
-        prompt = f"""
-You are a financial analyst. Analyze this presidential post for significance.
-
-Post Date: {post.published_date.strftime('%Y-%m-%d')}
-Post Content: "{post.content}"
-
-Determine:
-1. Market Impact (true/false): Does this have direct market/economic implications?
-2. If Market Impact = true: Provide 2-3 sentence analysis of market implications
-3. Trend Significance (true/false): Does this represent an important policy/messaging trend?
-4. If Trend Significance = true: Provide 2-3 sentence analysis of the trend
-
-Respond ONLY in valid JSON format (without ```json or ```):
-{{
-    "market_impact": true/false,
-    "market_analysis": "analysis if market_impact is true, otherwise null",
-    "trend_significance": true/false, 
-    "trend_analysis": "analysis if trend_significance is true, otherwise null"
-}}
-"""
+        prompt = generate_truth_post_single_post_analysis_prompt(post)
 
         try:
             response = await self.processor._gpt_client.generate_completion(
@@ -578,8 +589,7 @@ Respond ONLY in valid JSON format (without ```json or ```):
             )
 
             # Parse JSON response
-            response = response.replace(r'```json', '').replace(r'```', '').strip()
-            analysis = json.loads(response.strip())
+            analysis = parse_gpt_response_json(response)
 
             # Validate required fields
             if 'market_impact' not in analysis or 'trend_significance' not in analysis:
@@ -606,7 +616,98 @@ Respond ONLY in valid JSON format (without ```json or ```):
             }
 
 
+class AnalyzeTruthSocialSentimentStage(ResearchDomainStage):
+    """Analyze overall sentiment and market impact score for Truth Social posts."""
+
+    async def execute(self, context: ResearchContext) -> ResearchStageResult:
+        result = ResearchStageResult()
+
+        if not context.truth_social_insights or not context.truth_social_insights.all_posts_analyzed:
+            result.add_warning("No Truth Social posts to analyze for sentiment")
+            return result
+
+        try:
+            posts = list(context.truth_social_insights.all_posts_analyzed.values())
+
+            # Perform sentiment analysis
+            sentiment_analysis = await self._analyze_overall_sentiment(posts)
+            market_impact_score = await self._calculate_market_impact_score(
+                context.truth_social_insights.market_relevant_posts,
+                context.truth_social_insights.trend_significant_posts
+            )
+
+            # Update the insights object
+            context.truth_social_insights.sentiment_analysis = sentiment_analysis
+            context.truth_social_insights.market_impact_score = market_impact_score
+
+            result.items_processed = len(posts)
+
+            logger.info(f"Sentiment analysis complete - Impact Score: {market_impact_score:.1f}")
+
+        except Exception as e:
+            result.add_error(f"Failed to analyze Truth Social sentiment: {str(e)}")
+
+        return result
+
+    async def _analyze_overall_sentiment(self, posts: List[TruthSocialPost]) -> Dict[str, Any]:
+        """Analyze overall sentiment across all posts."""
+        if not posts:
+            return {"scores": {"positive": 0, "negative": 0, "neutral": 1}, "dominant": "neutral"}
+
+        # Combine all post content for analysis
+        all_content = " ".join([post.content for post in posts if post.content])
+
+        if not all_content.strip():
+            return {"scores": {"positive": 0, "negative": 0, "neutral": 1}, "dominant": "neutral"}
+
+        prompt = generate_trut_social_market_implication_analysis_prompt(all_content)
+
+        try:
+            response = await self.processor._gpt_client.generate_completion(
+                prompt=prompt,
+                model=GPTModel.GPT_4O_MINI,
+                temperature=0.2,
+                use_cache=True
+            )
+
+            sentiment_data = parse_gpt_response_json(response)
+
+            # Validate and normalize scores
+            scores = sentiment_data.get('scores', {})
+            total = sum(scores.values())
+            if total > 0:
+                scores = {k: v/total for k, v in scores.items()}
+
+            return {
+                "scores": scores,
+                "dominant": sentiment_data.get('dominant', 'neutral'),
+                "market_themes": sentiment_data.get('market_themes', []),
+                "confidence": sentiment_data.get('confidence', 0.5)
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to analyze sentiment: {e}")
+            return {"scores": {"positive": 0, "negative": 0, "neutral": 1}, "dominant": "neutral"}
+
+    async def _calculate_market_impact_score(self, market_posts: List[AnalyzedPost], trend_posts: List[AnalyzedPost]) -> float:
+        """Calculate overall market impact score (0-10)."""
+
+        # Base scoring
+        market_weight = 3.0  # Market-relevant posts have higher weight
+        trend_weight = 1.5   # Trend posts have moderate weight
+
+        score = 0.0
+        score += len(market_posts) * market_weight
+        score += len(trend_posts) * trend_weight
+
+        # Normalize to 0-10 scale (adjust these thresholds based on typical volumes)
+        max_expected_score = 30  # Adjust based on your typical post volumes
+        normalized_score = min(10.0, (score / max_expected_score) * 10)
+
+        return round(normalized_score, 1)
+
 # === PARALLEL FETCH STAGE ===
+
 
 class ParallelFetchStage(ResearchDomainStage):
     """Fetch all data types in parallel for better performance."""
@@ -696,20 +797,7 @@ class FilterValueableArticlesStage(ResearchDomainStage):
                 valuable_articles.append(article)
             else:
                 snippet = article.snippet or article.title
-                prompt = f"""
-You are an expert financial news analyst. Strictly classify short {type_label} snippets as either 'valuable' (contains specific, actionable, or newsworthy information for investors) or 'junk' (generic, marketing, navigation, or not useful for investment decisions).
-
-Examples:
-Junk: "Get the latest Visa Inc. (V) stock news and headlines to help you in your trading and investing decisions."
-Junk: "Fitch Ratings is a leading provider of credit ratings, commentary and research for global capital markets."
-Valuable: "Visa Inc. shares rose 2% after the company reported better-than-expected quarterly earnings and raised its full-year outlook."
-Valuable: "23andMe will hold a second auction for its data assets as part of a restructuring plan."
-
-Now classify this snippet:
-Snippet: {snippet}
-
-Respond with only one word: 'valuable' or 'junk'.
-"""
+                prompt = generate_filter_article_prompt(snippet, type_label)
                 try:
                     result = await self.processor._gpt_client.generate_completion(
                         prompt=prompt,
@@ -785,6 +873,7 @@ class CreatePortfolioSummaryStage(ResearchDomainStage):
 
         except Exception as e:
             result.add_error(f"Failed to create portfolio summary: {str(e)}")
+            result.can_continue = False
             context.portfolio_summary_data = None
             context.portfolio_summary = None
 
@@ -835,6 +924,7 @@ class CreateTradingSummaryStage(ResearchDomainStage):
 
         except Exception as e:
             result.add_error(f"Failed to create trading summary: {str(e)}")
+            result.can_continue = False
             context.trading_summary_data = None
             context.trading_summary = None
 
@@ -885,16 +975,7 @@ class SummarizeMarketConditionsStage(ResearchDomainStage):
                 chunk_summaries.append(summary)
 
         for idx, chunk in enumerate(chunks):
-            prompt_lines = [
-                f"Summarize the following {type_label} articles in a concise, clear paragraph. "
-                "Highlight key trends and sentiment. Ignore marketing/advertising content.\n"
-            ]
-
-            for i, article in enumerate(chunk, 1):
-                prompt_lines.append(article.to_prompt_block(i))
-                prompt_lines.append("")
-
-            prompt = "\n".join(prompt_lines)
+            prompt = generate_article_chunk_summary_prompt(chunk, type_label)
             self._last_prompts.append(prompt)
 
             tasks.append(summarize_chunk(prompt))
@@ -1124,6 +1205,7 @@ class MarketResearchProcessor:
             return [
                 ParallelFetchStage("parallel_fetch", self),
                 AnalyzeTruthSocialSignificanceStage("analyze_truth_social", self),
+                AnalyzeTruthSocialSentimentStage("analyze_truth_social_sentiment", self),  # ADD THIS
                 FilterValueableArticlesStage("filter_articles", self),
                 CreatePortfolioSummaryStage("create_portfolio_summary", self),
                 CreateTradingSummaryStage("create_trading_summary", self),
@@ -1139,6 +1221,7 @@ class MarketResearchProcessor:
                 FetchStockNewsStage("fetch_stock_news", self),
                 FetchSectorAnalysisStage("fetch_sector_analysis", self),
                 AnalyzeTruthSocialSignificanceStage("analyze_truth_social", self),
+                AnalyzeTruthSocialSentimentStage("analyze_truth_social_sentiment", self),  # ADD THIS
                 FilterValueableArticlesStage("filter_articles", self),
                 CreatePortfolioSummaryStage("create_portfolio_summary", self),
                 CreateTradingSummaryStage("create_trading_summary", self),
@@ -1160,10 +1243,11 @@ class MarketResearchProcessor:
 
             context = ResearchContext(config=config, portfolio_data=portfolio_data)
 
-            # Create and execute fetch pipeline (including Truth Social analysis)
+            # Create and execute fetch pipeline (including Truth Social analysis AND sentiment)
             fetch_stages = [
                 ParallelFetchStage("parallel_fetch", self),
-                AnalyzeTruthSocialSignificanceStage("analyze_truth_social", self)
+                AnalyzeTruthSocialSignificanceStage("analyze_truth_social", self),
+                AnalyzeTruthSocialSentimentStage("analyze_truth_social_sentiment", self)  # ADD THIS
             ]
 
             context = await self._pipeline_executor.execute_pipeline(fetch_stages, context)
@@ -1203,6 +1287,32 @@ class MarketResearchProcessor:
         """Summarize market research data using pipeline."""
         logger.info('Summarizing market research data via pipeline')
 
+        def _build_summary_sections(context):
+            """Helper to build summary sections from context."""
+
+            stock_news = {
+                symbol: [SummarySection(title=f'{symbol} News Summary', snippet=summary)]
+                for symbol, summary in getattr(context, 'stock_news_summaries', {}).items()
+            }
+
+            portfolio_summary = [SummarySection(title=SectionTitle.PORTFOLIO_SUMMARY, snippet=context.portfolio_summary_data)] if context.portfolio_summary_data else []
+            trading_summary = [SummarySection(title=SectionTitle.TRADING_SUMMARY_AND_PERFORMANCE, snippet=context.trading_summary_data)] if context.trading_summary_data else []
+            market_conditions = [SummarySection(title=SectionTitle.MARKET_CONDITIONS_SUMMARY, snippet=context.market_conditions_summary)] if context.market_conditions_summary else []
+            sector_analysis = [SummarySection(title=SectionTitle.SECTOR_ANALYSIS, snippet=context.sector_analysis_summary)] if context.sector_analysis_summary else []
+            truth_social_summary = create_truth_social_summary_sections(context.truth_social_insights)
+            return {
+                'market_conditions': market_conditions,
+                'stock_news': stock_news,
+                'sector_analysis': sector_analysis,
+                'truth_social_summary': truth_social_summary,
+                'portfolio_summary': portfolio_summary,
+                'trading_summary': trading_summary,
+                'search_errors': context.search_errors,
+                'market_conditions_skipped': [],
+                'stock_news_skipped': {},
+                'sector_analysis_skipped': []
+            }
+
         try:
             # Initialize context with existing data
             config = ResearchPipelineConfig()
@@ -1225,7 +1335,6 @@ class MarketResearchProcessor:
                 SummarizeStockNewsStage("summarize_stock_news", self),
                 SummarizeSectorAnalysisStage("summarize_sector_analysis", self),
             ]
-
             context = await self._pipeline_executor.execute_pipeline(summary_stages, context)
 
             # Store pipeline metrics for parent pipeline to access
@@ -1236,41 +1345,9 @@ class MarketResearchProcessor:
                 'items_skipped': sum(r.items_skipped for r in context.stage_results.values()),
                 'stage_results': {name: result.model_dump() for name, result in context.stage_results.items()}
             }
-
-            # Store prompts for debugging
             self._prompts = context.prompts
 
-            # Create summary sections using structured data
-            portfolio_summary = []
-            if context.portfolio_summary_data:
-                portfolio_summary = [SummarySection(title=SectionTitle.PORTFOLIO_SUMMARY, snippet=context.portfolio_summary_data)]
-
-            trading_summary = []
-            if context.trading_summary_data:
-                trading_summary = [SummarySection(title=SectionTitle.TRADING_SUMMARY_AND_PERFORMANCE, snippet=context.trading_summary_data)]
-
-            # Convert to final summary format
-            summary = {
-                'market_conditions': [
-                    SummarySection(title=SectionTitle.MARKET_CONDITIONS_SUMMARY, snippet=context.market_conditions_summary)
-                ] if context.market_conditions_summary else [],
-                'stock_news': {
-                    symbol: [SummarySection(title=f'{symbol} News Summary', snippet=summary)]
-                    for symbol, summary in context.stock_news_summaries.items()
-                },
-                'sector_analysis': [
-                    SummarySection(title=SectionTitle.SECTOR_ANALYSIS, snippet=context.sector_analysis_summary)
-                ] if context.sector_analysis_summary else [],
-                'truth_social_summary': self._create_truth_social_summary_sections(context.truth_social_insights),
-                'portfolio_summary': portfolio_summary,
-                'trading_summary': trading_summary,
-                'search_errors': context.search_errors,
-                # Additional debugging info
-                'market_conditions_skipped': [],  # Would need to track skipped articles
-                'stock_news_skipped': {},
-                'sector_analysis_skipped': []
-            }
-
+            summary = _build_summary_sections(context)
             logger.info('Market research summarization completed')
             return MarketResearchSummary.model_validate(summary)
 
@@ -1287,438 +1364,6 @@ class MarketResearchProcessor:
                 'search_errors': [f'Pipeline summarization failed: {str(e)}']
             })
 
-    # def _create_truth_social_summary_sections(self, insights: Optional[Any]) -> List[SummarySection]:
-    #     """Create summary sections for Truth Social insights."""
-    #     if not insights:
-    #         return []
-
-    #     # Handle both dict (from database) and TruthSocialInsights object
-    #     if isinstance(insights, dict):
-    #         market_relevant_count = len(insights.get('market_relevant_posts', []))
-    #         trend_significant_count = len(insights.get('trend_significant_posts', []))
-    #         total_analyzed = insights.get('total_posts_analyzed', 0)
-    #         date_range = insights.get('date_range', 'recent period')
-    #     else:
-    #         market_relevant_count = len(insights.market_relevant_posts)
-    #         trend_significant_count = len(insights.trend_significant_posts)
-    #         total_analyzed = insights.total_posts_analyzed
-    #         date_range = insights.date_range
-
-    #     sections = []
-
-    #     # Market-relevant posts section
-    #     if market_relevant_count > 0:
-    #         market_content = f"Analysis of {market_relevant_count} market-relevant posts from {date_range}"
-    #         sections.append(SummarySection(title='Presidential Market Insights', snippet=market_content))
-
-    #     # Trend-significant posts section
-    #     if trend_significant_count > 0:
-    #         trend_content = f"Analysis of {trend_significant_count} trend-significant posts covering key policy themes"
-    #         sections.append(SummarySection(title='Presidential Policy Trends', snippet=trend_content))
-
-    #     # Summary section
-    #     if market_relevant_count > 0 or trend_significant_count > 0:
-    #         total_significant = market_relevant_count + trend_significant_count
-    #         summary_content = f"Analyzed {total_analyzed} presidential posts from {date_range}. Found {total_significant} posts with market or policy significance."
-    #         sections.append(SummarySection(title='Truth Social Analysis Summary', snippet=summary_content))
-
-    #     return sections
-
-    def _create_truth_social_summary_sections(self, insights: Optional[Any]) -> List[SummarySection]:
-        """Create streamlined summary sections for Truth Social insights with HTML formatting."""
-        if not insights:
-            return []
-
-        # Handle both dict (from database) and TruthSocialInsights object
-        if isinstance(insights, dict):
-            market_relevant_posts = insights.get('market_relevant_posts', [])
-            trend_significant_posts = insights.get('trend_significant_posts', [])
-            total_analyzed = insights.get('total_posts_analyzed', 0)
-            date_range = insights.get('date_range', 'recent period')
-            sentiment_analysis = insights.get('sentiment_analysis', {})
-            market_impact_score = insights.get('market_impact_score', 0)
-        else:
-            market_relevant_posts = insights.market_relevant_posts
-            trend_significant_posts = insights.trend_significant_posts
-            total_analyzed = insights.total_posts_analyzed
-            date_range = insights.date_range
-            sentiment_analysis = getattr(insights, 'sentiment_analysis', {})
-            market_impact_score = getattr(insights, 'market_impact_score', 0)
-
-        sections = []
-
-        # 1. Executive Summary
-        if market_relevant_posts or trend_significant_posts:
-            total_significant = len(market_relevant_posts) + len(trend_significant_posts)
-            impact_level = "High" if market_impact_score > 7 else "Medium" if market_impact_score > 4 else "Low"
-
-            # Get dominant sentiment
-            dominant_sentiment = "Neutral"
-            if sentiment_analysis and sentiment_analysis.get('scores'):
-                sentiment_scores = sentiment_analysis['scores']
-                dominant_sentiment = max(sentiment_scores.keys(), key=lambda k: sentiment_scores[k])
-
-            executive_summary = f"""
-            <div class="highlight">
-                <h3><span class="icon-header">🏛️</span>Presidential Intelligence Brief</h3>
-                
-                <div class="metrics-grid">
-                    <div class="metric-card">
-                        <div class="metric-label">Period</div>
-                        <div class="metric-value">{date_range}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-label">Posts Analyzed</div>
-                        <div class="metric-value">{total_analyzed}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-label">Market-Relevant</div>
-                        <div class="metric-value">{len(market_relevant_posts)}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-label">Impact Level</div>
-                        <div class="metric-value">{impact_level} ({market_impact_score}/10)</div>
-                    </div>
-                </div>
-                
-                <div style="margin-top: 20px;">
-                    <strong>Sentiment:</strong> <span class="{'positive' if dominant_sentiment.lower() == 'positive' else 'negative' if dominant_sentiment.lower() == 'negative' else ''}">{dominant_sentiment.title()}</span>
-                </div>
-                
-                <div style="margin-top: 16px;">
-                    <strong>Key Findings:</strong>
-                    <ul style="margin: 8px 0; padding-left: 20px;">
-                        <li>{total_significant} posts with market/policy implications identified</li>
-                        <li>Primary focus: Economic policy, regulatory matters, trade relations</li>
-                        <li>Market sentiment trending {dominant_sentiment.lower()} with potential volatility signals</li>
-                    </ul>
-                </div>
-            </div>
-            """
-
-            sections.append(SummarySection(title=SectionTitle.PRESIDENTIAL_INTELLIGENCE_BRIEF, snippet=executive_summary))
-
-        # 2. TOP IMPACT POSTS TABLE
-        if market_relevant_posts or trend_significant_posts:
-            top_posts_table = self._create_top_impact_posts_html_table(market_relevant_posts, trend_significant_posts)
-            if top_posts_table:
-                sections.append(SummarySection(title=SectionTitle.TOP_IMPACT_POSTS, snippet=top_posts_table))
-
-        # 3. Market Impact & Policy Analysis (Combined)
-        if market_relevant_posts:
-            combined_analysis = self._analyze_market_and_policy_combined_html(market_relevant_posts, trend_significant_posts, sentiment_analysis)
-            sections.append(SummarySection(title=SectionTitle.MARKET_IMPACT_POLICY_ANALYSIS, snippet=combined_analysis))
-
-        # 4. Trading Strategy Implications
-        if market_relevant_posts or trend_significant_posts:
-            strategy_implications = self._generate_simplified_trading_implications_html(market_impact_score, sentiment_analysis)
-            sections.append(SummarySection(title=SectionTitle.TRADING_STRATEGY_IMPLICATIONS, snippet=strategy_implications))
-
-        return sections
-
-    def _create_top_impact_posts_html_table(self, market_posts: List[Any], trend_posts: List[Any]) -> Optional[str]:
-        """Create HTML table for top impact Truth Social posts."""
-        try:
-            # Combine and sort posts by impact score
-            all_posts = []
-
-            # Process market-relevant posts
-            for post in market_posts:
-                if isinstance(post, dict):
-                    original_post = post.get('original_post', {})
-                    market_impact_score = 8 if post.get('market_impact', False) else 0
-                    analysis = post.get('market_analysis', '')
-                else:
-                    original_post = post.original_post
-                    market_impact_score = 8 if post.market_impact else 0
-                    analysis = post.market_analysis or ''
-
-                all_posts.append({
-                    'post': original_post,
-                    'impact_score': market_impact_score,
-                    'type': 'Market',
-                    'analysis': analysis
-                })
-
-            # Process trend-significant posts
-            for post in trend_posts:
-                if isinstance(post, dict):
-                    original_post = post.get('original_post', {})
-                    trend_impact_score = 6 if post.get('trend_significance', False) else 0
-                    analysis = post.get('trend_analysis', '')
-                else:
-                    original_post = post.original_post
-                    trend_impact_score = 6 if post.trend_significance else 0
-                    analysis = post.trend_analysis or ''
-
-                # Only add if not already added as market post
-                post_id = original_post.get('post_id') if isinstance(original_post, dict) else getattr(original_post, 'post_id', '')
-                if not any(p['post'].get('post_id') == post_id or getattr(p['post'], 'post_id', '') == post_id for p in all_posts):
-                    all_posts.append({
-                        'post': original_post,
-                        'impact_score': trend_impact_score,
-                        'type': 'Policy',
-                        'analysis': analysis
-                    })
-
-            # Sort by impact score and take top 10
-            all_posts.sort(key=lambda x: x['impact_score'], reverse=True)
-            top_posts = all_posts[:10]
-
-            if not top_posts:
-                return None
-
-            # Create HTML table
-            html = f"""
-            <div class="pipeline-section">
-                <table class="trade-performance-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 8%;">Rank</th>
-                            <th style="width: 12%;">Date/Time</th>
-                            <th style="width: 10%;">Type</th>
-                            <th style="width: 8%;">Impact</th>
-                            <th style="width: 40%;">Post Content</th>
-                            <th style="width: 22%;">Analysis</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            """
-
-            for i, post_data in enumerate(top_posts, 1):
-                post = post_data['post']
-
-                # Extract post data
-                if isinstance(post, dict):
-                    date = post.get('published_date', 'Unknown')
-                    content = post.get('content', post.get('title', ''))
-                    link = post.get('link', '')
-                else:
-                    date = getattr(post, 'published_date', 'Unknown')
-                    content = getattr(post, 'content', '') or getattr(post, 'title', '')
-                    link = getattr(post, 'link', '')
-
-                # Format date
-                if hasattr(date, 'strftime'):
-                    formatted_date = date.strftime('%m/%d %H:%M')
-                elif isinstance(date, str) and date != 'Unknown':
-                    try:
-                        from datetime import datetime
-                        parsed_date = datetime.fromisoformat(date.replace('Z', '+00:00'))
-                        formatted_date = parsed_date.strftime('%m/%d %H:%M')
-                    except:
-                        formatted_date = date
-                else:
-                    formatted_date = str(date)
-
-                # Truncate content for table display
-                # truncated_content = content[:150] + '...' if len(content) > 150 else content
-                # truncated_content = ' '.join(truncated_content.split())  # Clean whitespace
-
-                # Truncate analysis
-                # analysis_text = post_data['analysis'][:100] + '...' if len(post_data['analysis']) > 100 else post_data['analysis']
-                analysis_text = post_data['analysis']
-
-                # Impact score styling
-                impact_score = post_data['impact_score']
-                impact_class = 'positive' if impact_score >= 7 else 'negative' if impact_score <= 3 else ''
-
-                # Type badge styling
-                # type_badge_style = 'background: #e8f5e8; color: #0d7833; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;' if post_data[
-                type_badge_style = 'color: #0d7833; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;' if post_data[
-                    'type'] == 'Market' else 'background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;'
-
-                html += f"""
-                        <tr>
-                            <td style="text-align: center; font-weight: 600;">{i}</td>
-                            <td style="font-size: 13px;">{formatted_date}</td>
-                            <td><span style="{type_badge_style}">{post_data['type']}</span></td>
-                            <td style="text-align: center;"><span class="{impact_class}" style="font-weight: 600;">{impact_score}/10</span></td>
-                            <td style="font-size: 13px; line-height: 1.4;">{content}</td>
-                            <td style="font-size: 12px; color: #5f6368; line-height: 1.3;">{analysis_text}</td>
-                        </tr>
-                """
-
-            html += """
-                    </tbody>
-                </table>
-            </div>
-            """
-
-            return html
-
-        except Exception as e:
-            logger.error(f"Failed to create top impact posts HTML table: {e}")
-            return None
-
-    def _analyze_market_and_policy_combined_html(self, market_posts: List[Any], policy_posts: List[Any], sentiment_analysis: dict) -> str:
-        """Combined analysis of market impact and policy trends in HTML format."""
-
-        # Sentiment breakdown
-        sentiment_html = ""
-        if sentiment_analysis.get('scores'):
-            scores = sentiment_analysis['scores']
-            bullish_pct = int(scores.get('positive', 0) * 100)
-            bearish_pct = int(scores.get('negative', 0) * 100)
-            neutral_pct = int(scores.get('neutral', 0) * 100)
-
-            sentiment_html = f"""
-            <div class="metrics-grid">
-                <div class="metric-card">
-                    <div class="metric-label">Bullish Sentiment</div>
-                    <div class="metric-value positive">{bullish_pct}%</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">Bearish Sentiment</div>
-                    <div class="metric-value negative">{bearish_pct}%</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">Neutral Sentiment</div>
-                    <div class="metric-value">{neutral_pct}%</div>
-                </div>
-            </div>
-            """
-
-        # Get top 3 most impactful posts
-        all_posts = market_posts + policy_posts
-        top_posts_html = ""
-
-        for i, post in enumerate(all_posts[:3]):
-            if isinstance(post, dict):
-                original_post = post.get('original_post', {})
-                content = original_post.get('content', '')
-                timestamp = original_post.get('published_date', 'Recent')
-                impact_score = 8 if post.get('market_impact', False) else 6
-                analysis = post.get('market_analysis') or post.get('trend_analysis', '')
-            else:
-                original_post = post.original_post
-                content = getattr(original_post, 'content', '')
-                timestamp = getattr(original_post, 'published_date', 'Recent')
-                impact_score = 8 if post.market_impact else 6
-                analysis = post.market_analysis or post.trend_analysis or ''
-
-            # Format timestamp
-            if hasattr(timestamp, 'strftime'):
-                formatted_time = timestamp.strftime('%m/%d %H:%M')
-            else:
-                formatted_time = str(timestamp)
-
-            impact_class = 'positive' if impact_score >= 7 else ''
-
-            # <div style="background: #f8f9fa; border-left: 4px solid #2a5298; padding: 16px; margin-bottom: 12px; border-radius: 4px;">
-            top_posts_html += f"""
-            <div style="border-left: 4px solid #2a5298; padding: 16px; margin-bottom: 12px; border-radius: 4px;">
-                <div style="font-weight: 600; color: #2a5298; margin-bottom: 8px;">
-                    {formatted_time} • <span class="{impact_class}">Impact: {impact_score}/10</span>
-                </div>
-                <div style="font-style: italic; margin-bottom: 8px; line-height: 1.4;">
-                    "{content}"
-                </div>
-                <div style="font-size: 13px; color: #5f6368;">
-                    <strong>Analysis:</strong> {analysis}
-                </div>
-            </div>
-            """
-
-        analysis_html = f"""
-        <div class="market-section">
-            <h4 style="color: #2a5298; margin-top: 0;">Market-Moving Communications</h4>
-            
-            {sentiment_html}
-            
-            <h4 style="color: #2a5298; margin-top: 24px; margin-bottom: 16px;">Top Impact Posts</h4>
-            {top_posts_html}
-            
-            <div style="background: #e8f0fe; padding: 16px; border-radius: 8px; margin-top: 20px;">
-                <h4 style="color: #1e3c72; margin-top: 0;">Key Takeaways</h4>
-                <ul style="margin: 0; padding-left: 20px; color: #2a5298;">
-                    <li>Monitor affected sectors for volatility in next 24-48 hours</li>
-                    <li>Watch for follow-up policy announcements or clarifications</li>
-                    <li>Consider position adjustments based on sentiment shifts</li>
-                </ul>
-            </div>
-        </div>
-        """
-
-        return analysis_html
-
-    def _generate_simplified_trading_implications_html(self, impact_score: float, sentiment_analysis: dict) -> str:
-        """Generate trading strategy implications in HTML format."""
-
-        # Risk assessment
-        if impact_score >= 7:
-            risk_level = "HIGH RISK"
-            risk_color = "#d73e2a"
-            risk_icon = "🔴"
-            risk_advice = "Reduce position sizes, consider hedging"
-        elif impact_score >= 4:
-            risk_level = "MEDIUM RISK"
-            risk_color = "#f9ab00"
-            risk_icon = "🟡"
-            risk_advice = "Normal positions with enhanced monitoring"
-        else:
-            risk_level = "LOW RISK"
-            risk_color = "#0d7833"
-            risk_icon = "🟢"
-            risk_advice = "Standard trading strategies viable"
-
-        # Sentiment-based strategy
-        strategy_note = ""
-        if sentiment_analysis.get('scores'):
-            sentiment_scores = sentiment_analysis['scores']
-            dominant = max(sentiment_scores.keys(), key=lambda k: sentiment_scores[k])
-
-            if dominant == 'positive':
-                strategy_note = "Bullish sentiment supports growth stocks and risk-on assets"
-            elif dominant == 'negative':
-                strategy_note = "Bearish sentiment favors defensive positions and safe havens"
-            else:
-                strategy_note = "Neutral sentiment suggests range-bound trading opportunities"
-
-        implications_html = f"""
-        <div class="pipeline-section">
-            <div class="metrics-grid">
-                <div class="metric-card">
-                    <div class="metric-label">Risk Level</div>
-                    <div class="metric-value" style="color: {risk_color};">{risk_icon} {risk_level}</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">Impact Score</div>
-                    <div class="metric-value">{impact_score}/10</div>
-                </div>
-            </div>
-            
-            <div style="margin-top: 20px;">
-                <h4 style="color: #2a5298; margin-bottom: 12px;">Strategy Guidance</h4>
-                <div style="background: #f6f8fc; padding: 16px; border-radius: 8px; border-left: 4px solid {risk_color};">
-                    <div style="font-weight: 600; margin-bottom: 8px;">{risk_advice}</div>
-                    <div style="margin-bottom: 12px;">• {strategy_note}</div>
-                    <div>• Plan for increased volatility in first hour post-announcement</div>
-                    <div>• Tech/Energy/Healthcare sectors most likely to be affected</div>
-                    <div>• Consider 50-75% normal position sizing during high-impact periods</div>
-                </div>
-            </div>
-            
-            <div style="margin-top: 20px;">
-                <h4 style="color: #2a5298; margin-bottom: 12px;">Key Timing Windows</h4>
-                <div class="metrics-grid">
-                    <div class="metric-card">
-                        <div class="metric-label">Pre-Market</div>
-                        <div class="metric-value" style="font-size: 16px;">4:00-9:30 AM EST</div>
-                        <div style="font-size: 12px; color: #5f6368; margin-top: 4px;">Watch futures reaction</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-label">Market Open</div>
-                        <div class="metric-value" style="font-size: 16px;">9:30-10:00 AM EST</div>
-                        <div style="font-size: 12px; color: #5f6368; margin-top: 4px;">Highest volatility window</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        """
-
-        return implications_html
-
     def get_prompts(self) -> Dict[str, Any]:
         """Get stored prompts for debugging."""
         return self._prompts
@@ -1726,23 +1371,3 @@ class MarketResearchProcessor:
     def clear_prompts(self) -> None:
         """Clear all stored prompts."""
         self._prompts = {}
-
-    async def _fetch_rss_articles_content(self, urls: list[str]):
-        async def fetch_content(url: str) -> str:
-            async with httpx.AsyncClient() as client:
-                cache_key = f'rss_content:{url}'
-                cached_content = await self._cache_client.get_cache(cache_key)
-                if cached_content:
-                    return cached_content
-
-                data = await client.get(url).text
-
-                await self._cache_client.get_cache(cache_key, data, expire=60)  # Cache for 1 hour
-
-                return {
-                    url: data
-                }
-
-        tasks = [fetch_content(url) for url in urls]
-
-        return await asyncio.gather(*tasks, return_exceptions=True)
