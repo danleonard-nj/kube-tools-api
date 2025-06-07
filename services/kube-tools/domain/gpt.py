@@ -7,42 +7,42 @@ from quart import Response
 from utilities.utils import DateTimeUtil
 
 
-# class GPTModel:
-#     # GPT-3.5 Series
-#     GPT_3_5_TURBO = "gpt-3.5-turbo"
-#     GPT_3_5_TURBO_0125 = "gpt-3.5-turbo-0125"
-
-#     # GPT-4 Series
-#     GPT_4 = "gpt-4"
-#     GPT_4_0613 = "gpt-4-0613"
-#     GPT_4_0125_PREVIEW = "gpt-4-0125-preview"
-
-#     # GPT-4.1 Series
-#     GPT_4_1 = "gpt-4.1"
-#     GPT_4_1_MINI = "gpt-4.1-mini"
-#     GPT_4_1_NANO = "gpt-4.1-nano"
-
-#     # GPT-4o Series
-#     GPT_4O = "gpt-4o"
-#     GPT_4O_2024_05_13 = "gpt-4o-2024-05-13"
-#     GPT_4O_MINI = "gpt-4o-mini"
-
 class GPTModel:
-    # All models aliased to GPT-3.5 Turbo
+    # GPT-3.5 Series
     GPT_3_5_TURBO = "gpt-3.5-turbo"
-    GPT_3_5_TURBO_0125 = "gpt-3.5-turbo"
+    GPT_3_5_TURBO_0125 = "gpt-3.5-turbo-0125"
 
-    GPT_4 = "gpt-3.5-turbo"
-    GPT_4_0613 = "gpt-3.5-turbo"
-    GPT_4_0125_PREVIEW = "gpt-3.5-turbo"
+    # GPT-4 Series
+    GPT_4 = "gpt-4"
+    GPT_4_0613 = "gpt-4-0613"
+    GPT_4_0125_PREVIEW = "gpt-4-0125-preview"
 
-    GPT_4_1 = "gpt-3.5-turbo"
-    GPT_4_1_MINI = "gpt-3.5-turbo"
-    GPT_4_1_NANO = "gpt-3.5-turbo"
+    # GPT-4.1 Series
+    GPT_4_1 = "gpt-4.1"
+    GPT_4_1_MINI = "gpt-4.1-mini"
+    GPT_4_1_NANO = "gpt-4.1-nano"
 
-    GPT_4O = "gpt-3.5-turbo"
-    GPT_4O_2024_05_13 = "gpt-3.5-turbo"
-    GPT_4O_MINI = "gpt-3.5-turbo"
+    # GPT-4o Series
+    GPT_4O = "gpt-4o"
+    GPT_4O_2024_05_13 = "gpt-4o-2024-05-13"
+    GPT_4O_MINI = "gpt-4o-mini"
+
+# class GPTModel:
+#     # All models aliased to GPT-3.5 Turbo
+#     GPT_3_5_TURBO = "gpt-3.5-turbo"
+#     GPT_3_5_TURBO_0125 = "gpt-3.5-turbo"
+
+#     GPT_4 = "gpt-3.5-turbo"
+#     GPT_4_0613 = "gpt-3.5-turbo"
+#     GPT_4_0125_PREVIEW = "gpt-3.5-turbo"
+
+#     GPT_4_1 = "gpt-3.5-turbo"
+#     GPT_4_1_MINI = "gpt-3.5-turbo"
+#     GPT_4_1_NANO = "gpt-3.5-turbo"
+
+#     GPT_4O = "gpt-3.5-turbo"
+#     GPT_4O_2024_05_13 = "gpt-3.5-turbo"
+#     GPT_4O_MINI = "gpt-3.5-turbo"
 
 
 def get_content(parsed):
