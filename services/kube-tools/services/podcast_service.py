@@ -195,9 +195,9 @@ class PodcastService:
             subject='Podcast Sync',
             data=self._get_results_table(episodes))
 
-        # await self._event_service.dispatch_email_event(
-        #     endpoint=endpoint,
-        #     message=email_request.to_dict())
+        await self._event_service.dispatch_email_event(
+            endpoint=endpoint,
+            message=email_request.to_dict())
 
     async def _get_feed_request(
         self,
