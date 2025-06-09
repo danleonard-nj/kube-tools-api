@@ -29,7 +29,7 @@ from utilities.utils import DateTimeUtil
 logger = get_logger(__name__)
 
 UPLOAD_CHUNK_SIZE = 1024 * 1024 * 4  # 8MB
-MAX_EPISODE_DOWNLOADS = 10
+MAX_EPISODE_DOWNLOADS = 25
 
 
 class PodcastServiceException(Exception):
