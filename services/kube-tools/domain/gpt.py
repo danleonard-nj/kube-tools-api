@@ -1,4 +1,5 @@
 
+import os
 import uuid
 from typing import Dict
 
@@ -6,43 +7,29 @@ from framework.serialization import Serializable
 from quart import Response
 from utilities.utils import DateTimeUtil
 
+DEBUG_GPT_MODEL = 'gpt-3.5-turbo'
+IS_DEBUG_MODE = os.environ.get('GPT_DEBUG_MODE', '0') == '1'
+
 
 class GPTModel:
     # GPT-3.5 Series
-    GPT_3_5_TURBO = "gpt-3.5-turbo"
-    GPT_3_5_TURBO_0125 = "gpt-3.5-turbo-0125"
+    GPT_3_5_TURBO = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-3.5-turbo"
+    GPT_3_5_TURBO_0125 = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-3.5-turbo-0125"
 
     # GPT-4 Series
-    GPT_4 = "gpt-4"
-    GPT_4_0613 = "gpt-4-0613"
-    GPT_4_0125_PREVIEW = "gpt-4-0125-preview"
+    GPT_4 = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-4"
+    GPT_4_0613 = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-4-0613"
+    GPT_4_0125_PREVIEW = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-4-0125-preview"
 
     # GPT-4.1 Series
-    GPT_4_1 = "gpt-4.1"
-    GPT_4_1_MINI = "gpt-4.1-mini"
-    GPT_4_1_NANO = "gpt-4.1-nano"
+    GPT_4_1 = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-4.1"
+    GPT_4_1_MINI = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-4.1-mini"
+    GPT_4_1_NANO = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-4.1-nano"
 
     # GPT-4o Series
-    GPT_4O = "gpt-4o"
-    GPT_4O_2024_05_13 = "gpt-4o-2024-05-13"
-    GPT_4O_MINI = "gpt-4o-mini"
-
-# class GPTModel:
-#     # All models aliased to GPT-3.5 Turbo
-#     GPT_3_5_TURBO = "gpt-3.5-turbo"
-#     GPT_3_5_TURBO_0125 = "gpt-3.5-turbo"
-
-#     GPT_4 = "gpt-3.5-turbo"
-#     GPT_4_0613 = "gpt-3.5-turbo"
-#     GPT_4_0125_PREVIEW = "gpt-3.5-turbo"
-
-#     GPT_4_1 = "gpt-3.5-turbo"
-#     GPT_4_1_MINI = "gpt-3.5-turbo"
-#     GPT_4_1_NANO = "gpt-3.5-turbo"
-
-#     GPT_4O = "gpt-3.5-turbo"
-#     GPT_4O_2024_05_13 = "gpt-3.5-turbo"
-#     GPT_4O_MINI = "gpt-3.5-turbo"
+    GPT_4O = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-4o"
+    GPT_4O_2024_05_13 = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-4o-2024-05-13"
+    GPT_4O_MINI = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-4o-mini"
 
 
 def get_content(parsed):

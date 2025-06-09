@@ -11,6 +11,13 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+PRESIDENTIAL_SECTIONS = [
+    SectionTitle.PRESIDENTIAL_INTELLIGENCE_BRIEF,
+    SectionTitle.TOP_IMPACT_POSTS,
+    SectionTitle.MARKET_IMPACT_POLICY_ANALYSIS,
+    SectionTitle.TRADING_STRATEGY_IMPLICATIONS
+]
+
 
 class EmailGenerator:
     """Class for generating HTML emails for various reports"""
@@ -428,30 +435,28 @@ class EmailGenerator:
         if not summary_sections:
             return ""
 
-        presidential_sections = [
-            SectionTitle.PRESIDENTIAL_INTELLIGENCE_BRIEF,
-            SectionTitle.TOP_IMPACT_POSTS,
-            SectionTitle.MARKET_IMPACT_POLICY_ANALYSIS,
-            SectionTitle.TRADING_STRATEGY_IMPLICATIONS
-        ]
-
         html_parts = []
         for section in summary_sections:
             title = html.escape(str(section.title))
-            snippet = section.snippet
+            snippet = section.data
+
+            logger.info(f'Processing section: {title} with type: {section.type}')
 
             # Check if this is structured portfolio data
-            if section.title == SectionTitle.PORTFOLIO_SUMMARY and isinstance(snippet, dict):
+            if section.title == SectionTitle.PORTFOLIO_SUMMARY and section.type == 'dict':
                 html_parts.append(self._generate_portfolio_holdings_section(snippet))
                 continue
 
-            # TODO: SKIPPING THIS SECTION IT'S A DUPLICATE
-            # TODO: Remove any code that generates this section
-            if section.title == SectionTitle.TRADING_SUMMARY_AND_PERFORMANCE and isinstance(snippet, dict):
-                # html_parts.append(self._generate_trading_activity_section(snippet))
-                continue
+            # # TODO: SKIPPING THIS SECTION IT'S A DUPLICATE
+            # # TODO: Remove any code that generates this section
+            # if section.title == SectionTitle.TRADING_SUMMARY_AND_PERFORMANCE and isinstance(snippet, dict):
+            #     # html_parts.append(self._generate_trading_activity_section(snippet))
+            #     continue
 
-            if section.title in presidential_sections:
+            if section.title in PRESIDENTIAL_SECTIONS:
+                if section.type != 'html':
+                    raise Exception(f'Expected HTML type for section {section.title}, got {section.type}')
+
                 logger.info(f'Appending raw HTML for section: {title}')
                 html_parts.append(snippet)
                 continue

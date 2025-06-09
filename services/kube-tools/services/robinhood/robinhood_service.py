@@ -16,7 +16,7 @@ from services.robinhood.market_research_processor import MarketResearchProcessor
 from services.robinhood.prompt_generator import PromptGenerator
 from utilities.utils import DateTimeUtil
 from framework.logger import get_logger
-from models.robinhood_models import Holding, Order, PortfolioData, DebugReport, RobinhoodConfig
+from models.robinhood_models import Holding, MarketResearchSummary, Order, PortfolioData, DebugReport, RobinhoodConfig
 from sib_api_v3_sdk import ApiClient, Configuration as SibConfiguration
 from sib_api_v3_sdk.api.transactional_emails_api import TransactionalEmailsApi
 from sib_api_v3_sdk.models import SendSmtpEmail
@@ -335,12 +335,12 @@ class SummarizeMarketResearchStage(DomainStage):
 
                 # Log if structured data was detected
                 for section in portfolio_sections:
-                    if isinstance(section.snippet, dict):
-                        logger.info(f"  - ✅ Portfolio structured data detected: {list(section.snippet.keys())}")
+                    if isinstance(section.data, dict):
+                        logger.info(f"  - ✅ Portfolio structured data detected: {list(section.data.keys())}")
 
                 for section in trading_sections:
-                    if isinstance(section.snippet, dict):
-                        logger.info(f"  - ✅ Trading structured data detected: {list(section.snippet.keys())}")
+                    if isinstance(section.data, dict):
+                        logger.info(f"  - ✅ Trading structured data detected: {list(section.data.keys())}")
 
         except Exception as e:
             result.add_warning(f"Market research summarization pipeline failed: {str(e)}")
@@ -589,26 +589,26 @@ class TradeOutlooksStage(DomainStage):
 
         return result
 
-    def _build_stock_news_lookup(self, summarized_market_research: Any) -> Dict[str, Optional[str]]:
+    def _build_stock_news_lookup(self, summarized_market_research: list[MarketResearchSummary]) -> Dict[str, Optional[str]]:
         """Build a lookup dictionary for stock news by symbol."""
         stock_news_lookup = {}
-        if hasattr(summarized_market_research, 'stock_news') and summarized_market_research.stock_news:
+        if summarized_market_research.stock_news:
             stock_news_lookup = {
-                k: v[0].snippet if v else None
+                k: v[0].data if v else None
                 for k, v in summarized_market_research.stock_news.items()
             }
         return stock_news_lookup
 
-    def _build_sector_lookup(self, summarized_market_research: Any) -> Tuple[Dict[str, str], Optional[str]]:
+    def _build_sector_lookup(self, summarized_market_research: list[MarketResearchSummary]) -> Tuple[Dict[str, str], Optional[str]]:
         """Build sector lookup and fallback summary."""
-        sector_summaries = getattr(summarized_market_research, 'sector_analysis', [])
+        sector_summaries = summarized_market_research.sector_analysis
         sector_lookup = {}
 
         for section in sector_summaries:
             if section.title:
-                sector_lookup[section.title.lower()] = section.snippet
+                sector_lookup[section.title.lower()] = section.data
 
-        fallback_sector_summary = sector_summaries[0].snippet if sector_summaries else None
+        fallback_sector_summary = sector_summaries[0].data if sector_summaries else None
         return sector_lookup, fallback_sector_summary
 
     async def _generate_single_trade_outlook(
@@ -626,7 +626,7 @@ class TradeOutlooksStage(DomainStage):
         news_summary = stock_news_lookup.get(symbol)
 
         # Get sector information
-        holding = portfolio_obj.holdings.get(symbol) if hasattr(portfolio_obj, 'holdings') else None
+        holding = portfolio_obj.holdings.get(symbol)
         sector_summary = None
 
         if holding and hasattr(holding, 'sector') and holding.sector:

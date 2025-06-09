@@ -117,49 +117,31 @@ def analyze_market_and_policy_combined_html(market_posts: list[TruthSocialPost],
     # Get top 3 most impactful posts - FIX: Add proper sorting logic
     all_posts_with_scores = []
 
+    # TODO: Define a function to generate impact scores for posts (GPT 3.5 call?)
+    def generate_impact_score(post: TruthSocialPost) -> int:
+        return 8 if post.market_impact else 0
+
     # Process market-relevant posts
     for post in market_posts:
-        if isinstance(post, dict):
-            original_post = post.get('original_post', {})
-            impact_score = 8 if post.get('market_impact', False) else 0
-            analysis = post.get('market_analysis', '')
-        else:
-            original_post = post.original_post
-            impact_score = 8 if post.market_impact else 0
-            analysis = post.market_analysis or ''
-
         all_posts_with_scores.append({
-            'post': original_post,
-            'impact_score': impact_score,
-            'analysis': analysis,
+            'post': post.original_post,
+            'impact_score': generate_impact_score(post),
+            'analysis': post.market_analysis or '',
             'type': 'Market'
         })
 
     # Process trend-significant posts
     for post in policy_posts:
-        if isinstance(post, dict):
-            original_post = post.get('original_post', {})
-            impact_score = 6 if post.get('trend_significance', False) else 0
-            analysis = post.get('trend_analysis', '')
-        else:
-            original_post = post.original_post
-            impact_score = 6 if post.trend_significance else 0
-            analysis = post.trend_analysis or ''
-
-        # Only add if not already added as market post - FIX: Handle both dict and object cases
-        if isinstance(original_post, dict):
-            post_id = original_post.get('post_id', '')
-        else:
-            post_id = getattr(original_post, 'post_id', '')
+        original_post = post.original_post
+        impact_score = 6 if post.trend_significance else 0
+        analysis = post.trend_analysis or ''
+        post_id = original_post.post_id
 
         # Check for duplicates - FIX: Handle both dict and object cases in existing posts
         is_duplicate = False
         for existing_post_data in all_posts_with_scores:
             existing_post = existing_post_data['post']
-            if isinstance(existing_post, dict):
-                existing_post_id = existing_post.get('post_id', '')
-            else:
-                existing_post_id = getattr(existing_post, 'post_id', '')
+            existing_post_id = existing_post.post_id
 
             if post_id and post_id == existing_post_id:
                 is_duplicate = True
@@ -180,21 +162,9 @@ def analyze_market_and_policy_combined_html(market_posts: list[TruthSocialPost],
     top_posts_html = ""
     for i, post_data in enumerate(top_3_posts):
         post = post_data['post']
-
-        # Extract post data - FIX: Handle both dict and object cases consistently
-        if isinstance(post, dict):
-            content = post.get('content', post.get('title', ''))
-            timestamp = post.get('published_date', 'Recent')
-        else:
-            content = getattr(post, 'content', '') or getattr(post, 'title', '')
-            timestamp = getattr(post, 'published_date', 'Recent')
-
-        # Format timestamp
-        if hasattr(timestamp, 'strftime'):
-            formatted_time = timestamp.strftime('%m/%d %H:%M')
-        else:
-            formatted_time = str(timestamp)
-
+        content = post.content or post.title
+        timestamp = post.published_date or 'Recent'
+        formatted_time = timestamp.strftime('%m/%d %H:%M')
         impact_score = post_data['impact_score']
         analysis = post_data['analysis']
         impact_class = 'positive' if impact_score >= 7 else ''
@@ -244,14 +214,14 @@ def create_top_impact_posts_html_table(market_posts: List[Any], trend_posts: Lis
 
         # Process market-relevant posts
         for post in market_posts:
-            if isinstance(post, dict):
-                original_post = post.get('original_post', {})
-                market_impact_score = 8 if post.get('market_impact', False) else 0
-                analysis = post.get('market_analysis', '')
-            else:
-                original_post = post.original_post
-                market_impact_score = 8 if post.market_impact else 0
-                analysis = post.market_analysis or ''
+            # if isinstance(post, dict):
+            #     original_post = post.get('original_post', {})
+            #     market_impact_score = 8 if post.get('market_impact', False) else 0
+            #     analysis = post.get('market_analysis', '')
+            # else:
+            original_post = post.original_post
+            market_impact_score = 8 if post.market_impact else 0
+            analysis = post.market_analysis or ''
 
             all_posts.append({
                 'post': original_post,
@@ -262,17 +232,17 @@ def create_top_impact_posts_html_table(market_posts: List[Any], trend_posts: Lis
 
         # Process trend-significant posts
         for post in trend_posts:
-            if isinstance(post, dict):
-                original_post = post.get('original_post', {})
-                trend_impact_score = 6 if post.get('trend_significance', False) else 0
-                analysis = post.get('trend_analysis', '')
-            else:
-                original_post = post.original_post
-                trend_impact_score = 6 if post.trend_significance else 0
-                analysis = post.trend_analysis or ''
+            # if isinstance(post, dict):
+            #     original_post = post.get('original_post', {})
+            #     trend_impact_score = 6 if post.get('trend_significance', False) else 0
+            #     analysis = post.get('trend_analysis', '')
+            # else:
+            original_post = post.original_post
+            trend_impact_score = 6 if post.trend_significance else 0
+            analysis = post.trend_analysis or ''
 
             # Only add if not already added as market post
-            post_id = original_post.get('post_id') if isinstance(original_post, dict) else getattr(original_post, 'post_id', '')
+            post_id = original_post.post_id
             if not any(p['post'].post_id == post_id for p in all_posts):
                 all_posts.append({
                     'post': original_post,
@@ -309,34 +279,28 @@ def create_top_impact_posts_html_table(market_posts: List[Any], trend_posts: Lis
             post = post_data['post']
 
             # Extract post data
-            if isinstance(post, dict):
-                date = post.get('published_date', 'Unknown')
-                content = post.get('content', post.get('title', ''))
-                link = post.get('link', '')
-            else:
-                date = getattr(post, 'published_date', 'Unknown')
-                content = getattr(post, 'content', '') or getattr(post, 'title', '')
-                link = getattr(post, 'link', '')
+            # if isinstance(post, dict):
+            #     date = post.get('published_date', 'Unknown')
+            #     content = post.get('content', post.get('title', ''))
+            #     link = post.get('link', '')
+            # else:
+            date = post.published_date or 'Unknown'
+            content = post.content or post.title
+            link = getattr(post, 'link', '')
 
             # Format date
-            if hasattr(date, 'strftime'):
-                formatted_date = date.strftime('%m/%d %H:%M')
-            elif isinstance(date, str) and date != 'Unknown':
-                try:
-                    from datetime import datetime
-                    parsed_date = datetime.fromisoformat(date.replace('Z', '+00:00'))
-                    formatted_date = parsed_date.strftime('%m/%d %H:%M')
-                except:
-                    formatted_date = date
-            else:
-                formatted_date = str(date)
+            # if hasattr(date, 'strftime'):
+            formatted_date = date.strftime('%m/%d %H:%M')
+            # elif isinstance(date, str) and date != 'Unknown':
+            #     try:
+            #         from datetime import datetime
+            #         parsed_date = datetime.fromisoformat(date.replace('Z', '+00:00'))
+            #         formatted_date = parsed_date.strftime('%m/%d %H:%M')
+            #     except:
+            #         formatted_date = date
+            # else:
+            #     formatted_date = str(date)
 
-            # Truncate content for table display
-            # truncated_content = content[:150] + '...' if len(content) > 150 else content
-            # truncated_content = ' '.join(truncated_content.split())  # Clean whitespace
-
-            # Truncate analysis
-            # analysis_text = post_data['analysis'][:100] + '...' if len(post_data['analysis']) > 100 else post_data['analysis']
             analysis_text = post_data['analysis']
 
             # Impact score styling
@@ -344,7 +308,6 @@ def create_top_impact_posts_html_table(market_posts: List[Any], trend_posts: Lis
             impact_class = 'positive' if impact_score >= 7 else 'negative' if impact_score <= 3 else ''
 
             # Type badge styling
-            # type_badge_style = 'background: #e8f5e8; color: #0d7833; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;' if post_data[
             type_badge_style = 'color: #0d7833; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;' if post_data[
                 'type'] == 'Market' else 'background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;'
 
@@ -435,22 +398,22 @@ def create_truth_social_summary_sections(insights: Optional[TruthSocialInsights]
         </div>
         """
 
-        sections.append(SummarySection(title=SectionTitle.PRESIDENTIAL_INTELLIGENCE_BRIEF, snippet=executive_summary))
+        sections.append(SummarySection(title=SectionTitle.PRESIDENTIAL_INTELLIGENCE_BRIEF, data=executive_summary, type='html'))
 
     # 2. TOP IMPACT POSTS TABLE
     if market_relevant_posts or trend_significant_posts:
         top_posts_table = create_top_impact_posts_html_table(market_relevant_posts, trend_significant_posts)
         if top_posts_table:
-            sections.append(SummarySection(title=SectionTitle.TOP_IMPACT_POSTS, snippet=top_posts_table))
+            sections.append(SummarySection(title=SectionTitle.TOP_IMPACT_POSTS, data=top_posts_table, type='html'))
 
     # 3. Market Impact & Policy Analysis (Combined)
     if market_relevant_posts:
         combined_analysis = analyze_market_and_policy_combined_html(market_relevant_posts, trend_significant_posts, sentiment_analysis)
-        sections.append(SummarySection(title=SectionTitle.MARKET_IMPACT_POLICY_ANALYSIS, snippet=combined_analysis))
+        sections.append(SummarySection(title=SectionTitle.MARKET_IMPACT_POLICY_ANALYSIS, data=combined_analysis, type='html'))
 
     # 4. Trading Strategy Implications
     if market_relevant_posts or trend_significant_posts:
         strategy_implications = generate_simplified_trading_implications_html(market_impact_score, sentiment_analysis)
-        sections.append(SummarySection(title=SectionTitle.TRADING_STRATEGY_IMPLICATIONS, snippet=strategy_implications))
+        sections.append(SummarySection(title=SectionTitle.TRADING_STRATEGY_IMPLICATIONS, data=strategy_implications, type='html'))
 
     return sections

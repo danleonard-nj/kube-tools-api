@@ -122,12 +122,22 @@ class PortfolioProfile(BaseModel):
     excess_maintenance_with_uncleared_deposits: Optional[str] = None
     equity_previous_close: Optional[str] = None
     portfolio_equity_previous_close: Optional[str] = None
+
+    # This is the correct "previous close" value
     adjusted_equity_previous_close: Optional[str] = None
+
+    # Duplicate of the above?
     adjusted_portfolio_equity_previous_close: Optional[str] = None
     withdrawable_amount: Optional[str] = None
     unwithdrawable_deposits: Optional[str] = None
     unwithdrawable_grants: Optional[str] = None
     is_primary_account: Optional[bool] = None
+
+    @property
+    def total_day_change(self) -> float:
+        prev = float(self.adjusted_equity_previous_close)
+        curr = float(self.market_value)
+        return curr - prev
 
 
 class AccountProfile(BaseModel):
@@ -245,8 +255,9 @@ class Article(BaseModel):
 class SummarySection(BaseModel):
     """Summary section that can contain either text or structured data."""
     title: str
-    snippet: Union[str, Dict[str, Any]]  # Now supports both text and structured data
+    data: Union[str, Dict[str, Any]]  # Now supports both text and structured data
     table_data: Optional[List[Dict[str, Any]]] = None  # For structured data tables
+    type: Optional[str] = None  # Type of summary (e.g., 'text', 'table', 'chart')
 
     class Config:
         # Allow arbitrary types for flexibility

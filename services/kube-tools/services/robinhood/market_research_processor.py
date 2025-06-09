@@ -1,13 +1,11 @@
 import asyncio
 import json
 import time
-import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import feedparser
-import httpx
 from bs4 import BeautifulSoup
 from clients.google_search_client import GoogleSearchClient
 from clients.gpt_client import GPTClient
@@ -23,7 +21,11 @@ from models.robinhood_models import (AnalyzedPost, Article, Holding,
 from pydantic import BaseModel, Field
 from services.robinhood.html_generator import \
     create_truth_social_summary_sections
-from services.robinhood.prompt_generator import PromptGenerator
+from services.robinhood.prompt_generator import (
+    PromptGenerator, generate_article_chunk_summary_prompt,
+    generate_filter_article_prompt,
+    generate_trut_social_market_implication_analysis_prompt,
+    generate_truth_post_single_post_analysis_prompt)
 
 logger = get_logger(__name__)
 
@@ -36,88 +38,11 @@ def parse_gpt_response_json(response: str) -> dict:
     return json.loads(text)
 
 
-def generate_truth_post_single_post_analysis_prompt(post: TruthSocialPost) -> str:
-    return f"""
-    You are a financial analyst. Analyze this presidential post for significance.
-
-    Post Date: {post.published_date.strftime('%Y-%m-%d')}
-    Post Content: "{post.content}"
-
-    Determine:
-    1. Market Impact (true/false): Does this have direct market/economic implications?
-    2. If Market Impact = true: Provide 2-3 sentence analysis of market implications
-    3. Trend Significance (true/false): Does this represent an important policy/messaging trend?
-    4. If Trend Significance = true: Provide 2-3 sentence analysis of the trend
-
-    Respond ONLY in valid JSON format (without ```json or ```):
-    {{
-        "market_impact": true/false,
-        "market_analysis": "analysis if market_impact is true, otherwise null",
-        "trend_significance": true/false, 
-        "trend_analysis": "analysis if trend_significance is true, otherwise null"
-    }}
-    """
-
-
-def generate_trut_social_market_implication_analysis_prompt(all_content: str) -> str:
-    return f"""
-    Analyze the overall sentiment of these presidential communications for financial market implications.
-
-    Content to analyze:
-    {all_content[:5000]}  # Limit content to avoid token limits
-
-    Provide sentiment breakdown as percentages that sum to 100%.
-
-    Respond ONLY in valid JSON format:
-    {{
-        "scores": {{
-            "positive": 0.0-1.0,
-            "negative": 0.0-1.0, 
-            "neutral": 0.0-1.0
-        }},
-        "dominant": "positive|negative|neutral",
-        "market_themes": ["theme1", "theme2", "theme3"],
-        "confidence": 0.0-1.0
-    }}
-    """
-
-
-def generate_filter_article_prompt(snippet: str, type_label: str) -> str:
-    """Generate prompt for filtering articles based on content."""
-    return f"""
-    You are an expert financial news analyst. Strictly classify short {type_label} snippets as either 'valuable' (contains specific, actionable, or newsworthy information for investors) or 'junk' (generic, marketing, navigation, or not useful for investment decisions).
-
-    Examples:
-    Junk: "Get the latest Visa Inc. (V) stock news and headlines to help you in your trading and investing decisions."
-    Junk: "Fitch Ratings is a leading provider of credit ratings, commentary and research for global capital markets."
-    Valuable: "Visa Inc. shares rose 2% after the company reported better-than-expected quarterly earnings and raised its full-year outlook."
-    Valuable: "23andMe will hold a second auction for its data assets as part of a restructuring plan."
-
-    Now classify this snippet:
-    Snippet: {snippet}
-
-    Respond with only one word: 'valuable' or 'junk'.
-    """
-
-
-def generate_article_chunk_summary_prompt(chunk: List[Article], type_label: str) -> str:
-    prompt_lines = [
-        f"Summarize the following {type_label} articles in a concise, clear paragraph. "
-        "Highlight key trends and sentiment. Ignore marketing/advertising content.\n"
-    ]
-
-    for i, article in enumerate(chunk, 1):
-        prompt_lines.append(article.to_prompt_block(i))
-        prompt_lines.append("")
-
-    return "\n".join(prompt_lines)
-
-
 class ResearchPipelineConfig(BaseModel):
     """Configuration for research pipeline execution."""
     skip_stages: Set[str] = Field(default_factory=set)
     retry_config: Dict[str, int] = Field(default_factory=dict)
-    fail_fast: bool = False
+    fail_fast: bool = True
     max_chunk_chars: int = MAX_ARTICLE_CHUNK_SIZE
     rss_content_fetch_limit: int = 5
     parallel_fetch: bool = True  # Fetch different data types in parallel
@@ -1291,14 +1216,14 @@ class MarketResearchProcessor:
             """Helper to build summary sections from context."""
 
             stock_news = {
-                symbol: [SummarySection(title=f'{symbol} News Summary', snippet=summary)]
+                symbol: [SummarySection(title=f'{symbol} News Summary', data=summary)]
                 for symbol, summary in getattr(context, 'stock_news_summaries', {}).items()
             }
 
-            portfolio_summary = [SummarySection(title=SectionTitle.PORTFOLIO_SUMMARY, snippet=context.portfolio_summary_data)] if context.portfolio_summary_data else []
-            trading_summary = [SummarySection(title=SectionTitle.TRADING_SUMMARY_AND_PERFORMANCE, snippet=context.trading_summary_data)] if context.trading_summary_data else []
-            market_conditions = [SummarySection(title=SectionTitle.MARKET_CONDITIONS_SUMMARY, snippet=context.market_conditions_summary)] if context.market_conditions_summary else []
-            sector_analysis = [SummarySection(title=SectionTitle.SECTOR_ANALYSIS, snippet=context.sector_analysis_summary)] if context.sector_analysis_summary else []
+            portfolio_summary = [SummarySection(title=SectionTitle.PORTFOLIO_SUMMARY, data=context.portfolio_summary_data, type='dict')] if context.portfolio_summary_data else []
+            trading_summary = [SummarySection(title=SectionTitle.TRADING_SUMMARY_AND_PERFORMANCE, data=context.trading_summary_data, type='dict')] if context.trading_summary_data else []
+            market_conditions = [SummarySection(title=SectionTitle.MARKET_CONDITIONS_SUMMARY, data=context.market_conditions_summary, type='snippet')] if context.market_conditions_summary else []
+            sector_analysis = [SummarySection(title=SectionTitle.SECTOR_ANALYSIS, data=context.sector_analysis_summary, type='markdown')] if context.sector_analysis_summary else []
             truth_social_summary = create_truth_social_summary_sections(context.truth_social_insights)
             return {
                 'market_conditions': market_conditions,
