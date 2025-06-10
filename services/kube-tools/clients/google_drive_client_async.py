@@ -465,3 +465,55 @@ class GoogleDriveClientAsync:
         logger.info(f'File exists: {file_exists}')
 
         return file_exists
+
+    async def resolve_drive_folder_id(self, folder_path: str) -> str:
+        """
+        Given a folder path like 'Podcasts/CBB', resolve and create (if needed) the folder structure in Google Drive and return the final folder's ID.
+        """
+        from domain.google import GoogleDriveDirectory
+        if not folder_path or folder_path.strip() == "":
+            return GoogleDriveDirectory.PodcastDirectoryId
+
+        # Split path and start from root Podcasts folder
+        parts = folder_path.strip("/\\").split("/")
+        parent_id = GoogleDriveDirectory.PodcastDirectoryId
+        for part in parts:
+            # Check if folder exists under parent_id
+            headers = await self._get_auth_headers()
+            query = {
+                'q': f"'{parent_id}' in parents and name = '{part}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                'fields': 'files(id, name)',
+                'pageSize': 1
+            }
+            resp = await self._http_client.get(
+                "https://www.googleapis.com/drive/v3/files",
+                headers=headers,
+                params=query
+            )
+            if resp.status_code != 200:
+                logger.error(f"Failed to check existence of folder '{part}': {resp.status_code} {resp.text}")
+                raise Exception(f"Failed to check existence of folder '{part}': {resp.status_code} {resp.text}")
+            files = resp.json().get('files', [])
+            if files:
+                parent_id = files[0]['id']
+            else:
+                # Create the folder
+                folder_metadata = {
+                    'name': part,
+                    'mimeType': 'application/vnd.google-apps.folder',
+                    'parents': [parent_id]
+                }
+                create_resp = await self._http_client.post(
+                    "https://www.googleapis.com/drive/v3/files",
+                    headers=headers,
+                    json=folder_metadata
+                )
+                if create_resp.status_code not in [200, 201]:
+                    logger.error(f"Failed to create folder '{part}': {create_resp.status_code} {create_resp.text}")
+                    raise Exception(f"Failed to create folder '{part}': {create_resp.status_code} {create_resp.text}")
+                create_json = create_resp.json()
+                if 'id' not in create_json:
+                    logger.error(f"No 'id' in folder creation response for '{part}': {create_json}")
+                    raise Exception(f"No 'id' in folder creation response for '{part}': {create_json}")
+                parent_id = create_json['id']
+        return parent_id
