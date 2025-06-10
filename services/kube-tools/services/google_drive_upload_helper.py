@@ -38,6 +38,9 @@ class GoogleDriveUploadHelper:
             )
             start_byte += len(chunk)
             total_uploaded += len(chunk)
+            if file_size:
+                percent = (total_uploaded / file_size) * 100
+                logger.info(f'Upload progress: {percent:.2f}% ({total_uploaded}/{file_size} bytes)')
             if upload_response.status_code in [200, 201]:
                 break
             if upload_response.status_code not in [200, 201, 308]:

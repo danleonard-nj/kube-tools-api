@@ -142,8 +142,8 @@ class GoogleDriveClientAsync:
         retry=retry_if_exception_type(Exception),
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        before=before_log(logger, logging.INFO),
-        after=after_log(logger, logging.INFO),
+        # before=before_log(logger, logging.INFO),
+        # after=after_log(logger, logging.INFO),
         before_sleep=before_sleep_log(logger, logging.INFO))
     async def upload_file_chunk(
         self,
