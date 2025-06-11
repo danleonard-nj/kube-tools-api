@@ -188,6 +188,8 @@ class GmailClient:
             url=endpoint,
             headers=auth_headers)
 
+        query_result.raise_for_status()
+
         logger.debug(f'Query inbox result: {query_result.status_code}')
 
         content = query_result.json()

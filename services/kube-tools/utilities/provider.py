@@ -1,3 +1,4 @@
+from debugpy import configure
 from clients.azure_gateway_client import AzureGatewayClient
 from clients.chat_gpt_service_client import ChatGptServiceClient
 from clients.coinbase_client import CoinbaseClient, CoinbaseRESTClient
@@ -63,6 +64,11 @@ from services.chat_gpt_service import ChatGptService
 from services.coinbase_service import CoinbaseService
 from services.conversation_service import ConversationService
 from services.event_service import EventService
+from services.gmail.archive_processor import ArchiveRuleProcessor
+from services.gmail.bank_processor import BankSyncRuleProcessor
+from services.gmail.formatter import MessageFormatter
+from services.gmail.models import GmailConfig
+from services.gmail.sms_processor import SmsRuleProcessor
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
 from services.gmail_service import GmailService
@@ -155,11 +161,27 @@ def register_configs(descriptors):
         factory=lambda p: CoinbaseConfig.model_validate(
             p.resolve(Configuration).coinbase))
 
-    # Register custom Coinbase client config
+    # Register custom email client config
     descriptors.add_singleton(
         dependency_type=EmailConfig,
         factory=lambda p: EmailConfig.model_validate(
             p.resolve(Configuration).email)),
+
+    # Register custom Gmail service config
+    descriptors.add_singleton(
+        dependency_type=GmailConfig,
+        factory=lambda p: GmailConfig.model_validate(
+            p.resolve(Configuration).gmail)),
+
+
+def register_gmail_services(
+    descriptors: ServiceCollection
+):
+    descriptors.add_singleton(GmailService)
+    descriptors.add_singleton(ArchiveRuleProcessor)
+    descriptors.add_singleton(SmsRuleProcessor)
+    descriptors.add_singleton(BankSyncRuleProcessor)
+    descriptors.add_singleton(MessageFormatter)
 
 
 def register_clients(
@@ -264,27 +286,14 @@ class ContainerProvider(ProviderBase):
     @classmethod
     def configure_container(cls):
         descriptors = ServiceCollection()
+
         descriptors.add_singleton(Configuration)
-
-        register_factories(
-            descriptors=descriptors)
-
-        # Repositories
-        register_repositories(
-            descriptors=descriptors)
-
-        # Clients
-        register_clients(
-            descriptors=descriptors)
-
-        # Services
-        register_services(
-            descriptors=descriptors)
-
-        register_robinhood_services(
-            descriptors=descriptors)
-
-        register_configs(
-            descriptors=descriptors)
+        register_factories(descriptors=descriptors)
+        register_repositories(descriptors=descriptors)
+        register_clients(descriptors=descriptors)
+        register_services(descriptors=descriptors)
+        register_robinhood_services(descriptors=descriptors)
+        register_gmail_services(descriptors=descriptors)
+        register_configs(descriptors=descriptors)
 
         return descriptors
