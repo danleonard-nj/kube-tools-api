@@ -1,10 +1,8 @@
-
-
 from typing import Optional
 
 from domain.google import GmailEmail, GmailEmailRule, GoogleEmailLabel
 from framework.logger import get_logger
-from services.gmail.models import TagModification
+from models.gmail_models import TagModification
 from services.gmail.processor import BaseRuleProcessor
 
 logger = get_logger(__name__)

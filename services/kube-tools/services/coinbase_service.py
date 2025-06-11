@@ -2,7 +2,7 @@ from clients.coinbase_client import CoinbaseClient
 from framework.configuration import Configuration
 from framework.logger import get_logger
 
-from models.coinbase_account_models import CoinbaseAccount
+from models.coinbase_models import CoinbaseAccount
 
 logger = get_logger(__name__)
 

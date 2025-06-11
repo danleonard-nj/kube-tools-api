@@ -1,7 +1,8 @@
 from coinbase.rest import RESTClient
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
-from models.coinbase_config import CoinbaseConfig
+
+from models.coinbase_models import CoinbaseConfig
 
 logger = get_logger(__name__)
 

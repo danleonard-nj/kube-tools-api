@@ -3,6 +3,12 @@ from pydantic import BaseModel
 from datetime import datetime
 
 
+class CoinbaseConfig(BaseModel):
+    name: str
+    secret: str
+    currencies: List[str]
+
+
 class Balance(BaseModel):
     @property
     def parsed_balance(self) -> float:

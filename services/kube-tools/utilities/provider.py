@@ -48,7 +48,7 @@ from framework.configuration.configuration import Configuration
 from framework.di.service_collection import ServiceCollection
 from framework.di.static_provider import ProviderBase
 from httpx import AsyncClient
-from models.coinbase_config import CoinbaseConfig
+from models.coinbase_models import CoinbaseConfig
 from models.email_config import EmailConfig
 from models.podcast_config import PodcastConfig
 from models.robinhood_models import RobinhoodConfig
@@ -67,7 +67,7 @@ from services.event_service import EventService
 from services.gmail.archive_processor import ArchiveRuleProcessor
 from services.gmail.bank_processor import BankSyncRuleProcessor
 from services.gmail.formatter import MessageFormatter
-from services.gmail.models import GmailConfig
+from models.gmail_models import GmailConfig
 from services.gmail.sms_processor import SmsRuleProcessor
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService

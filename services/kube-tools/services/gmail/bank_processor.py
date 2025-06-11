@@ -1,5 +1,3 @@
-
-
 from typing import Optional
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
@@ -8,7 +6,7 @@ from framework.validators import none_or_whitespace
 from framework.logger import get_logger
 
 from services.gmail.formatter import MessageFormatter
-from services.gmail.models import EmailTagManager, GmailConfig, TagModification
+from models.gmail_models import EmailTagManager, GmailConfig, TagModification
 from services.gmail.processor import BaseRuleProcessor
 from services.gmail_balance_sync_service import GmailBankSyncService
 

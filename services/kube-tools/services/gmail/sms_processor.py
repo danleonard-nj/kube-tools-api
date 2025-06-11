@@ -5,7 +5,7 @@ from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
 from domain.google import GmailEmail, GmailEmailRule, GoogleEmailLabel
 from services.gmail.formatter import MessageFormatter
-from services.gmail.models import EmailTagManager, GmailConfig, TagModification
+from models.gmail_models import EmailTagManager, GmailConfig, TagModification
 from services.gmail.processor import BaseRuleProcessor
 
 from framework.logger import get_logger

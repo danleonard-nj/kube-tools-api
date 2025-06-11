@@ -1,3 +1,4 @@
+import asyncio
 from typing import Dict
 
 from clients.gmail_client import GmailClient
@@ -12,7 +13,7 @@ from framework.logger import get_logger
 from services.chat_gpt_service import ChatGptService
 from services.gmail.archive_processor import ArchiveRuleProcessor
 from services.gmail.bank_processor import BankSyncRuleProcessor
-from services.gmail.models import GmailConfig
+from models.gmail_models import GmailConfig
 from services.gmail.sms_processor import SmsRuleProcessor
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
@@ -45,6 +46,8 @@ class GmailService:
         self._chat_gpt_service = chat_gpt_service
         self._sms_recipient = config.sms_recipient
 
+        self._semaphore = asyncio.Semaphore(config.concurrency)
+
         # Cache rule processors
         # message_formatter = MessageFormatter(self._chat_gpt_service)
         self._rule_processors = {
@@ -62,33 +65,30 @@ class GmailService:
         rules.reverse()
         logger.info(f'Rules gathered: {len(rules)}')
         await self._gmail_client.ensure_auth(scopes=[GoogleClientScope.Gmail])
-        # process_rules = TaskCollection(*[
-        #     self.process_rule(rule=rule)
-        #     for rule in rules
-        # ])
-        results = []
-        for rule in rules:
-            results.append(await self.process_rule(rule=rule))
-
-        # results = await process_rules.run()
+        process_rules = TaskCollection(*[
+            self.process_rule(rule=rule)
+            for rule in rules
+        ])
+        results = await process_rules.run()
         results.sort(key=lambda x: x.rule_name)
         return results
 
     async def process_rule(self, rule: GmailEmailRule):
         ArgumentNullException.if_none(rule, 'process_request')
-        try:
-            logger.info(f'Processing rule: {rule.rule_id}: {rule.name}')
-            processor = self._rule_processors.get(rule.action)
-            if not processor:
-                raise GmailServiceError(f'Unsupported rule action: {rule.action}')
-            affected_count = await processor.process_rule(rule)
-            logger.info(f'Rule: {rule.name}: Emails affected: {affected_count}')
-            return ProcessGmailRuleResponse(
-                status=ProcessGmailRuleResultType.Success,
-                rule=rule,
-                affected_count=affected_count)
-        except Exception as ex:
-            logger.exception(f'Failed to process rule: {rule.rule_id}: {rule.name}: {str(ex)}')
-            return ProcessGmailRuleResponse(
-                status=ProcessGmailRuleResultType.Failure,
-                rule=rule)
+        async with self._semaphore:
+            try:
+                logger.info(f'Processing rule: {rule.rule_id}: {rule.name}')
+                processor = self._rule_processors.get(rule.action)
+                if not processor:
+                    raise GmailServiceError(f'Unsupported rule action: {rule.action}')
+                affected_count = await processor.process_rule(rule)
+                logger.info(f'Rule: {rule.name}: Emails affected: {affected_count}')
+                return ProcessGmailRuleResponse(
+                    status=ProcessGmailRuleResultType.Success,
+                    rule=rule,
+                    affected_count=affected_count)
+            except Exception as ex:
+                logger.exception(f'Failed to process rule: {rule.rule_id}: {rule.name}: {str(ex)}')
+                return ProcessGmailRuleResponse(
+                    status=ProcessGmailRuleResultType.Failure,
+                    rule=rule)

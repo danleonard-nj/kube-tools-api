@@ -8,7 +8,7 @@ from domain.google import GmailEmail, GmailEmailRule
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from services.gmail.formatter import MessageFormatter
-from services.gmail.models import TagModification
+from models.gmail_models import TagModification
 
 logger = get_logger(__name__)
 
