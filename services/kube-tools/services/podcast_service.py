@@ -1,7 +1,9 @@
 import asyncio
+from hashlib import md5
 import io
 import random
 from typing import Dict, List, Tuple
+import uuid
 
 import feedparser
 import httpx
@@ -9,7 +11,6 @@ from clients.email_gateway_client import EmailGatewayClient
 from clients.google_drive_client_async import (GoogleDriveClientAsync,
                                                GoogleDriveUploadRequest)
 from data.podcast_repository import PodcastRepository
-from domain.drive import PermissionRole, PermissionType
 from domain.exceptions import PodcastConfigurationException
 from domain.features import Feature
 from domain.google import GoogleDriveDirectory
@@ -20,8 +21,7 @@ from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
-from framework.validators.nulls import none_or_whitespace
-from httpx import AsyncClient, Response
+from httpx import AsyncClient
 from models.podcast_config import PodcastConfig
 from services.event_service import EventService
 from services.google_drive_upload_helper import GoogleDriveUploadHelper
@@ -30,7 +30,7 @@ from utilities.utils import DateTimeUtil
 logger = get_logger(__name__)
 
 UPLOAD_CHUNK_SIZE = 1024 * 1024 * 4  # 8MB
-MAX_EPISODE_DOWNLOADS = 3
+MAX_EPISODE_DOWNLOADS = 50
 
 
 class PodcastServiceException(Exception):
@@ -198,9 +198,9 @@ class PodcastService:
             data=self._get_results_table(episodes))
 
         # Actually send the email event
-        await self._event_service.dispatch_email_event(
-            endpoint=endpoint,
-            message=email_request.to_dict())
+        # await self._event_service.dispatch_email_event(
+        #     endpoint=endpoint,
+        #     message=email_request.to_dict())
 
     async def _get_feed_request(
         self,
@@ -299,8 +299,17 @@ class PodcastService:
         # Parse the RSS feed using feedparser
         parsed_feed = feedparser.parse(feed_data.text)
 
+        show_id = str(uuid.uuid4())
+        if 'acast_showid' in parsed_feed.feed:
+            show_id = parsed_feed.feed['acast_showid']
+        elif 'id' in parsed_feed.feed:
+            show_id = parsed_feed.feed['id']
+        elif 'link' in parsed_feed.feed:
+            hashed = uuid.UUID(md5(show_id.encode('utf-8')).hexdigest())
+            show_id = str(hashed)
+
         show_title = parsed_feed.feed.get('title', rss_feed.name)
-        show_id = show_title  # You may want to hash or uuid this
+        # show_id = show_title  # You may want to hash or uuid this
 
         episodes = []
         for entry in parsed_feed.entries:
@@ -340,7 +349,7 @@ class PodcastService:
 
         logger.info(f'Entity episode count: {len(entity.episodes)}')
 
-        # Use a set for fast episode existence checks (DSA improvement)
+        # Use a set for fast episode existence checks
         # Start with the DB entity's episodes list
         db_episodes = list(entity.episodes)
         db_episode_ids = set(ep.episode_id for ep in db_episodes)
@@ -356,6 +365,20 @@ class PodcastService:
         if not new_episodes:
             return ([], show)
 
+        # Concurrency control for uploads
+        max_concurrent_uploads = 6
+        semaphore = asyncio.Semaphore(max_concurrent_uploads)
+        upload_tasks = []
+
+        async def upload_with_semaphore(downloaded_episode, folder_name):
+            async with semaphore:
+                try:
+                    await self.upload_file_async(downloaded_episode=downloaded_episode, drive_folder_path=folder_name)
+                    to_add.append(downloaded_episode.episode)
+                    download_queue.append(downloaded_episode)
+                except Exception as ex:
+                    logger.error(f'Upload failed for episode: {downloaded_episode.episode.episode_title} - {ex}')
+
         for episode in new_episodes:
             downloaded_episode = DownloadedEpisode(episode=episode, show=show)
             exists = await self._google_drive_client.file_exists(
@@ -364,12 +387,10 @@ class PodcastService:
             if exists:
                 to_add.append(episode)
             else:
-                try:
-                    await self.upload_file_async(downloaded_episode=downloaded_episode, drive_folder_path=folder_name)
-                    to_add.append(episode)
-                    download_queue.append(downloaded_episode)
-                except Exception as ex:
-                    logger.error(f'Upload failed for episode: {episode.episode_title} - {ex}')
+                upload_tasks.append(upload_with_semaphore(downloaded_episode, folder_name))
+
+        if upload_tasks:
+            await asyncio.gather(*upload_tasks)
 
         # Deduplicate and update DB ONCE
         all_episodes = db_episodes + [ep for ep in to_add if ep.episode_id not in db_episode_ids]

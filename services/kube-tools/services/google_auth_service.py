@@ -70,7 +70,6 @@ class GoogleAuthService:
         cache_key = f"google_auth:{client_name}:{'-'.join(sorted(scopes))}"
         cached_token = await self._cache.get_cache(key=cache_key)
         if cached_token:
-            logger.info(f"[GoogleAuthService] Using cached token for '{client_name}' (first 8: {cached_token[:8]})")
             # Optionally, you could decode the JWT and check expiry, but Google tokens are opaque.
             # So, we rely on cache TTL. If you want to be extra safe, always refresh if in doubt.
             return cached_token
