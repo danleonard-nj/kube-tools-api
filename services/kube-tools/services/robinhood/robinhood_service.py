@@ -239,13 +239,13 @@ class CaptureBalanceStage(DomainStage):
             return result
 
         try:
-            # portfolio_balance = round(float(context.portfolio_obj.portfolio_profile.last_core_equity), 2)
-            # await self.service._bank_service.capture_balance(
-            #     bank_key=BankKey.Robinhood,
-            #     balance=portfolio_balance,
-            #     sync_type=str(SyncType.Robinhood)
-            # )
-            # logger.info(f"Portfolio balance captured: ${portfolio_balance:,.2f}")
+            portfolio_balance = round(float(context.portfolio_obj.portfolio_profile.last_core_equity), 2)
+            await self.service._bank_service.capture_balance(
+                bank_key=BankKey.Robinhood,
+                balance=portfolio_balance,
+                sync_type=str(SyncType.Robinhood)
+            )
+            logger.info(f"Portfolio balance captured: ${portfolio_balance:,.2f}")
             pass
 
         except (ValueError, TypeError, AttributeError) as e:
