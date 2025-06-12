@@ -1,4 +1,3 @@
-from debugpy import configure
 from clients.azure_gateway_client import AzureGatewayClient
 from clients.chat_gpt_service_client import ChatGptServiceClient
 from clients.coinbase_client import CoinbaseClient, CoinbaseRESTClient
