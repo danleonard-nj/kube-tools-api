@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Route Analyzer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 120px;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            background: #007bff;
+            color: white;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 3px;
+            display: none;
+        }
+
+        canvas {
+            width: 100%;
+            height: 400px;
+            border: 1px solid #ccc;
+            margin: 20px 0;
+            background: #f8f9fa;
+        }
+
+        .route-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .overview-card {
+            background: #f8f9fa;
+            padding: 15px;
+            text-align: center;
+            border-radius: 3px;
+            border-left: 4px solid #007bff;
+        }
+
+        .overview-card.toll {
+            border-left-color: #dc3545;
+        }
+
+        .overview-card.highway {
+            border-left-color: #28a745;
+        }
+
+        .overview-card.waypoint {
+            border-left-color: #ffc107;
+        }
+
+        .overview-card .value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .overview-card .label {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .waypoints {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+
+        .waypoint-item {
+            margin: 10px 0;
+            padding: 10px;
+            background: white;
+            border-radius: 3px;
+            border-left: 4px solid #f39c12;
+        }
+
+        .waypoint-title {
+            font-weight: bold;
+            color: #e67e22;
+        }
+
+        .leg {
+            background: white;
+            border: 1px solid #ddd;
+            margin: 10px 0;
+            border-radius: 3px;
+        }
+
+        .leg-header {
+            background: #f8f9fa;
+            padding: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .leg-content {
+            padding: 15px;
+            display: none;
+        }
+
+        .leg.open .leg-content {
+            display: block;
+        }
+
+        .leg-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 3px;
+        }
+
+        .leg-stat {
+            text-align: center;
+        }
+
+        .leg-stat .value {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+
+        th,
+        td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+            font-size: 0.9em;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: bold;
+        }
+
+        .road-interstate {
+            background: #007bff;
+            color: white;
+            padding: 2px 5px;
+            border-radius: 2px;
+            font-size: 0.8em;
+        }
+
+        .road-highway {
+            background: #dc3545;
+            color: white;
+            padding: 2px 5px;
+            border-radius: 2px;
+            font-size: 0.8em;
+        }
+
+        .road-local {
+            background: #28a745;
+            color: white;
+            padding: 2px 5px;
+            border-radius: 2px;
+            font-size: 0.8em;
+        }
+
+        .road-bridge {
+            background: #ffc107;
+            color: black;
+            padding: 2px 5px;
+            border-radius: 2px;
+            font-size: 0.8em;
+        }
+
+        .road-tunnel {
+            background: #6c757d;
+            color: white;
+            padding: 2px 5px;
+            border-radius: 2px;
+            font-size: 0.8em;
+        }
+
+        .road-toll {
+            background: #fd7e14;
+            color: white;
+            padding: 2px 5px;
+            border-radius: 2px;
+            font-size: 0.8em;
+        }
+
+        .metadata {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+
+        .metadata h4 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+        }
+
+        .meta-item {
+            background: white;
+            padding: 8px;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+
+        .meta-label {
+            font-weight: bold;
+            color: #666;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🗺️ Route Analyzer</h1>
+
+        <div>
+            <label><strong>Paste Route JSON:</strong></label>
+            <textarea id="jsonInput" placeholder="Paste your route JSON here..."></textarea>
+            <div>
+                <button onclick="analyzeRoute()">🔍 Analyze Route</button>
+                <button onclick="loadSample()">📝 Load Sample</button>
+                <button onclick="clearData()">🗑️ Clear</button>
+            </div>
+            <div id="error" class="error"></div>
+        </div>
+
+        <div id="results" style="display: none;">
+            <div id="overview" class="route-overview"></div>
+            <div id="waypoints"></div>
+            <canvas id="canvas"></canvas>
+            <div id="legs"></div>
+        </div>
+    </div>
+
+    <script>
+        let routeData = null;
+
+        function showError(msg) {
+            document.getElementById('error').textContent = msg;
+            document.getElementById('error').style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('error').style.display = 'none';
+        }
+
+        function analyzeRoute() {
+            hideError();
+            const input = document.getElementById('jsonInput').value.trim();
+
+            if (!input) {
+                showError('Please paste route JSON data');
+                return;
+            }
+
+            try {
+                routeData = JSON.parse(input);
+
+                // Handle different JSON structures
+                let processedData;
+                if (routeData.selected_route && routeData.selected_route.route_data) {
+                    // Complex structure with metadata
+                    processedData = processRoute(routeData);
+                } else if (routeData.routes && routeData.routes[0] && routeData.routes[0].legs) {
+                    // Simple Google Maps structure
+                    processedData = processSimpleRoute(routeData);
+                } else {
+                    throw new Error('Unknown route structure');
+                }
+
+                renderResults(processedData);
+                document.getElementById('results').style.display = 'block';
+
+            } catch (e) {
+                showError('Error: ' + e.message);
+                console.error(e);
+            }
+        }
+
+        function processRoute(data) {
+            const route = data.selected_route;
+            const routeData = route.route_data;
+            const legs = routeData.legs || [];
+
+            return {
+                summary: route.summary || 'Unknown Route',
+                distance: route.distance_km ? `${route.distance_km.toFixed(1)} km` : 'Unknown',
+                duration: route.duration_minutes ? formatDuration(route.duration_minutes * 60) : 'Unknown',
+                hasTolls: route.has_tolls || false,
+                highwayPercentage: route.highway_percentage ? `${(route.highway_percentage * 100).toFixed(1)}%` : '0%',
+                legs: legs,
+                waypoints: data.waypoint_requirements || [],
+                alternatives: data.alternatives_considered || 0,
+                prompt: data.original_prompt || ''
+            };
+        }
+
+        function processSimpleRoute(data) {
+            const route = data.routes[0];
+            const legs = route.legs || [];
+
+            let totalDistance = 0;
+            let totalDuration = 0;
+            legs.forEach(leg => {
+                totalDistance += leg.distance ? leg.distance.value : 0;
+                totalDuration += leg.duration ? leg.duration.value : 0;
+            });
+
+            return {
+                summary: route.summary || 'Route',
+                distance: `${(totalDistance / 1000).toFixed(1)} km`,
+                duration: formatDuration(totalDuration),
+                hasTolls: false,
+                highwayPercentage: '0%',
+                legs: legs,
+                waypoints: [],
+                alternatives: 0,
+                prompt: ''
+            };
+        }
+
+        function formatDuration(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+        }
+
+        function renderResults(data) {
+            renderOverview(data);
+            renderWaypoints(data.waypoints);
+            drawRoute(data.legs);
+            renderLegs(data.legs);
+        }
+
+        function renderOverview(data) {
+            const overview = document.getElementById('overview');
+
+            overview.innerHTML = `
+                <div class="overview-card">
+                    <div class="value">${data.summary}</div>
+                    <div class="label">Route Summary</div>
+                </div>
+                <div class="overview-card">
+                    <div class="value">${data.distance}</div>
+                    <div class="label">Total Distance</div>
+                </div>
+                <div class="overview-card">
+                    <div class="value">${data.duration}</div>
+                    <div class="label">Total Time</div>
+                </div>
+                <div class="overview-card ${data.hasTolls ? 'toll' : ''}">
+                    <div class="value">${data.hasTolls ? 'Yes' : 'No'}</div>
+                    <div class="label">Tolls</div>
+                </div>
+                <div class="overview-card highway">
+                    <div class="value">${data.highwayPercentage}</div>
+                    <div class="label">Highway Usage</div>
+                </div>
+                <div class="overview-card waypoint">
+                    <div class="value">${data.waypoints.length}</div>
+                    <div class="label">Waypoints</div>
+                </div>
+            `;
+        }
+
+        function renderWaypoints(waypoints) {
+            const container = document.getElementById('waypoints');
+
+            if (waypoints.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let waypointHtml = '<div class="waypoints"><h3>🎯 Waypoint Requirements</h3>';
+
+            waypoints.forEach((waypoint, i) => {
+                const resolved = waypoint.resolved_place;
+                const status = resolved ? '✅ Found' : '❌ Not Found';
+                const name = resolved ? resolved.name : 'Not resolved';
+                const rating = resolved && resolved.rating ? `⭐ ${resolved.rating}` : '';
+
+                waypointHtml += `
+                    <div class="waypoint-item">
+                        <div class="waypoint-title">${waypoint.place_type} (${waypoint.direction}) ${status}</div>
+                        <div><strong>Place:</strong> ${name} ${rating}</div>
+                        ${waypoint.specifics ? `<div><strong>Specifics:</strong> ${waypoint.specifics}</div>` : ''}
+                        <div><strong>Priority:</strong> ${waypoint.priority}</div>
+                    </div>
+                `;
+            });
+
+            waypointHtml += '</div>';
+            container.innerHTML = waypointHtml;
+        }
+
+        function drawRoute(legs) {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // Force canvas size
+            canvas.width = 800;
+            canvas.height = 400;
+            canvas.style.width = '100%';
+            canvas.style.height = '400px';
+
+            // Clear with white background
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Add border so we know canvas is working
+            ctx.strokeStyle = '#ccc';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(0, 0, canvas.width, canvas.height);
+
+            console.log('Canvas setup complete:', canvas.width, 'x', canvas.height);
+
+            // Always draw a test route first
+            drawTestRoute(ctx, canvas);
+
+            // Try to draw actual route
+            if (!legs || legs.length === 0) {
+                console.log('No legs provided');
+                return;
+            }
+
+            let stepCount = 0;
+            let coordCount = 0;
+
+            legs.forEach((leg, legIndex) => {
+                console.log(`Processing leg ${legIndex}:`, leg);
+
+                if (!leg.steps) {
+                    console.log(`Leg ${legIndex} has no steps`);
+                    return;
+                }
+
+                leg.steps.forEach((step, stepIndex) => {
+                    stepCount++;
+
+                    if (!step.polyline || !step.polyline.points) {
+                        console.log(`Step ${stepIndex} has no polyline`);
+                        return;
+                    }
+
+                    try {
+                        const coords = decodePolyline(step.polyline.points);
+                        coordCount += coords.length;
+                        console.log(`Step ${stepIndex}: decoded ${coords.length} coordinates`);
+
+                        if (coords.length >= 2) {
+                            drawPolylineSegment(ctx, canvas, coords, stepIndex);
+                        }
+                    } catch (e) {
+                        console.error(`Failed to decode step ${stepIndex}:`, e);
+                    }
+                });
+            });
+
+            // Add info text
+            ctx.fillStyle = '#333';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`Steps: ${stepCount}, Coordinates: ${coordCount}`, 10, 25);
+        }
+
+        function drawTestRoute(ctx, canvas) {
+            // Draw a simple test route to verify canvas is working
+            ctx.strokeStyle = '#007bff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(100, 200);
+            ctx.lineTo(200, 150);
+            ctx.lineTo(300, 180);
+            ctx.lineTo(400, 160);
+            ctx.lineTo(500, 190);
+            ctx.lineTo(600, 170);
+            ctx.lineTo(700, 200);
+            ctx.stroke();
+
+            // Start marker
+            ctx.fillStyle = '#28a745';
+            ctx.beginPath();
+            ctx.arc(100, 200, 8, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // End marker
+            ctx.fillStyle = '#dc3545';
+            ctx.beginPath();
+            ctx.arc(700, 200, 8, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Labels
+            ctx.fillStyle = '#666';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Test Route (Blue)', canvas.width / 2, canvas.height - 20);
+        }
+
+        function drawPolylineSegment(ctx, canvas, coords, stepIndex) {
+            if (coords.length < 2) return;
+
+            // Simple coordinate mapping (assume rough NJ area)
+            function simpleMap(lat, lng) {
+                // Very rough mapping for NJ coordinates
+                const x = ((lng + 75.2) * 1000) % canvas.width;
+                const y = ((40.0 - lat) * 1000) % canvas.height;
+                return [Math.max(10, Math.min(canvas.width - 10, x)),
+                Math.max(10, Math.min(canvas.height - 10, y))];
+            }
+
+            // Color by step for debugging
+            const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'];
+            ctx.strokeStyle = colors[stepIndex % colors.length];
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            coords.forEach((coord, i) => {
+                const [x, y] = simpleMap(coord[0], coord[1]);
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.stroke();
+
+            console.log(`Drew segment ${stepIndex} with ${coords.length} points`);
+        }
+
+        function getRoadType(instructions) {
+            const text = instructions.toLowerCase();
+            if (text.includes('i-') || text.includes('interstate')) return 'interstate';
+            if (text.includes('us-') || text.includes('highway')) return 'highway';
+            if (text.includes('bridge')) return 'bridge';
+            if (text.includes('tunnel')) return 'tunnel';
+            if (text.includes('toll')) return 'toll';
+            return 'local';
+        }
+
+        function getRoadColor(type) {
+            const colors = {
+                interstate: '#007bff',
+                highway: '#dc3545',
+                bridge: '#ffc107',
+                tunnel: '#6c757d',
+                toll: '#fd7e14',
+                local: '#28a745'
+            };
+            return colors[type] || '#28a745';
+        }
+
+        function getRoadWidth(type) {
+            const widths = {
+                interstate: 4,
+                highway: 3,
+                bridge: 3,
+                tunnel: 3,
+                toll: 3,
+                local: 2
+            };
+            return widths[type] || 2;
+        }
+
+        function renderLegs(legs) {
+            const container = document.getElementById('legs');
+            container.innerHTML = '<h3>🛣️ Route Legs</h3>';
+
+            legs.forEach((leg, i) => {
+                const div = document.createElement('div');
+                div.className = 'leg';
+                div.innerHTML = `
+                    <div class="leg-header" onclick="toggleLeg(this)">
+                        <span>Leg ${i + 1}: ${leg.start_address || 'Start'} → ${leg.end_address || 'End'}</span>
+                        <span>${leg.distance ? leg.distance.text : ''} • ${leg.duration ? leg.duration.text : ''}</span>
+                    </div>
+                    <div class="leg-content">
+                        ${renderLegContent(leg)}
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function renderLegContent(leg) {
+            if (!leg.steps) return '<p>No step details available</p>';
+
+            const metadata = extractMetadata(leg);
+
+            let metaHtml = '<div class="metadata"><h4>📊 Leg Analysis</h4><div class="meta-grid">';
+            Object.entries(metadata).forEach(([key, value]) => {
+                metaHtml += `
+                    <div class="meta-item">
+                        <span class="meta-label">${key}:</span><br>
+                        ${value}
+                    </div>
+                `;
+            });
+            metaHtml += '</div></div>';
+
+            const statsHtml = `
+                <div class="leg-stats">
+                    <div class="leg-stat">
+                        <div class="value">${leg.steps.length}</div>
+                        <div>Steps</div>
+                    </div>
+                    <div class="leg-stat">
+                        <div class="value">${leg.distance ? leg.distance.text : 'N/A'}</div>
+                        <div>Distance</div>
+                    </div>
+                    <div class="leg-stat">
+                        <div class="value">${leg.duration ? leg.duration.text : 'N/A'}</div>
+                        <div>Duration</div>
+                    </div>
+                </div>
+            `;
+
+            const table = `
+                <table>
+                    <thead>
+                        <tr><th>#</th><th>Instruction</th><th>Type</th><th>Distance</th><th>Duration</th></tr>
+                    </thead>
+                    <tbody>
+                        ${leg.steps.map((step, i) => {
+                const type = getRoadType(step.html_instructions || '');
+                const instr = (step.html_instructions || '').replace(/<[^>]*>/g, '');
+                return `
+                                <tr>
+                                    <td>${i + 1}</td>
+                                    <td>${instr}</td>
+                                    <td><span class="road-${type}">${type}</span></td>
+                                    <td>${step.distance ? step.distance.text : 'N/A'}</td>
+                                    <td>${step.duration ? step.duration.text : 'N/A'}</td>
+                                </tr>
+                            `;
+            }).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            return statsHtml + metaHtml + table;
+        }
+
+        function extractMetadata(leg) {
+            if (!leg.steps) return {};
+
+            const metadata = {};
+            const roadTypes = {};
+            const highways = new Set();
+            const features = new Set();
+
+            leg.steps.forEach(step => {
+                const type = getRoadType(step.html_instructions || '');
+                roadTypes[type] = (roadTypes[type] || 0) + 1;
+
+                const instr = step.html_instructions || '';
+                const hwMatch = instr.match(/(?:I-|US-|Route )(\d+[A-Z]*)/gi);
+                if (hwMatch) {
+                    hwMatch.forEach(hw => highways.add(hw));
+                }
+
+                const instrLower = instr.toLowerCase();
+                if (instrLower.includes('toll')) features.add('Toll Road');
+                if (instrLower.includes('bridge')) features.add('Bridge');
+                if (instrLower.includes('tunnel')) features.add('Tunnel');
+                if (instrLower.includes('express')) features.add('Expressway');
+            });
+
+            metadata['Road Types'] = Object.entries(roadTypes)
+                .map(([type, count]) => `${count} ${type}`)
+                .join(', ');
+
+            if (highways.size > 0) {
+                metadata['Major Roads'] = Array.from(highways).join(', ');
+            }
+
+            if (features.size > 0) {
+                metadata['Features'] = Array.from(features).join(', ');
+            }
+
+            return metadata;
+        }
+
+        function toggleLeg(header) {
+            header.parentElement.classList.toggle('open');
+        }
+
+        function decodePolyline(encoded) {
+            if (!encoded) return [];
+
+            const points = [];
+            let lat = 0, lng = 0, index = 0;
+
+            while (index < encoded.length) {
+                let b, shift = 0, result = 0;
+
+                do {
+                    b = encoded.charCodeAt(index++) - 63;
+                    result |= (b & 0x1f) << shift;
+                    shift += 5;
+                } while (b >= 0x20);
+                lat += ((result & 1) ? ~(result >> 1) : (result >> 1));
+
+                shift = 0;
+                result = 0;
+                do {
+                    b = encoded.charCodeAt(index++) - 63;
+                    result |= (b & 0x1f) << shift;
+                    shift += 5;
+                } while (b >= 0x20);
+                lng += ((result & 1) ? ~(result >> 1) : (result >> 1));
+
+                points.push([lat / 1e5, lng / 1e5]);
+            }
+
+            return points;
+        }
+
+        function loadSample() {
+            // Use the provided complex route data
+            const sample = `{
+    "selected_route": {
+        "summary": "Evesham Rd",
+        "distance_km": 11.268,
+        "duration_minutes": 18.633333333333333,
+        "has_tolls": false,
+        "highway_percentage": 0.0,
+        "via_waypoints": [],
+        "route_data": {
+            "legs": [{
+                "distance": {"text": "7.0 mi", "value": 11268},
+                "duration": {"text": "19 mins", "value": 1118},
+                "start_address": "38 Farmhouse Ln, Voorhees Township, NJ 08043, USA",
+                "end_address": "825 N Black Horse Pike, Runnemede, NJ 08078, USA",
+                "steps": [
+                    {
+                        "distance": {"text": "0.8 mi", "value": 1328},
+                        "duration": {"text": "2 mins", "value": 92},
+                        "html_instructions": "Turn <b>right</b> onto <b>Gibbsboro Rd</b>",
+                        "polyline": {"points": "cmcrFfothMMzEEzAExAExAOhFEzAGnBCr@AVC\`AEpAEfBCn@E|AYvICx@An@MzDCn@QvGMvEOxFGlB?NCd@Ah@AVAJAHAJ"},
+                        "travel_mode": "DRIVING"
+                    },
+                    {
+                        "distance": {"text": "2.0 mi", "value": 3201},
+                        "duration": {"text": "4 mins", "value": 269},
+                        "html_instructions": "Turn <b>left</b> onto <b>Evesham Rd</b>",
+                        "polyline": {"points": "o_grFpl~hMFVJr@DXVtAJl@jAfH\`BzJbA\`G\\\\pBBH\\\\jBv@tEf@\`DFVTrADXNx@b@dCt@lEd@rC\\\\vBF\\\\?DLv@Fb@@@DZ@HDZDV?BDXL\`AF\`@Jn@Jv@Jr@Hh@Ff@Jp@?@Jv@Jz@DT@JF^@D@FF\\\\FZPz@@FJf@@FLj@BPBH@F?BNr@BHLn@RbALj@DPBJNv@Lj@XtA?@Jj@BLHZ?@Jh@FZNr@l@rCR\`A@JVjAx@dEXrALj@XtA@JJf@f@vBZzABHZfBPdANp@TnAb@pB\`@nBR~@d@~BVlAH^XxAJf@BLBFJj@DRb@xBJh@|@nEBNj@nCH^FT^jB"},
+                        "travel_mode": "DRIVING"
+                    }
+                ]
+            }]
+        }
+    },
+    "waypoint_requirements": [
+        {
+            "place_type": "gas station",
+            "direction": "there", 
+            "specifics": "",
+            "priority": 1,
+            "resolved_place": {
+                "name": "Wawa",
+                "rating": 4.1,
+                "types": ["gas_station", "convenience_store"]
+            }
+        },
+        {
+            "place_type": "grocery store",
+            "direction": "back",
+            "specifics": "walmart",
+            "priority": 1,
+            "resolved_place": null
+        }
+    ],
+    "alternatives_considered": 1,
+    "original_prompt": "take me from 38 farmhouse lane voorhees nj to center city philly, try to avoid toll roads except if it means i'm stuck on residential. i have to get there by 8pm, and i have to stop for gas on the way there and groceries on the way home at a walmart or similar"
+}`;
+
+            document.getElementById('jsonInput').value = sample;
+        }
+
+        function clearData() {
+            document.getElementById('jsonInput').value = '';
+            document.getElementById('results').style.display = 'none';
+            hideError();
+        }
+    </script>
+</body>
+
+</html>

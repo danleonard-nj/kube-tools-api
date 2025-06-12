@@ -1,5 +1,4 @@
 from typing import Dict, List, Optional
-import logging
 from cachetools import cached
 from framework.configuration import Configuration
 from framework.logger import get_logger

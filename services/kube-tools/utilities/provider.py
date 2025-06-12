@@ -9,6 +9,8 @@ from clients.google_auth_client import GoogleAuthClient
 from clients.google_drive_client import GoogleDriveClient
 from clients.google_drive_client_async import GoogleDriveClientAsync
 from clients.google_maps_client import GoogleMapsClient
+from clients.google_places_client import GooglePlacesClient
+from clients.google_route_data_client import GoogleRouteDataClient
 from clients.google_search_client import GoogleSearchClient
 from clients.gpt_client import GPTClient
 from clients.identity_client import IdentityClient
@@ -50,6 +52,8 @@ from framework.di.static_provider import ProviderBase
 from httpx import AsyncClient
 from models.coinbase_models import CoinbaseConfig
 from models.email_config import EmailConfig
+from models.googe_maps_models import GoogleMapsConfig
+from models.openai_models import OpenAIConfig
 from models.podcast_config import PodcastConfig
 from models.robinhood_models import RobinhoodConfig
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -84,6 +88,7 @@ from services.robinhood.email_generator import EmailGenerator
 from services.robinhood.market_research_processor import MarketResearchProcessor
 from services.robinhood.prompt_generator import PromptGenerator
 from services.robinhood.robinhood_service import RobinhoodService
+from services.route_engine.route_engine_service import RouteEngineService
 from services.torrent_service import TorrentService
 from services.usage_service import UsageService
 from services.weather_service import WeatherService
@@ -173,6 +178,17 @@ def register_configs(descriptors):
         factory=lambda p: GmailConfig.model_validate(
             p.resolve(Configuration).gmail)),
 
+    # Register custom Gmail service config
+    descriptors.add_singleton(
+        dependency_type=GoogleMapsConfig,
+        factory=lambda p: GoogleMapsConfig.model_validate(
+            p.resolve(Configuration).google_maps)),
+
+    descriptors.add_singleton(
+        dependency_type=OpenAIConfig,
+        factory=lambda p: OpenAIConfig.model_validate(
+            p.resolve(Configuration).openai)),
+
 
 def register_gmail_services(
     descriptors: ServiceCollection
@@ -182,6 +198,14 @@ def register_gmail_services(
     descriptors.add_singleton(SmsRuleProcessor)
     descriptors.add_singleton(BankSyncRuleProcessor)
     descriptors.add_singleton(MessageFormatter)
+
+
+def register_route_engine_services(
+    descriptors: ServiceCollection
+):
+    descriptors.add_singleton(GoogleRouteDataClient)
+    descriptors.add_singleton(RouteEngineService)
+    descriptors.add_singleton(GooglePlacesClient)
 
 
 def register_clients(
@@ -294,6 +318,7 @@ class ContainerProvider(ProviderBase):
         register_services(descriptors=descriptors)
         register_robinhood_services(descriptors=descriptors)
         register_gmail_services(descriptors=descriptors)
+        register_route_engine_services(descriptors=descriptors)
         register_configs(descriptors=descriptors)
 
         return descriptors

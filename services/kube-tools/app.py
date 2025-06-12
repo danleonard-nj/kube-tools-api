@@ -1,4 +1,3 @@
-import logging
 from framework.abstractions.abstract_request import RequestContextProvider
 from framework.serialization.serializer import configure_serializer
 from framework.swagger.quart.swagger import Swagger
@@ -6,7 +5,7 @@ from quart import Quart
 from routes import (acr_bp, api_event_history_bp, bank_bp, calendar_bp,
                     conversation_bp, google_bp, kubernetes_bp,
                     location_history_bp, mongo_backup_bp, podcasts_bp,
-                    redis_bp, torrent_bp, usage_bp, weather_bp, robinhood_bp)
+                    redis_bp, route_engine_bp, torrent_bp, usage_bp, weather_bp, robinhood_bp, route_engine_bp)
 from utilities.provider import ContainerProvider
 from dotenv import load_dotenv
 load_dotenv()
@@ -31,6 +30,7 @@ app.register_blueprint(torrent_bp)
 app.register_blueprint(redis_bp)
 app.register_blueprint(conversation_bp)
 app.register_blueprint(robinhood_bp)
+app.register_blueprint(route_engine_bp)
 
 provider = ContainerProvider.get_service_provider()
 
