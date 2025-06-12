@@ -48,6 +48,7 @@ from framework.configuration.configuration import Configuration
 from framework.di.service_collection import ServiceCollection
 from framework.di.static_provider import ProviderBase
 from httpx import AsyncClient
+from models.bank_config import BankingConfig, PlaidConfig
 from models.coinbase_models import CoinbaseConfig
 from models.email_config import EmailConfig
 from models.podcast_config import PodcastConfig
@@ -173,6 +174,18 @@ def register_configs(descriptors):
         dependency_type=GmailConfig,
         factory=lambda p: GmailConfig.model_validate(
             p.resolve(Configuration).gmail)),
+
+    # Register custom Plaid service config
+    descriptors.add_singleton(
+        dependency_type=PlaidConfig,
+        factory=lambda p: PlaidConfig.model_validate(
+            p.resolve(Configuration).plaid)),
+
+    # Register custom Gmail service config
+    descriptors.add_singleton(
+        dependency_type=BankingConfig,
+        factory=lambda p: BankingConfig.model_validate(
+            p.resolve(Configuration).banking)),
 
 
 def register_gmail_services(

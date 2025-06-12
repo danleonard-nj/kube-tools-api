@@ -2,10 +2,11 @@ from typing import List
 
 from domain.bank import (PlaidBalanceRequest, PlaidTransactionRequestOptions,
                          PlaidTransactionsRequest)
-from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from httpx import AsyncClient
+
+from models.bank_config import PlaidConfig
 
 logger = get_logger(__name__)
 
@@ -13,12 +14,12 @@ logger = get_logger(__name__)
 class PlaidClient:
     def __init__(
         self,
-        configuration: Configuration,
-        http_client: AsyncClient
+        http_client: AsyncClient,
+        config: PlaidConfig
     ):
-        self._base_url = configuration.plaid.get('base_url')
-        self._client_id = configuration.plaid.get('client_id')
-        self._client_secret = configuration.plaid.get('client_secret')
+        self._base_url = config.base_url
+        self._client_id = config.client_id
+        self._client_secret = config.client_secret
 
         self._http_client = http_client
 

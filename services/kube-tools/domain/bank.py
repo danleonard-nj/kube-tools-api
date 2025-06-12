@@ -2,11 +2,14 @@ import json
 from datetime import datetime
 from typing import Dict, List, Union
 
+from pydantic import BaseModel
+
 from domain.enums import (BankKey, PlaidPaymentChannel, PlaidTransactionType,
                           SyncActionType)
 from framework.crypto.hashing import sha256
 from framework.logger import get_logger
 from framework.serialization import Serializable
+from models.bank_config import CoinbaseAccountConfig, PlaidAccountConfig
 from utilities.utils import DateTimeUtil, parse, parse_timestamp
 
 logger = get_logger(__name__)
@@ -342,32 +345,25 @@ class PlaidBalance(Serializable):
             available_balance=data.get('available_balance'))
 
 
-class PlaidAccount:
+class PlaidAccount(BaseModel):
+    bank_key: str
+    access_token: str
+    account_id: str
+    sync_threshold_minutes: int = 60
+
     @property
     def sync_threshold_seconds(
         self
     ):
         return self.sync_threshold_minutes * 60
 
-    def __init__(
-        self,
-        bank_key: str,
-        access_token: str,
-        account_id: str,
-        sync_threshold_minutes: int = 60
-    ):
-        self.bank_key = bank_key
-        self.access_token = access_token
-        self.account_id = account_id
-        self.sync_threshold_minutes = sync_threshold_minutes
-
     @staticmethod
-    def from_configuration(data):
+    def from_config_model(config: PlaidAccountConfig):
         return PlaidAccount(
-            bank_key=data.get('bank_key'),
-            access_token=data.get('access_token'),
-            account_id=data.get('account_id'),
-            sync_threshold_minutes=data.get('sync_threshold_minutes'))
+            bank_key=config.bank_key,
+            access_token=config.access_token,
+            account_id=config.account_id,
+            sync_threshold_minutes=config.sync_threshold_minutes)
 
 
 class ChatGptBalanceCompletion(Serializable):
@@ -393,19 +389,14 @@ class ChatGptBalanceCompletion(Serializable):
         )
 
 
-class CoinbaseAccountConfiguration:
-    def __init__(
-        self,
-        currency_code: str,
-        bank_key: str,
-    ):
-        self.currency_code = currency_code
-        self.bank_key = bank_key
+class CoinbaseAccountConfiguration(BaseModel):
+    currency_code: str
+    bank_key: str
 
     @staticmethod
-    def from_config(
-        data: dict
+    def from_config_model(
+        config: CoinbaseAccountConfig
     ):
         return CoinbaseAccountConfiguration(
-            currency_code=data.get('currency_code'),
-            bank_key=data.get('bank_key'))
+            currency_code=config.currency_code,
+            bank_key=config.bank_key)

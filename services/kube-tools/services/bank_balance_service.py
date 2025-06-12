@@ -18,6 +18,7 @@ from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from framework.utilities.iter_utils import first
+from models.bank_config import BankingConfig
 from services.coinbase_service import CoinbaseService
 from services.event_service import EventService
 from utilities.utils import DateTimeUtil
@@ -39,7 +40,8 @@ class BalanceSyncService:
         plaid_client: PlaidClient,
         coinbase_service: CoinbaseService,
         feature_client: FeatureClientAsync,
-        cache_client: CacheClientAsync
+        cache_client: CacheClientAsync,
+        config: BankingConfig
     ):
         self._balance_repository = balance_repository
         self._email_client = email_client
@@ -49,12 +51,9 @@ class BalanceSyncService:
         self._coinbase_service = coinbase_service
         self._cache_client = cache_client
 
-        self._plaid_accounts = configuration.banking.get(
-            'plaid_accounts', list())
-        self._coinbase_accounts = configuration.banking.get(
-            'coinbase_accounts', list())
-        self._age_cutoff_threshold_days = configuration.banking.get(
-            'age_cutoff_threshold_days', DEFAULT_AGE_CUTOFF_THRESHOLD_DAYS)
+        self._plaid_accounts = config.plaid_accounts
+        self._coinbase_accounts = config.coinbase_accounts
+        self._age_cutoff_threshold_days = config.age_cutoff_threshold_days
 
     async def get_balance(
         self,
@@ -227,7 +226,7 @@ class BalanceSyncService:
         logger.info(f'Sync complete: {len(results)} accounts updated')
         return [x for x in results if x is not None]
 
-    async def _sync_accounts(self, accounts, sync_func, run_async: bool, label: str) -> list:
+    async def _sync_accounts(self, accounts: list[PlaidAccount], sync_func, run_async: bool, label: str) -> list:
         """
         Helper to sync a list of accounts using the provided sync function.
         Supports both async and sequential execution.
@@ -248,7 +247,7 @@ class BalanceSyncService:
         logger.info(f'Syncing plaid account: {account}')
 
         # Parse the account configuration
-        config = PlaidAccount.from_configuration(account)
+        config = PlaidAccount.from_config_model(account)
 
         # Get the latest Plaid balance for the account
         latest_balance = await self.get_balance(
@@ -291,7 +290,7 @@ class BalanceSyncService:
         balances = []
         coinbase_accounts = await self._coinbase_service.get_accounts()
 
-        sync_configs = [CoinbaseAccountConfiguration.from_config(config)
+        sync_configs = [CoinbaseAccountConfiguration.from_config_model(config)
                         for config in self._coinbase_accounts]
 
         for config in sync_configs:
