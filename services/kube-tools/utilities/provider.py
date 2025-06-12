@@ -17,6 +17,7 @@ from clients.robinhood_data_client import RobinhoodDataClient
 from clients.storage_client import StorageClient
 from clients.torrent_client import TorrentClient
 from clients.twilio_gateway import TwilioGatewayClient
+from data.android_repository import AndroidNetworkDiagnosticsRepository
 from data.api_event_repository import ApiEventRepository
 from data.bank_repository import (BankBalanceRepository,
                                   BankTransactionsRepository,
@@ -54,6 +55,7 @@ from models.robinhood_models import RobinhoodConfig
 from motor.motor_asyncio import AsyncIOMotorClient
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
+from services.android_service import AndroidService
 from services.api_event_service import ApiEventHistoryService
 from services.bank_balance_service import BalanceSyncService
 from services.bank_service import BankService
@@ -230,6 +232,7 @@ def register_repositories(
     descriptors.add_singleton(ConversationRepository)
     descriptors.add_singleton(GoogleAuthRepository)
     descriptors.add_singleton(InboundSMSRepository)
+    descriptors.add_singleton(AndroidNetworkDiagnosticsRepository)
 
 
 def register_services(
@@ -260,6 +263,7 @@ def register_services(
     descriptors.add_singleton(ChatGptService)
     descriptors.add_singleton(ConversationService)
     descriptors.add_singleton(CoinbaseService)
+    descriptors.add_singleton(AndroidService)
 
 
 def register_robinhood_services(
