@@ -1,4 +1,3 @@
-
 from framework.logger import get_logger
 from data.android_repository import AndroidNetworkDiagnosticsRepository
 
@@ -19,11 +18,15 @@ class AndroidService:
         """
         Capture network diagnostics data.
 
-        :param network_diagnostics: Dictionary containing network diagnostics data.
+        :param network_diagnostics: Dictionary or list of dictionaries containing network diagnostics data.
         """
 
         logger.info(f"Capturing network diagnostics: {network_diagnostics}")
 
-        await self._repository.insert(network_diagnostics)
+        # Support both single dict and list of dicts
+        if isinstance(network_diagnostics, list):
+            await self._repository.collection.insert_many(network_diagnostics)
+        else:
+            await self._repository.collection.insert_one(network_diagnostics)
 
         return network_diagnostics
