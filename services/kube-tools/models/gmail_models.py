@@ -1,6 +1,7 @@
 
 
 from dataclasses import dataclass
+from typing import Optional
 
 from pydantic import BaseModel, HttpUrl
 
@@ -35,6 +36,6 @@ class EmailTagManager:
 
 
 class GmailConfig(BaseModel):
-    base_url: HttpUrl
+    base_url: Optional[HttpUrl]
     sms_recipient: str
-    concurrency: int
+    concurrency: Optional[int] = 5
