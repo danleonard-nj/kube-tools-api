@@ -1,125 +1,221 @@
-import unittest
-import uuid
-
-from data.podcast_repository import PodcastRepository
-from framework.configuration import Configuration
-from domain.podcasts.podcasts import DownloadedEpisode, Episode, Show
-from services.podcast_service import PodcastDownloadException, PodcastService
-from framework.utilities.iter_utils import first
-from utilities.provider import ContainerProvider
+import pytest
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+from services.podcast_service import PodcastService, PodcastServiceException
+from domain.podcasts.podcasts import DownloadedEpisode, Episode, Feed, Show
+from domain.drive import GoogleDriveUploadRequest
+from domain.google import GoogleDriveDirectory
 
 
-def get_data():
-    show_id = str(uuid.uuid4())
-    episode_id = str(uuid.uuid4())
+class DummyConfig:
+    def __init__(self):
+        self.random_delay = False
+        self.feeds = []
 
-    data = {
-        "show_id": show_id,
-        "show_title": "Test Show",
-        "episodes": [
-            {
-                "episode_id": episode_id,
-                "episode_title": "Test Episode",
-                "audio": "http://placeholder"
-            }
-        ]
-    }
 
-    return (
-        data,
-        show_id,
-        episode_id
+def make_service():
+    return PodcastService(
+        podcast_repository=AsyncMock(),
+        google_drive_client=AsyncMock(),
+        email_gateway_client=MagicMock(),
+        event_service=AsyncMock(),
+        feature_client=AsyncMock(),
+        configuration=MagicMock(),
+        http_client=AsyncMock(),
+        podcast_config=DummyConfig()
     )
 
 
-def configure_provider(provider):
-    provider.resolve(Configuration).mongo = {
-        'connection_string': 'mongodb://localhost:27017',
-    }
+@pytest.mark.asyncio
+def test_get_podcasts_returns_shows():
+    service = make_service()
+    fake_entity = MagicMock()
+    service._podcast_repository.get_all.return_value = [fake_entity]
+    with patch('domain.podcasts.podcasts.Show.from_entity', return_value='show'):
+        result = asyncio.run(service.get_podcasts())
+        assert result == ['show']
 
 
-class TestPodcastService(unittest.IsolatedAsyncioTestCase):
-    def setUp(self):
-        self.provider = ContainerProvider.get_service_provider()
+@pytest.mark.asyncio
+def test_sync_handles_all_feeds():
+    service = make_service()
+    feed = MagicMock()
+    feed.name = 'Test Feed'
+    service.get_feeds = MagicMock(return_value=[(feed, 'folder')])
+    service.handle_feed = AsyncMock(return_value=['downloaded'])
+    result = asyncio.run(service.sync())
+    assert isinstance(result, dict)
+    service.handle_feed.assert_awaited()
 
-        configure_provider(self.provider)
 
-    async def test_sync_podcasts(
-        self
-    ):
-        service: PodcastService = self.provider.resolve(PodcastService)
+@pytest.mark.asyncio
+def test_handle_feed_no_new_episodes():
+    service = make_service()
+    feed = MagicMock()
+    feed.name = 'Test Feed'
+    service._sync_feed = AsyncMock(return_value=([], MagicMock()))
+    result = asyncio.run(service.handle_feed(feed))
+    assert result is None
 
-        service.dry_run = True
 
-        await service.sync()
+@pytest.mark.asyncio
+def test_handle_feed_with_new_episodes():
+    service = make_service()
+    feed = MagicMock()
+    feed.name = 'Test Feed'
+    show = MagicMock()
+    show.get_selector.return_value = 'selector'
+    show.to_dict.return_value = {'foo': 'bar'}
+    service._sync_feed = AsyncMock(return_value=([MagicMock()], show))
+    service._podcast_repository.update = AsyncMock()
+    service._send_email = AsyncMock()
+    result = asyncio.run(service.handle_feed(feed))
+    assert result is not None
+    service._podcast_repository.update.assert_awaited()
+    service._send_email.assert_awaited()
 
-    async def test_get_podcasts(self):
-        # Call the method under test
-        service = self.provider.resolve(PodcastService)
 
-        show_id, episode_id = await self.insert_test_data()
+@pytest.mark.asyncio
+def test_get_feeds_returns_tuples():
+    service = make_service()
+    service._rss_feeds = [MagicMock(folder_name='folder')]
+    with patch('domain.podcasts.podcasts.Feed', side_effect=lambda x: x):
+        feeds = service.get_feeds()
+        assert isinstance(feeds, list)
+        assert isinstance(feeds[0], tuple)
 
-        result = await service.get_podcasts()
 
-        show = first(
-            result,
-            lambda s: s.show_id == show_id,
-        )
+@pytest.mark.asyncio
+def test__get_results_table():
+    service = make_service()
+    ep = MagicMock()
+    ep.to_result.return_value = {'id': 1}
+    result = service._get_results_table([ep])
+    assert result == [{'id': 1}]
 
-        episode = first(
-            show.episodes,
-            lambda e: e.episode_id == episode_id,
-        )
 
-        self.assertIsNotNone(result)
-        self.assertTrue(len(result) > 0)
-        self.assertEqual(show.show_id, show_id)
-        self.assertEqual(episode.episode_id, episode_id)
+@pytest.mark.asyncio
+def test__wait_random_delay_no_delay():
+    service = make_service()
+    service._random_delay = False
+    asyncio.run(service._wait_random_delay())
 
-    async def insert_test_data(
-        self
-    ):
-        data, show_id, episode_id = get_data()
 
-        repo: PodcastRepository = self.provider.resolve(PodcastRepository)
+@pytest.mark.asyncio
+def test__wait_random_delay_with_delay(monkeypatch):
+    service = make_service()
+    service._random_delay = True
+    monkeypatch.setattr('random.randint', lambda a, b: 1)
+    monkeypatch.setattr('asyncio.sleep', AsyncMock())
+    asyncio.run(service._wait_random_delay())
 
-        await repo.collection.insert_one(data)
 
-        return show_id, episode_id
+@pytest.mark.asyncio
+def test__send_email_disabled():
+    service = make_service()
+    service._feature_client.is_enabled = AsyncMock(return_value=False)
+    asyncio.run(service._send_email([MagicMock()]))
 
-    async def test_upload_file_given_invalid_length_throws_exception(self):
-        service: PodcastService = self.provider.resolve(PodcastService)
 
-        audio_data = b'error message'
+@pytest.mark.asyncio
+def test__send_email_no_episodes():
+    service = make_service()
+    service._feature_client.is_enabled = AsyncMock(return_value=True)
+    asyncio.run(service._send_email([]))
 
-        episode = Episode(
-            episode_id=str(uuid.uuid4()),
-            episode_title=str(uuid.uuid4()),
-            audio='http://placeholder')
 
-        show = Show(
-            show_id=str(uuid.uuid4()),
-            show_title=str(uuid.uuid4()),
-            episodes=[])
+@pytest.mark.asyncio
+def test__send_email_success():
+    service = make_service()
+    service._feature_client.is_enabled = AsyncMock(return_value=True)
+    service._email_gateway_client.get_datatable_email_request.return_value = (MagicMock(to_dict=lambda: {}), 'endpoint')
+    service._event_service.dispatch_email_event = AsyncMock()
+    asyncio.run(service._send_email([MagicMock()]))
+    service._event_service.dispatch_email_event.assert_awaited()
 
-        downloaded_episode = DownloadedEpisode(
-            episode=episode,
-            show=show,
-            size=len(audio_data))
 
-        with self.assertRaises(Exception):
-            await service.upload_file(
-                downloaded_episode,
-                audio_data)
+@pytest.mark.asyncio
+def test__get_feed_request():
+    service = make_service()
+    feed = MagicMock(feed='url')
+    with patch('httpx.AsyncClient.get', new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = MagicMock()
+        result = asyncio.run(service._get_feed_request(feed))
+        assert mock_get.called
 
-    async def test_get_episode_audio_given_invalid_uri_throws_exception(self):
-        service: PodcastService = self.provider.resolve(PodcastService)
 
-        episode = Episode(
-            episode_id=str(uuid.uuid4()),
-            episode_title=str(uuid.uuid4()),
-            audio='https://api.dan-leonard.com/')
+@pytest.mark.asyncio
+def test_get_episode_audio():
+    service = make_service()
+    episode = MagicMock(audio='url', episode_title='title')
+    service._http_client.stream = MagicMock(return_value='stream')
+    result = service.get_episode_audio(episode)
+    assert result == 'stream'
 
-        with self.assertRaises(PodcastDownloadException):
-            await service.get_episode_audio(
-                episode=episode)
+
+@pytest.mark.asyncio
+def test__get_saved_show_found():
+    service = make_service()
+    show = MagicMock(show_id='id', show_title='title')
+    entity = MagicMock()
+    service._podcast_repository.get = AsyncMock(return_value=entity)
+    with patch('domain.podcasts.podcasts.Show.from_entity', return_value=show):
+        result, is_new = asyncio.run(service._get_saved_show(show))
+        assert result == show
+        assert not is_new
+
+
+@pytest.mark.asyncio
+def test__get_saved_show_not_found():
+    service = make_service()
+    show = MagicMock(show_id='id', show_title='title')
+    service._podcast_repository.get = AsyncMock(return_value=None)
+    service._podcast_repository.insert = AsyncMock(return_value=MagicMock(inserted_id='foo'))
+    result, is_new = asyncio.run(service._get_saved_show(show))
+    assert is_new
+
+
+@pytest.mark.asyncio
+def test__get_handler_acast():
+    service = make_service()
+    with patch('services.podcast_service.AcastFeedHandler', return_value='acast'):
+        assert service._get_handler('rss-acast') == 'acast'
+
+
+@pytest.mark.asyncio
+def test__get_handler_generic():
+    service = make_service()
+    with patch('services.podcast_service.GenericFeedHandler', return_value='generic'):
+        assert service._get_handler('rss-generic') == 'generic'
+
+
+@pytest.mark.asyncio
+def test__get_handler_invalid():
+    service = make_service()
+    with pytest.raises(Exception):
+        service._get_handler('invalid')
+
+
+@pytest.mark.asyncio
+def test_upload_file_async_with_folder():
+    service = make_service()
+    downloaded_episode = MagicMock()
+    downloaded_episode.get_filename.return_value = 'file.mp3'
+    downloaded_episode.episode = MagicMock()
+    downloaded_episode.show = MagicMock()
+    service._google_drive_client.resolve_drive_folder_id = AsyncMock(return_value='folderid')
+    service._google_drive_upload_helper.upload_episode = AsyncMock()
+    asyncio.run(service.upload_file_async(downloaded_episode, drive_folder_path='folder'))
+    service._google_drive_upload_helper.upload_episode.assert_awaited()
+
+
+@pytest.mark.asyncio
+def test_upload_file_async_no_folder():
+    service = make_service()
+    downloaded_episode = MagicMock()
+    downloaded_episode.get_filename.return_value = 'file.mp3'
+    downloaded_episode.episode = MagicMock()
+    downloaded_episode.show = MagicMock()
+    service._google_drive_upload_helper.upload_episode = AsyncMock()
+    asyncio.run(service.upload_file_async(downloaded_episode))
+    service._google_drive_upload_helper.upload_episode.assert_awaited()

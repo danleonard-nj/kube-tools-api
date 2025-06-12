@@ -1,8 +1,6 @@
 from clients.coinbase_client import CoinbaseClient
-from framework.configuration import Configuration
 from framework.logger import get_logger
-
-from models.coinbase_models import CoinbaseAccount
+from models.coinbase_models import CoinbaseAccount, CoinbaseConfig
 
 logger = get_logger(__name__)
 
@@ -10,12 +8,11 @@ logger = get_logger(__name__)
 class CoinbaseService:
     def __init__(
         self,
-        configuration: Configuration,
-        coinbase_client: CoinbaseClient
+        coinbase_client: CoinbaseClient,
+        config: CoinbaseConfig
     ):
         self._coinbase_client = coinbase_client
-
-        self._currencies = configuration.coinbase.get('currencies', [])
+        self._currencies = config.currencies
 
     async def get_exchange_rates(
         self

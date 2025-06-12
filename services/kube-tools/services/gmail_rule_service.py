@@ -6,12 +6,10 @@ from data.google.google_email_log_repository import GoogleEmailLogRepository
 from data.google.google_email_rule_repository import GoogleEmailRuleRepository
 from domain.exceptions import GmailRuleServiceError
 from domain.features import Feature
-from domain.google import (CreateEmailRuleRequest,
-                           DeleteGmailEmailRuleResponse, EmailRuleLog,
-                           GmailEmailRule, UpdateEmailRuleRequest)
 from framework.clients.feature_client import FeatureClientAsync
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
+from domain.google import CreateEmailRuleRequestModel, DeleteGmailEmailRuleResponseModel, EmailRuleLog, GmailEmailRule, UpdateEmailRuleRequestModel
 from utilities.utils import DateTimeUtil
 
 logger = get_logger(__name__)
@@ -67,7 +65,7 @@ class GmailRuleService:
 
     async def create_rule(
         self,
-        create_request: CreateEmailRuleRequest
+        create_request: CreateEmailRuleRequestModel
     ) -> GmailEmailRule:
 
         ArgumentNullException.if_none(create_request, 'create_request')
@@ -109,7 +107,7 @@ class GmailRuleService:
     async def delete_rule(
         self,
         rule_id: str
-    ) -> DeleteGmailEmailRuleResponse:
+    ) -> DeleteGmailEmailRuleResponseModel:
 
         ArgumentNullException.if_none_or_whitespace(rule_id, 'rule_id')
 
@@ -133,8 +131,7 @@ class GmailRuleService:
 
         logger.info(f'Delete result: {result.deleted_count}')
 
-        return DeleteGmailEmailRuleResponse(
-            result=result.acknowledged)
+        return DeleteGmailEmailRuleResponseModel(result=result.acknowledged)
 
     async def get_rule(
         self,
@@ -152,8 +149,7 @@ class GmailRuleService:
 
         # Handle rule not found
         if entity is None:
-            raise GmailRuleServiceError(
-                f"No rule with the ID '{rule_id}' exists")
+            raise Exception(f"No rule with the ID '{rule_id}' exists")
 
         # Construct domain model from entity
         rule = GmailEmailRule.from_entity(
@@ -163,7 +159,7 @@ class GmailRuleService:
 
     async def update_rule(
         self,
-        update_request: UpdateEmailRuleRequest
+        update_request: UpdateEmailRuleRequestModel
     ) -> GmailEmailRule:
 
         ArgumentNullException.if_none(update_request, 'update_request')

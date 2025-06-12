@@ -1,8 +1,5 @@
 from framework.serialization import Serializable
-
 from enum import StrEnum
-
-from isort import file
 from pydantic import BaseModel
 
 
@@ -51,8 +48,8 @@ class GoogleDrivePermissionRequest(Serializable):
 
 class GoogleDrivePermissionRequestModel(BaseModel, Serializable):
     role: str
-    _type: str
     value: str
+    type: str  # Add this line to support .type for to_dict
 
     def to_dict(self) -> dict:
         return {

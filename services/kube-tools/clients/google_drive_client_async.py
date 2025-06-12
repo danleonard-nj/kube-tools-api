@@ -319,7 +319,7 @@ class GoogleDriveClientAsync:
 
         logger.info(f'Uploading single file: {filename}')
 
-        req = GoogleDriveUploadRequestModel(name=filename, parents=[parent_directory] if parent_directory else None)
+        req = GoogleDriveUploadRequestModel(name=filename, parents=[parent_directory] if parent_directory is not None else [])
 
         logger.info(f'Upload request: {req.to_dict()}')
 
@@ -364,7 +364,7 @@ class GoogleDriveClientAsync:
 
         headers = await self._get_auth_headers()
 
-        req = GoogleDrivePermissionRequestModel(role=role, _type=_type, value=value)
+        req = GoogleDrivePermissionRequestModel(role=role, type=_type, value=value)
 
         logger.info(f'Permission request: {req.to_dict()}')
 

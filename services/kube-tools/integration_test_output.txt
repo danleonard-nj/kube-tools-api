@@ -1,0 +1,26 @@
+C:\Users\dcl52\AppData\Local\Programs\Python\Python311\Lib\site-packages\pytest_asyncio\plugin.py:208: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+============================= test session starts =============================
+platform win32 -- Python 3.11.5, pytest-8.3.5, pluggy-1.6.0
+rootdir: C:\Users\dcl52\source\kube-tools-api\services\kube-tools
+plugins: anyio-3.6.2, Faker-25.9.1, asyncio-1.0.0, time-machine-2.14.1, typeguard-4.4.2
+asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\test_google_drive_integration_workflows.py F                       [100%]
+
+================================== FAILURES ===================================
+__________________ test_google_drive_upload_and_check_exists __________________
+
+    @pytest.mark.asyncio
+    async def test_google_drive_upload_and_check_exists():
+        # Setup auth and client
+>       auth_service = GoogleAuthService()
+E       TypeError: GoogleAuthService.__init__() missing 2 required positional arguments: 'auth_repository' and 'cache_client'
+
+tests\test_google_drive_integration_workflows.py:15: TypeError
+=========================== short test summary info ===========================
+FAILED tests/test_google_drive_integration_workflows.py::test_google_drive_upload_and_check_exists
+============================== 1 failed in 2.71s ==============================
