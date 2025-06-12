@@ -1,6 +1,5 @@
 import asyncio
 from hashlib import md5
-import io
 import random
 from typing import Dict, List, Tuple
 import uuid
@@ -8,9 +7,9 @@ import uuid
 import feedparser
 import httpx
 from clients.email_gateway_client import EmailGatewayClient
-from clients.google_drive_client_async import (GoogleDriveClientAsync,
-                                               GoogleDriveUploadRequest)
+from clients.google_drive_client_async import (GoogleDriveClientAsync)
 from data.podcast_repository import PodcastRepository
+from domain.drive import GoogleDriveUploadRequest
 from domain.exceptions import PodcastConfigurationException
 from domain.features import Feature
 from domain.google import GoogleDriveDirectory
@@ -30,7 +29,7 @@ from utilities.utils import DateTimeUtil
 logger = get_logger(__name__)
 
 UPLOAD_CHUNK_SIZE = 1024 * 1024 * 4  # 8MB
-MAX_EPISODE_DOWNLOADS = 50
+MAX_EPISODE_DOWNLOADS = 3
 
 
 class PodcastServiceException(Exception):

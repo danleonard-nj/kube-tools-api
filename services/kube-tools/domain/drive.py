@@ -2,6 +2,9 @@ from framework.serialization import Serializable
 
 from enum import StrEnum
 
+from isort import file
+from pydantic import BaseModel
+
 
 class PermissionRole(StrEnum):
     """
@@ -46,6 +49,19 @@ class GoogleDrivePermissionRequest(Serializable):
         }
 
 
+class GoogleDrivePermissionRequestModel(BaseModel, Serializable):
+    role: str
+    _type: str
+    value: str
+
+    def to_dict(self) -> dict:
+        return {
+            'role': self.role,
+            'type': self.type,
+            'value': self.value
+        }
+
+
 class GoogleDriveUploadRequest(Serializable):
     def __init__(
         self,
@@ -56,6 +72,42 @@ class GoogleDriveUploadRequest(Serializable):
         self.upload_type = upload_type
         self.name = name
         self.parents = parents
+
+    def to_dict(self) -> dict:
+        data = {
+            "uploadType": self.upload_type,
+            "name": self.name,
+            "supportsAllDrives": True,
+        }
+
+        if self.parents:
+            data["parents"] = self.parents
+
+        return data
+
+
+class GoogleDriveUploadRequestModel(BaseModel, Serializable):
+    name: str
+    upload_type: str = 'media'
+    parents: list[str] = None
+
+    def to_dict(self) -> dict:
+        data = {
+            "uploadType": self.upload_type,
+            "name": self.name,
+            "supportsAllDrives": True,
+        }
+
+        if self.parents:
+            data["parents"] = self.parents
+
+        return data
+
+
+class GoogleDriveUploadRequestModel(BaseModel, Serializable):
+    name: str
+    upload_type: str = 'media'
+    parents: list[str] = None
 
     def to_dict(self) -> dict:
         data = {
@@ -96,6 +148,26 @@ class GoogleDriveFileExistsRequest(Serializable):
         }
 
 
+class GoogleDriveFileExistsRequestModel(BaseModel, Serializable):
+    filename: str
+    directory_id: str = None
+    trashed: bool = False
+
+    def to_dict(self) -> dict:
+        if self.directory_id is None:
+            return {
+                'q': f"name = '{self.filename}' and trashed = {self.trashed}",
+                'fields': 'files(id)',
+                'pageSize': 1
+            }
+
+        return {
+            'q': f"'{self.directory_id}' in parents and name = '{self.filename}' and trashed = {self.trashed}",
+            'fields': 'files(id)',
+            'pageSize': 1
+        }
+
+
 class GoogleDriveFileDetailsRequest(Serializable):
     def __init__(
         self,
@@ -108,6 +180,25 @@ class GoogleDriveFileDetailsRequest(Serializable):
         self.fields = fields
         self.order_by = order_by
         self.page_token = page_token
+
+    def to_dict(self) -> dict:
+        data = {
+            "pageSize": self.page_size,
+            "fields": self.fields,
+            "orderBy": self.order_by,
+        }
+
+        if self.page_token:
+            data["pageToken"] = self.page_token
+
+        return data
+
+
+class GoogleDriveFileDetailsRequestModel(BaseModel, Serializable):
+    page_size: int = 100
+    fields: str = "nextPageToken, files(id, name, size, createdTime, modifiedTime)"
+    order_by: str = "quotaBytesUsed desc"
+    page_token: str = None
 
     def to_dict(self) -> dict:
         data = {

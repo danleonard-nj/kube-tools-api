@@ -4,18 +4,18 @@ from datetime import datetime
 
 import aiofiles
 import httpx
-from domain.drive import (GoogleDriveFileDetailsRequest,
-                          GoogleDriveFileExistsRequest,
-                          GoogleDrivePermissionRequest,
-                          GoogleDriveUploadRequest, PermissionRole,
+from domain.drive import (GoogleDriveFileDetailsRequestModel,
+                          GoogleDriveFileExistsRequestModel,
+                          GoogleDrivePermissionRequestModel,
+                          GoogleDriveUploadRequestModel, PermissionRole,
                           PermissionType)
 from domain.google import GoogleClientScope
 from framework.logger import get_logger
 from framework.validators.nulls import none_or_whitespace
 from httpx import AsyncClient
 from services.google_auth_service import GoogleAuthService
-from tenacity import (RetryError, after_log, before_log, before_sleep_log,
-                      retry, retry_if_exception_type, stop_after_attempt,
+from tenacity import (RetryError, before_sleep_log, retry,
+                      retry_if_exception_type, stop_after_attempt,
                       wait_exponential)
 
 logger = get_logger(__name__)
@@ -191,7 +191,7 @@ class GoogleDriveClientAsync:
             # Cancel the session if an error occurs and we've retried too many times
             logger.info(f"Failed to upload chunk starting at byte {start_byte}")
             await self._cancel_resumable_session(session_url)
-            raise GoogleDriveClientAsyncException(f"Resumable upload failed: {str(e)}")
+            raise Exception(f"Resumable upload failed: {str(e)}")
 
         except httpx.HTTPStatusError as ex:
             if ex.status_code == 308:
@@ -227,9 +227,7 @@ class GoogleDriveClientAsync:
 
         file_size = os.path.getsize(filepath)
 
-        file_metadata = GoogleDriveUploadRequest(
-            name=filename,
-            parents=[parent_directory] if parent_directory else None)
+        file_metadata = GoogleDriveUploadRequestModel(name=filename, parents=[parent_directory] if parent_directory else None)
 
         logger.info(f'Creating resumable session for large file: {filename}')
         session_url = await self.create_resumable_upload_session(
@@ -237,7 +235,7 @@ class GoogleDriveClientAsync:
 
         if none_or_whitespace(session_url):
             logger.info(f'Failed to create resumable session for file: {filename}')
-            raise GoogleDriveClientAsyncException(f'Failed to create resumable session for file: {filename}')
+            raise Exception(f'Failed to create resumable session for file: {filename}')
 
         logger.info(f'Resumable session URL: {session_url}')
 
@@ -321,9 +319,7 @@ class GoogleDriveClientAsync:
 
         logger.info(f'Uploading single file: {filename}')
 
-        req = GoogleDriveUploadRequest(
-            name=filename,
-            parents=[parent_directory] if parent_directory else None)
+        req = GoogleDriveUploadRequestModel(name=filename, parents=[parent_directory] if parent_directory else None)
 
         logger.info(f'Upload request: {req.to_dict()}')
 
@@ -368,10 +364,7 @@ class GoogleDriveClientAsync:
 
         headers = await self._get_auth_headers()
 
-        req = GoogleDrivePermissionRequest(
-            role=role,
-            _type=_type,
-            value=value)
+        req = GoogleDrivePermissionRequestModel(role=role, _type=_type, value=value)
 
         logger.info(f'Permission request: {req.to_dict()}')
 
@@ -405,9 +398,7 @@ class GoogleDriveClientAsync:
         next_page_token = None
 
         while True:
-            req = GoogleDriveFileDetailsRequest(
-                page_size=100,
-                page_token=next_page_token)
+            req = GoogleDriveFileDetailsRequestModel(page_size=100, page_token=next_page_token)
 
             response = await self._http_client.get(
                 "https://www.googleapis.com/drive/v3/files",
@@ -449,9 +440,7 @@ class GoogleDriveClientAsync:
 
         headers = await self._get_auth_headers()
 
-        req = GoogleDriveFileExistsRequest(
-            directory_id=directory_id,
-            filename=filename)
+        req = GoogleDriveFileExistsRequestModel(directory_id=directory_id, filename=filename)
 
         response = await self._http_client.get(
             "https://www.googleapis.com/drive/v3/files",
