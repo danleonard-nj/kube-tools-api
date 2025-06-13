@@ -9,7 +9,6 @@ from framework.constants.constants import Environment
 from framework.logger import get_logger
 from framework.serialization.serializer import configure_serializer
 from framework.swagger.quart.swagger import Swagger
-from keyboard import send
 from quart import Quart
 from models.email_config import EmailConfig
 from routes import (acr_bp, android_bp, api_event_history_bp, bank_bp,
