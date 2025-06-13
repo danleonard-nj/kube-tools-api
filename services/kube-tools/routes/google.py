@@ -94,7 +94,7 @@ async def put_gmail_rule(container):
     if body is None:
         raise HttpException('Request body is required')
 
-    update_request = UpdateEmailRuleRequestModel(data=body)
+    update_request = UpdateEmailRuleRequestModel.from_dict(data=body)
 
     return await service.update_rule(
         update_request=update_request)
