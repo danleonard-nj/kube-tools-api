@@ -11,3 +11,4 @@ services/kube-tools/scripts/plaid_link.py
 services/kube-tools/scripts/google_credentials.json
 services/kube-tools/services/market_research_processor.py
 services/kube-tools/prompts/*
+deploy.bat

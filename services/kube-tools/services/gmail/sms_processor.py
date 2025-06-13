@@ -1,5 +1,3 @@
-
-
 from typing import Optional
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient

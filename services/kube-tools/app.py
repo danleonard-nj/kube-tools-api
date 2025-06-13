@@ -1,7 +1,5 @@
 import datetime
 import os
-
-from clients.email_gateway_client import EmailGatewayClient
 from dotenv import load_dotenv
 from framework.abstractions.abstract_request import RequestContextProvider
 from framework.configuration import Configuration
@@ -81,7 +79,7 @@ async def send_initial_email():
 
     logger.info(f'Sending initial email')
 
-    if config.environment == Environment.PRODUCTION:
+    if config.environment == Environment.PRODUCTION or True:
         await send_email_sendinblue(
             subject='Kube Tools API started',
             message=message,
