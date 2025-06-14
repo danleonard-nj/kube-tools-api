@@ -79,7 +79,7 @@ async def send_initial_email():
 
     logger.info(f'Sending initial email')
 
-    if config.environment == Environment.PRODUCTION or True:
+    if config.environment == Environment.PRODUCTION:
         await send_email_sendinblue(
             subject='Kube Tools API started',
             message=message,

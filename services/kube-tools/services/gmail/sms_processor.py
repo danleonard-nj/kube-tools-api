@@ -1,12 +1,12 @@
 from typing import Optional
+
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
-from domain.google import GmailEmail, GmailEmailRule, GoogleEmailLabel
-from services.gmail.formatter import MessageFormatter
-from models.gmail_models import EmailTagManager, GmailConfig, TagModification
-from services.gmail.processor import BaseRuleProcessor
-
+from domain.google import GmailEmail, GmailEmailRuleModel, GoogleEmailLabel
 from framework.logger import get_logger
+from models.gmail_models import EmailTagManager, GmailConfig, TagModification
+from services.gmail.formatter import MessageFormatter
+from services.gmail.processor import BaseRuleProcessor
 
 logger = get_logger(__name__)
 
@@ -31,7 +31,7 @@ class SmsRuleProcessor(BaseRuleProcessor):
 
     async def _process_message(
         self,
-        rule: GmailEmailRule,
+        rule: GmailEmailRuleModel,
         message: GmailEmail,
         message_id: str
     ) -> None:
@@ -43,6 +43,13 @@ class SmsRuleProcessor(BaseRuleProcessor):
             recipient=self._sms_recipient,
             message=message_body
         )
+
+        if rule.data.sms_additional_recipients:
+            for recipient in rule.data.sms_additional_recipients:
+                logger.info(f'Sending SMS notification to additional recipient: {recipient}')
+                await self._twilio_gateway.send_sms(
+                    recipient=recipient,
+                    message=message_body)
 
     def _get_tag_modification(self) -> Optional[TagModification]:
         """Mark as processed and remove from inbox."""

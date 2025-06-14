@@ -4,16 +4,16 @@ from typing import Dict
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
 from domain.enums import ProcessGmailRuleResultType
-from domain.google import (GmailEmailRule, GmailRuleAction, GoogleClientScope,
+from domain.google import (GmailEmailRuleModel, GmailRuleAction, GoogleClientScope,
                            ProcessGmailRuleResponse)
 from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
+from models.gmail_models import GmailConfig
 from services.chat_gpt_service import ChatGptService
 from services.gmail.archive_processor import ArchiveRuleProcessor
 from services.gmail.bank_processor import BankSyncRuleProcessor
-from models.gmail_models import GmailConfig
 from services.gmail.sms_processor import SmsRuleProcessor
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
@@ -73,7 +73,7 @@ class GmailService:
         results.sort(key=lambda x: x.rule_name)
         return results
 
-    async def process_rule(self, rule: GmailEmailRule):
+    async def process_rule(self, rule: GmailEmailRuleModel) -> ProcessGmailRuleResponse:
         ArgumentNullException.if_none(rule, 'process_request')
         async with self._semaphore:
             try:

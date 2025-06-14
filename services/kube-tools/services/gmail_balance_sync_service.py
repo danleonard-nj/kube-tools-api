@@ -1,5 +1,6 @@
 import re
 from typing import List
+
 from domain.bank import (BALANCE_EMAIL_EXCLUSION_KEYWORDS,
                          BALANCE_EMAIL_INCLUSION_KEYWORDS,
                          CAPITAL_ONE_QUICKSILVER, CAPITAL_ONE_SAVOR,
@@ -9,8 +10,9 @@ from domain.bank import (BALANCE_EMAIL_EXCLUSION_KEYWORDS,
                          ChatGptBalanceCompletion)
 from domain.cache import CacheKey
 from domain.enums import BankKey, SyncType
-from domain.exceptions import GmailBalanceSyncException
-from domain.google import GmailEmail, GmailEmailRule, parse_gmail_body_text
+from domain.exceptions import ChatGptException, GmailBalanceSyncException
+from domain.google import (GmailEmail, GmailEmailRuleModel,
+                           parse_gmail_body_text)
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from framework.logger import get_logger
@@ -38,7 +40,7 @@ class GmailBankSyncService:
 
     async def handle_balance_sync(
         self,
-        rule: GmailEmailRule,
+        rule: GmailEmailRuleModel,
         message: GmailEmail,
         bank_key: str
     ):

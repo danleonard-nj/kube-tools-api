@@ -1,11 +1,13 @@
+import datetime
 import unittest
 from unittest.mock import AsyncMock, MagicMock
-from domain.enums import BankKey, SyncType
-from domain.google import GmailEmail, GmailEmailRule
+
+from domain.bank import (CAPITAL_ONE_QUICKSILVER, CAPITAL_ONE_SAVOR,
+                         CAPITAL_ONE_VENTURE, SYNCHRONY_AMAZON,
+                         SYNCHRONY_GUITAR_CENTER, SYNCHRONY_SWEETWATER)
+from domain.enums import BankKey
+from domain.google import GmailEmail, GmailEmailRuleModel
 from services.gmail_balance_sync_service import GmailBankSyncService
-import datetime
-from domain.bank import SYNCHRONY_AMAZON, SYNCHRONY_GUITAR_CENTER, SYNCHRONY_SWEETWATER
-from domain.bank import CAPITAL_ONE_SAVOR, CAPITAL_ONE_VENTURE, CAPITAL_ONE_QUICKSILVER
 from utilities.utils import fire_task as original_fire_task
 
 
@@ -35,7 +37,7 @@ class TestGmailBankSyncService(unittest.IsolatedAsyncioTestCase):
         })
 
     def make_rule(self, bank_key=BankKey.WellsFargo):
-        return GmailEmailRule(
+        return GmailEmailRuleModel(
             rule_id='rule1',
             name='Test Rule',
             description='desc',

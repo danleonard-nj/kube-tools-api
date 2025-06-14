@@ -1,7 +1,7 @@
 from typing import Optional
 from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
-from domain.google import GmailEmail, GmailEmailRule, GmailRuleAction, GoogleEmailLabel
+from domain.google import GmailEmail, GmailEmailRuleModel, GmailRuleAction, GoogleEmailLabel
 from framework.validators import none_or_whitespace
 from framework.logger import get_logger
 
@@ -35,14 +35,14 @@ class BankSyncRuleProcessor(BaseRuleProcessor):
 
     async def _process_message(
         self,
-        rule: GmailEmailRule,
+        rule: GmailEmailRuleModel,
         message: GmailEmail,
         message_id: str
     ) -> None:
         """Process bank sync for the message."""
         # Get bank sync configuration
-        bank_key = rule.data.get('bank_sync_bank_key')
-        alert_type = rule.data.get('bank_sync_alert_type')
+        bank_key = rule.data.bank_sync_bank_key
+        alert_type = rule.data.bank_sync_alert_type
 
         if none_or_whitespace(bank_key):
             raise Exception(
@@ -66,7 +66,7 @@ class BankSyncRuleProcessor(BaseRuleProcessor):
 
     async def _send_balance_sync_alert(
         self,
-        rule: GmailEmailRule,
+        rule: GmailEmailRuleModel,
         message: GmailEmail,
         alert_type: str = 'none'
     ) -> None:

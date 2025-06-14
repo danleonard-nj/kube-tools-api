@@ -219,87 +219,14 @@ class UpdateEmailRuleRequestModel(BaseModel, Serializable):
         )
 
 
-class GmailEmailRule(Serializable):
-    DefaultMaxResults = 10
+class GmailEmailRuleDataModel(BaseModel, Serializable):
+    bank_sync_bank_key: Optional[str] = None
+    bank_sync_alert_type: Optional[str] = None
 
-    def __init__(
-        self,
-        rule_id: str,
-        name: str,
-        description: str,
-        max_results: int,
-        query: str,
-        action: str,
-        data: Any,
-        created_date: datetime,
-        count_processed: int = 0,
-        modified_date: Optional[datetime] = None
-    ):
-        self.rule_id = rule_id
-        self.name = name
-        self.description = description
-        self.max_results = (max_results
-                            or self.DefaultMaxResults)
-        self.query = query
-        self.action = action
-        self.data = data
-        self.count_processed = count_processed
-        self.modified_date = modified_date
-        self.created_date = created_date
+    chat_gpt_include_summary: Optional[bool] = None
+    chat_gpt_prompt_template: Optional[str] = None
 
-    def get_selector(
-        self
-    ) -> Dict:
-
-        return {
-            'rule_id': self.rule_id
-        }
-
-    def update_rule(
-        self,
-        update_request: UpdateEmailRuleRequestModel
-    ) -> None:
-
-        ArgumentNullException.if_none(update_request, 'update_request')
-
-        self.name = update(self.name, update_request.name)
-        self.description = update(self.description, update_request.description)
-        self.max_results = update(self.max_results, update_request.max_results)
-        self.query = update(self.query, update_request.query)
-        self.action = update(self.action, update_request.action)
-        self.data = update(self.data, update_request.data)
-
-        self.modified_date = datetime.utcnow()
-
-    @staticmethod
-    def from_entity(data):
-        return GmailEmailRule(
-            rule_id=data.get('rule_id'),
-            name=data.get('name'),
-            description=data.get('description'),
-            max_results=data.get('max_results'),
-            query=data.get('query'),
-            action=data.get('action'),
-            data=data.get('data'),
-            count_processed=data.get('count_processed'),
-            created_date=data.get('created_date')
-        )
-
-    @staticmethod
-    def from_request_body(data):
-        return GmailEmailRule(
-            rule_id=data.get('rule_id'),
-            name=data.get('name'),
-            description=data.get('description'),
-            max_results=data.get('max_results'),
-            query=data.get('query'),
-            action=data.get('action'),
-            data=data.get('data'),
-            count_processed=data.get('count_processed'),
-            created_date=data.get('created_date')
-        )
-
-    DefaultMaxResults = 10
+    sms_additional_recipients: Optional[List[str]] = None
 
 
 class GmailEmailRuleModel(BaseModel, Serializable):
@@ -314,31 +241,6 @@ class GmailEmailRuleModel(BaseModel, Serializable):
     count_processed: int = 0
     modified_date: Optional[datetime] = None
 
-    # def __init__(
-    #     self,
-    #     rule_id: str,
-    #     name: str,
-    #     description: str,
-    #     max_results: int,
-    #     query: str,
-    #     action: str,
-    #     data: Any,
-    #     created_date: datetime,
-    #     count_processed: int = 0,
-    #     modified_date: Optional[datetime] = None
-    # ):
-    #     self.rule_id = rule_id
-    #     self.name = name
-    #     self.description = description
-    #     self.max_results = (max_results
-    #                         or self.DefaultMaxResults)
-    #     self.query = query
-    #     self.action = action
-    #     self.data = data
-    #     self.count_processed = count_processed
-    #     self.modified_date = modified_date
-    #     self.created_date = created_date
-
     def get_selector(
         self
     ) -> Dict:
@@ -365,28 +267,32 @@ class GmailEmailRuleModel(BaseModel, Serializable):
 
     @staticmethod
     def from_entity(data):
-        return GmailEmailRule(
+        config = GmailEmailRuleDataModel.model_validate(data.get('data', {}))
+
+        return GmailEmailRuleModel(
             rule_id=data.get('rule_id'),
             name=data.get('name'),
             description=data.get('description'),
             max_results=data.get('max_results'),
             query=data.get('query'),
             action=data.get('action'),
-            data=data.get('data'),
+            data=config,
             count_processed=data.get('count_processed'),
             created_date=data.get('created_date')
         )
 
     @staticmethod
     def from_request_body(data):
-        return GmailEmailRule(
+        config = GmailEmailRuleDataModel.model_validate(data.get('data', {}))
+
+        return GmailEmailRuleModel(
             rule_id=data.get('rule_id'),
             name=data.get('name'),
             description=data.get('description'),
             max_results=data.get('max_results'),
             query=data.get('query'),
             action=data.get('action'),
-            data=data.get('data'),
+            data=config,
             count_processed=data.get('count_processed'),
             created_date=data.get('created_date')
         )
@@ -578,7 +484,7 @@ class ProcessGmailRuleResponse(Serializable):
     def __init__(
         self,
         status: str,
-        rule: GmailEmailRule,
+        rule: GmailEmailRuleModel,
         affected_count: int = None
     ):
         self.rule_id = rule.rule_id
@@ -615,7 +521,7 @@ class GmailServiceRunResult(Serializable):
 class ProcessGmailRuleRequest(Serializable):
     def __init__(
         self,
-        rule: GmailEmailRule
+        rule: GmailEmailRuleModel
     ):
         self.rule = rule
 
@@ -628,20 +534,7 @@ class ProcessGmailRuleRequest(Serializable):
 
 
 class ProcessGmailRuleRequest(BaseModel, Serializable):
-    rule: GmailEmailRule
-
-
-# class CreateEmailRuleRequest(Serializable):
-#     def __init__(
-#         self,
-#         data: Dict
-#     ):
-#         self.name = data.get('name')
-#         self.description = data.get('description')
-#         self.query = data.get('query')
-#         self.action = data.get('action')
-#         self.data = data.get('data')
-#         self.max_results = data.get('max_results')
+    rule: GmailEmailRuleModel
 
 
 class CreateEmailRuleRequestModel(BaseModel, Serializable):

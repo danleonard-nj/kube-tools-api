@@ -1,9 +1,9 @@
 import html
 from typing import Optional
 
-from domain.google import (DEFAULT_PROMPT_TEMPLATE, GmailEmail, GmailEmailRule,
-                           GoogleEmailHeader, clean_unicode,
-                           parse_gmail_body_text)
+from domain.google import (DEFAULT_PROMPT_TEMPLATE, GmailEmail,
+                           GmailEmailRuleModel, GoogleEmailHeader,
+                           clean_unicode, parse_gmail_body_text)
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from framework.validators import none_or_whitespace
@@ -20,7 +20,7 @@ class MessageFormatter:
 
     async def format_sms_message(
         self,
-        rule: GmailEmailRule,
+        rule: GmailEmailRuleModel,
         message: GmailEmail
     ) -> str:
         """Format email message for SMS notification."""
@@ -28,20 +28,20 @@ class MessageFormatter:
         ArgumentNullException.if_none(message, 'message')
 
         # Check if ChatGPT summary is requested
-        chat_gpt_summary = rule.data.get('chat_gpt_include_summary', False)
+        chat_gpt_summary = rule.data.chat_gpt_include_summary
 
         if not chat_gpt_summary:
             return self._build_basic_message(rule, message)
 
         # Get ChatGPT summary
-        prompt_template = rule.data.get('chat_gpt_prompt_template')
+        prompt_template = rule.data.chat_gpt_prompt_template
         summary = await self._get_chat_gpt_summary(message, prompt_template)
 
         return self._build_message_with_summary(rule, message, summary)
 
     def format_balance_sync_message(
         self,
-        rule: GmailEmailRule,
+        rule: GmailEmailRuleModel,
         message: GmailEmail
     ) -> str:
         """Format email message for balance sync notifications."""
@@ -49,7 +49,7 @@ class MessageFormatter:
 
     def _build_basic_message(
         self,
-        rule: GmailEmailRule,
+        rule: GmailEmailRuleModel,
         message: GmailEmail,
         summary: Optional[str] = None
     ) -> str:
@@ -74,7 +74,7 @@ class MessageFormatter:
 
     def _build_message_with_summary(
         self,
-        rule: GmailEmailRule,
+        rule: GmailEmailRuleModel,
         message: GmailEmail,
         summary: str
     ) -> str:

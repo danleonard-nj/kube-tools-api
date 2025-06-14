@@ -1,6 +1,6 @@
 from typing import Optional
 
-from domain.google import GmailEmail, GmailEmailRule, GoogleEmailLabel
+from domain.google import GmailEmail, GmailEmailRuleModel, GoogleEmailLabel
 from framework.logger import get_logger
 from models.gmail_models import TagModification
 from services.gmail.processor import BaseRuleProcessor
@@ -17,7 +17,7 @@ class ArchiveRuleProcessor(BaseRuleProcessor):
 
     async def _process_message(
         self,
-        rule: GmailEmailRule,
+        rule: GmailEmailRuleModel,
         message: GmailEmail,
         message_id: str
     ) -> None:

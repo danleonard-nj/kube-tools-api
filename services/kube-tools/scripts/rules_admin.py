@@ -47,21 +47,21 @@ except Exception as e:
     exit(1)
 
 # Action type configurations
-ACTION_TYPES = {
-    'sms': {
-        'name': 'SMS Alert',
-        'fields': {
+ACTION_TYPES = {'sms': {
+    'name': 'SMS Alert',
+    'fields': {
             'chat_gpt_include_summary': {'type': 'boolean', 'label': 'Include ChatGPT Summary'},
-            'chat_gpt_prompt_template': {'type': 'text', 'label': 'ChatGPT Prompt Template'}
-        }
-    },
+            'chat_gpt_prompt_template': {'type': 'text', 'label': 'ChatGPT Prompt Template'},
+            'sms_additional_recipients': {'type': 'text', 'label': 'Additional Recipients (comma-separated phone numbers)'}
+    }
+},
     'bank-sync': {
         'name': 'Bank Sync',
         'fields': {
             'bank_sync_bank_key': {'type': 'text', 'label': 'Bank Key'},
             'bank_sync_alert_type': {'type': 'select', 'label': 'Alert Type', 'options': ['none', 'email', 'sms']}
         }
-    },
+},
     'archive': {
         'name': 'Archive',
         'fields': {
@@ -69,7 +69,7 @@ ACTION_TYPES = {
             'archive_folder': {'type': 'text', 'label': 'Archive Folder'},
             'archive_keep_unread': {'type': 'boolean', 'label': 'Keep Unread Status'}
         }
-    },
+},
     'email-forward': {
         'name': 'Email Forward',
         'fields': {
@@ -77,7 +77,7 @@ ACTION_TYPES = {
             'email_subject_prefix': {'type': 'text', 'label': 'Subject Prefix'},
             'email_include_original': {'type': 'boolean', 'label': 'Include Original Message'}
         }
-    },
+},
     'webhook': {
         'name': 'Webhook',
         'fields': {
@@ -85,14 +85,14 @@ ACTION_TYPES = {
             'webhook_method': {'type': 'select', 'label': 'HTTP Method', 'options': ['POST', 'PUT', 'PATCH']},
             'webhook_headers': {'type': 'json', 'label': 'Custom Headers (JSON)'}
         }
-    },
+},
     'mark-read': {
         'name': 'Mark as Read',
         'fields': {
             'mark_read_apply_label': {'type': 'text', 'label': 'Apply Label (Optional)'},
             'mark_read_star': {'type': 'boolean', 'label': 'Add Star'}
         }
-    }
+}
 }
 
 
@@ -1111,7 +1111,24 @@ def edit_rule(rule_id):
     rule = RuleManager.get_rule_by_id(rule_id)
     if not rule:
         flash('Rule not found', 'error')
-        return redirect(url_for('index'))
+        return redirect(url_for('index'))    # Convert sms_additional_recipients from list back to comma-separated string for display
+    if rule and rule.get('data', {}).get('sms_additional_recipients'):
+        recipients = rule['data']['sms_additional_recipients']
+        if isinstance(recipients, list):
+            # Already a list, convert to comma-separated string
+            rule['data']['sms_additional_recipients'] = ', '.join(recipients)
+        elif isinstance(recipients, str):
+            # Check if it's a string representation of a list
+            if recipients.startswith('[') and recipients.endswith(']'):
+                try:
+                    # Try to parse as JSON
+                    parsed_recipients = json.loads(recipients)
+                    if isinstance(parsed_recipients, list):
+                        rule['data']['sms_additional_recipients'] = ', '.join(parsed_recipients)
+                except json.JSONDecodeError:
+                    # If it fails, leave as is (might already be comma-separated)
+                    pass
+
     return render_with_base(EDIT_RULE_TEMPLATE, rule=rule, action_types=ACTION_TYPES)
 
 
@@ -1126,9 +1143,7 @@ def save_rule():
             'query': request.form['query'].strip(),
             'action': request.form['action'],
             'data': {}
-        }
-
-        # Process action-specific data
+        }        # Process action-specific data
         action_config = ACTION_TYPES.get(rule_data['action'], {})
         for field_name, field_config in action_config.get('fields', {}).items():
             if field_config['type'] == 'boolean':
@@ -1145,6 +1160,10 @@ def save_rule():
                         except json.JSONDecodeError:
                             flash(f'Invalid JSON for {field_config["label"]}', 'error')
                             return redirect(request.referrer)
+                    elif field_name == 'sms_additional_recipients':
+                        # Convert comma-separated string to list of strings
+                        recipients = [phone.strip() for phone in value.split(',') if phone.strip()]
+                        rule_data['data'][field_name] = recipients
                     else:
                         rule_data['data'][field_name] = value
 

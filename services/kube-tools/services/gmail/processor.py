@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from clients.gmail_client import GmailClient
-from domain.google import GmailEmail, GmailEmailRule
+from domain.google import GmailEmail, GmailEmailRuleModel
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from services.gmail.formatter import MessageFormatter
@@ -24,7 +24,7 @@ class BaseRuleProcessor(ABC):
         self._gmail_client = gmail_client
         self._message_formatter = message_formatter
 
-    async def process_rule(self, rule: GmailEmailRule) -> int:
+    async def process_rule(self, rule: GmailEmailRuleModel) -> int:
         """Process a rule and return the number of affected emails."""
         ArgumentNullException.if_none(rule, 'rule')
 
@@ -90,7 +90,7 @@ class BaseRuleProcessor(ABC):
     @abstractmethod
     async def _process_message(
         self,
-        rule: GmailEmailRule,
+        rule: GmailEmailRuleModel,
         message: GmailEmail,
         message_id: str
     ) -> None:
