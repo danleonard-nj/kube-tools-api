@@ -1,13 +1,14 @@
 import html
 from typing import Optional
 
+from clients.gpt_client import GPTClient
 from domain.google import (DEFAULT_PROMPT_TEMPLATE, GmailEmail,
                            GmailEmailRuleModel, GoogleEmailHeader,
                            clean_unicode, parse_gmail_body_text)
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from framework.validators import none_or_whitespace
-from services.chat_gpt_service import ChatGptService
+from domain.gpt import GPTModel
 
 logger = get_logger(__name__)
 
@@ -15,13 +16,13 @@ logger = get_logger(__name__)
 class MessageFormatter:
     """Handles formatting of email messages for SMS notifications."""
 
-    def __init__(self, chat_gpt_service: ChatGptService):
-        self._chat_gpt_service = chat_gpt_service
+    def __init__(self, gpt_client: GPTClient):
+        self._gpt_client = gpt_client
 
     async def format_sms_message(
         self,
         rule: GmailEmailRuleModel,
-        message: GmailEmail
+        message: GmailEmail,
     ) -> str:
         """Format email message for SMS notification."""
         ArgumentNullException.if_none(rule, 'rule')
@@ -101,7 +102,11 @@ class MessageFormatter:
             prompt = f"{DEFAULT_PROMPT_TEMPLATE}: {body_text}"
 
         # Get summary from ChatGPT
-        result, usage = await self._chat_gpt_service.get_chat_completion(prompt=prompt)
+        result = await self._gpt_client.generate_completion(
+            prompt=prompt,
+            # TODO: Move to configuration
+            model=GPTModel.GPT_4O_MINI
+        )
 
-        logger.info(f'ChatGPT email summary usage tokens: {usage}')
-        return result
+        logger.info(f'ChatGPT email summary usage tokens: {result.tokens}')
+        return result.content.strip()

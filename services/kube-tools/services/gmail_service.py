@@ -7,11 +7,9 @@ from domain.enums import ProcessGmailRuleResultType
 from domain.google import (GmailEmailRuleModel, GmailRuleAction, GoogleClientScope,
                            ProcessGmailRuleResponse)
 from framework.concurrency import TaskCollection
-from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from models.gmail_models import GmailConfig
-from services.chat_gpt_service import ChatGptService
 from services.gmail.archive_processor import ArchiveRuleProcessor
 from services.gmail.bank_processor import BankSyncRuleProcessor
 from services.gmail.sms_processor import SmsRuleProcessor
@@ -28,13 +26,11 @@ class GmailServiceError(Exception):
 class GmailService:
     def __init__(
         self,
-        configuration: Configuration,
         config: GmailConfig,
         gmail_client: GmailClient,
         rule_service: GmailRuleService,
         bank_sync_service: GmailBankSyncService,
         twilio_gateway: TwilioGatewayClient,
-        chat_gpt_service: ChatGptService,
         archive_processor: ArchiveRuleProcessor,
         sms_processor: SmsRuleProcessor,
         bank_sync_processor: BankSyncRuleProcessor
@@ -43,13 +39,11 @@ class GmailService:
         self._rule_service = rule_service
         self._twilio_gateway = twilio_gateway
         self._bank_sync_service = bank_sync_service
-        self._chat_gpt_service = chat_gpt_service
         self._sms_recipient = config.sms_recipient
 
         self._semaphore = asyncio.Semaphore(config.concurrency)
 
         # Cache rule processors
-        # message_formatter = MessageFormatter(self._chat_gpt_service)
         self._rule_processors = {
             GmailRuleAction.Archive: archive_processor,
             GmailRuleAction.SMS: sms_processor,

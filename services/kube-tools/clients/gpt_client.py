@@ -2,9 +2,12 @@ import hashlib
 import openai
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
-
+from typing import List, Dict
 
 from framework.logger import get_logger
+from pydantic import BaseModel
+
+from models.openai_config import OpenAIConfig
 
 logger = get_logger(__name__)
 
@@ -14,10 +17,15 @@ def md5(text: str) -> str:
     return hashlib.md5(text.encode('utf-8')).hexdigest()
 
 
+class CompletionResultModel(BaseModel):
+    content: str
+    tokens: int
+
+
 class GPTClient:
     """Client for handling OpenAI GPT API interactions with caching support"""
 
-    def __init__(self, configuration: Configuration,
+    def __init__(self, config: OpenAIConfig,
                  cache_client: CacheClientAsync = None):
         """
         Initialize the GPT client
@@ -26,7 +34,7 @@ class GPTClient:
             api_key: OpenAI API key
             cache_client: Optional cache client for caching responses
         """
-        self._api_key = configuration.openai.get('api_key')
+        self._api_key = config.api_key
         self._cache_client = cache_client
         self._client = openai.AsyncOpenAI(api_key=self._api_key)
 
@@ -34,32 +42,19 @@ class GPTClient:
 
     async def generate_completion(self, prompt: str, model: str = "gpt-4o-mini",
                                   temperature: float = 0.7, use_cache: bool = True,
-                                  cache_ttl: int = 3600):
+                                  cache_ttl: int = 3600) -> CompletionResultModel:
         """
         Generate a completion from the GPT model with optional caching
-
-        Args:
-            prompt: The prompt to send to the model
-            model: The model to use (default: gpt-3.5-turbo)
-            temperature: Temperature parameter (default: 0.7)
-            use_cache: Whether to use caching (default: True)
-            cache_ttl: Time to live for cached responses in seconds (default: 1 hour)        Returns:
-            The generated text
+        Returns a CompletionResultModel.
         """
-
-        _hash = md5(prompt)
-
-        # logger.info(f'##: P:{_hash}:\n{prompt[:25]}...\n')
-
-        # with open(f'./prompts/prompt_{_hash}.txt', 'w', encoding='utf-8') as f:
-        #     f.write(prompt)
 
         # Check cache if available and enabled
         if use_cache and self._cache_client:
             cached_response = await self._get_cached_response(prompt, model)
             if cached_response:
                 logger.info(f"Using cached response for {model} prompt")
-                return cached_response
+                # If cached, we don't know token count, so set to 0 or estimate if needed
+                return CompletionResultModel(content=cached_response, tokens=0)
 
         # Generate new response
         logger.info(f"Generating new response using {model}: {prompt[:25]}...")
@@ -70,6 +65,7 @@ class GPTClient:
                 temperature=temperature
             )
             content = response.choices[0].message.content.strip()
+            tokens = response.usage.total_tokens if hasattr(response, 'usage') and response.usage else 0
 
             # Cache the response if caching is enabled
             if use_cache and self._cache_client:
@@ -79,7 +75,7 @@ class GPTClient:
                 f.write(content)
             self.count += 1
 
-            return content
+            return CompletionResultModel(content=content, tokens=tokens)
         except Exception as e:
             logger.error(f"Error generating completion with {model}: {str(e)}")
             raise
@@ -110,3 +106,29 @@ class GPTClient:
             {'content': response},
             ttl=ttl
         )
+
+    async def generate_response(
+        self,
+        input: str,
+        model: str = "gpt-4o",
+        tools: List[Dict] = None,
+        temperature: float = 1.0,
+        use_cache: bool = False,
+        cache_ttl: int = 3600
+    ) -> dict:
+        """
+        Generate a response with integrated tools via the responses.create endpoint.
+        """
+        tools = tools or []
+        logger.info(f"Generating response using {model} with tools: {tools}")
+        try:
+            response = await self._client.responses.create(
+                model=model,
+                input=input,
+                tools=tools,
+                temperature=temperature
+            )
+            return response
+        except Exception as e:
+            logger.error(f"Error generating response with {model} and tools: {str(e)}")
+            raise

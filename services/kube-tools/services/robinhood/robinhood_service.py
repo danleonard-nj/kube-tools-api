@@ -647,12 +647,13 @@ class TradeOutlooksStage(DomainStage):
         )
 
         # Get AI-generated outlook
-        outlook = await self.service._gpt_client.generate_completion(
+        outlook_result = await self.service._gpt_client.generate_completion(
             prompt=trade_prompt,
             model=GPTModel.GPT_4O_MINI,
             temperature=0.6,
             use_cache=False
         )
+        outlook = outlook_result.content
 
         return outlook
 
@@ -673,12 +674,13 @@ class OverallTradeOutlookStage(DomainStage):
                 trade_stats=context.trade_stats
             )
 
-            context.trade_outlook = await self.service._gpt_client.generate_completion(
+            trade_outlook_result = await self.service._gpt_client.generate_completion(
                 prompt=trade_outlook_prompt,
                 model=GPTModel.GPT_4_1_MINI,
                 temperature=0.6,
                 use_cache=False
             )
+            context.trade_outlook = trade_outlook_result.content
 
         except Exception as e:
             result.add_error(f"Failed to generate overall trade outlook: {str(e)}")
@@ -704,12 +706,13 @@ class PulseAnalysisStage(DomainStage):
             context.prompts['pulse_prompt'] = pulse_prompt
 
             # Generate analysis using GPT
-            context.pulse_analysis = await self.service._gpt_client.generate_completion(
+            pulse_analysis_result = await self.service._gpt_client.generate_completion(
                 prompt=pulse_prompt,
                 model=GPTModel.GPT_4_1,
                 temperature=0.7,
                 use_cache=False
             )
+            context.pulse_analysis = pulse_analysis_result.content
 
         except Exception as e:
             result.add_error(f"Failed to generate pulse analysis: {str(e)}")

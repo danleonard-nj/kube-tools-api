@@ -506,13 +506,13 @@ class AnalyzeTruthSocialSignificanceStage(ResearchDomainStage):
         prompt = generate_truth_post_single_post_analysis_prompt(post)
 
         try:
-            response = await self.processor._gpt_client.generate_completion(
+            response_result = await self.processor._gpt_client.generate_completion(
                 prompt=prompt,
                 model=GPTModel.GPT_4O_MINI,
                 temperature=0.2,
                 use_cache=True
             )
-
+            response = response_result.content
             # Parse JSON response
             analysis = parse_gpt_response_json(response)
 
@@ -588,14 +588,13 @@ class AnalyzeTruthSocialSentimentStage(ResearchDomainStage):
         prompt = generate_trut_social_market_implication_analysis_prompt(all_content)
 
         try:
-            response = await self.processor._gpt_client.generate_completion(
+            response_result = await self.processor._gpt_client.generate_completion(
                 prompt=prompt,
                 model=GPTModel.GPT_4O_MINI,
                 temperature=0.2,
                 use_cache=True
             )
-
-            sentiment_data = parse_gpt_response_json(response)
+            sentiment_data = parse_gpt_response_json(response_result.content)
 
             # Validate and normalize scores
             scores = sentiment_data.get('scores', {})
@@ -730,8 +729,7 @@ class FilterValueableArticlesStage(ResearchDomainStage):
                         temperature=0.0,
                         use_cache=True
                     )
-
-                    if result.strip().lower() == 'valuable':
+                    if result.content.strip().lower() == 'valuable':
                         valuable_articles.append(article)
                     else:
                         skipped_articles.append(article)
@@ -894,9 +892,11 @@ class SummarizeMarketConditionsStage(ResearchDomainStage):
         async def summarize_chunk(prompt: str):
             async with sem:
                 logger.info(f"Summarizing chunk with {len(prompt.splitlines())} lines")
-                summary = await self.processor._gpt_client.generate_completion(
+                summary_result = await self.processor._gpt_client.generate_completion(
                     prompt=prompt,
-                    model=GPTModel.GPT_4O_MINI)
+                    model=GPTModel.GPT_4O_MINI
+                )
+                summary = summary_result.content
                 chunk_summaries.append(summary)
 
         for idx, chunk in enumerate(chunks):
@@ -916,10 +916,11 @@ class SummarizeMarketConditionsStage(ResearchDomainStage):
                 final_prompt += f"Summary {i}: {chunk_summary}\n"
 
             self._last_prompts.append(final_prompt)
-            return await self.processor._gpt_client.generate_completion(
+            summary_result = await self.processor._gpt_client.generate_completion(
                 prompt=final_prompt,
                 model=GPTModel.GPT_4O_MINI
             )
+            return summary_result.content
 
     def _chunk_articles(self, articles: List[Article], max_chunk_chars: int) -> List[List[Article]]:
         """Chunk articles to fit within token limits."""
@@ -967,12 +968,11 @@ class SummarizeStockNewsStage(ResearchDomainStage):
                     prompt = "\n".join(prompt_lines)
                     context.prompts['stock_news'][symbol] = prompt
 
-                    summary = await self.processor._gpt_client.generate_completion(
+                    summary_result = await self.processor._gpt_client.generate_completion(
                         prompt=prompt,
                         model=GPTModel.GPT_4O_MINI
                     )
-
-                    context.stock_news_summaries[symbol] = summary
+                    context.stock_news_summaries[symbol] = summary_result.content
                     result.items_processed += len(articles)
 
                 except Exception as e:
@@ -1001,12 +1001,11 @@ class SummarizeSectorAnalysisStage(ResearchDomainStage):
             )
             context.prompts['sector_analysis'] = prompt
 
-            summary = await self.processor._gpt_client.generate_completion(
+            summary_result = await self.processor._gpt_client.generate_completion(
                 prompt=prompt,
                 model=GPTModel.GPT_4O_MINI
             )
-
-            context.sector_analysis_summary = summary
+            context.sector_analysis_summary = summary_result.content
             result.items_processed = len(context.valuable_sector_articles)
 
         except Exception as e:

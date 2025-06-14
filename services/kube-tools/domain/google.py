@@ -88,22 +88,22 @@ class GmailEmailHeaders(Serializable):
         return self._headers
 
 
-class GmailQueryResult(Serializable):
+class GmailQueryResultModel(BaseModel, Serializable):
+    messages: List[Dict] = []
+    nextPageToken: Optional[str] = None  # Make this field optional and default to None
+    resultSizeEstimate: Optional[int] = 0
+
     @property
     def count(
         self
     ):
         return len(self.message_ids)
 
-    def __init__(
-        self,
-        data
+    @property
+    def message_ids(
+        self
     ):
-        self.messages = data.get('messages')
-        self.next_page_token = data.get('nextPageToken')
-        self.result_size_estimate = data.get('resultSizeEstimate')
-
-        self.message_ids = self._get_message_ids(
+        return self._get_message_ids(
             messages=self.messages)
 
     def _get_message_ids(
@@ -119,12 +119,11 @@ class GmailQueryResult(Serializable):
 
     @staticmethod
     def empty_result():
-        return GmailQueryResult(
-            data={
-                'messages': [],
-                'nextPageToken': None,
-                'resultSizeEstimate': 0
-            })
+        return GmailQueryResultModel(
+            messages=[],
+            nextPageToken=None,
+            resultSizeEstimate=0
+        )
 
 
 class GmailEmail(Serializable):
@@ -519,7 +518,7 @@ class GmailServiceRunResult(Serializable):
 
 
 class ProcessGmailRuleRequest(Serializable):
-    def __init__(
+    def __init(
         self,
         rule: GmailEmailRuleModel
     ):
@@ -559,26 +558,13 @@ class CreateEmailRuleRequestModel(BaseModel, Serializable):
         )
 
 
-# class DeleteGmailEmailRuleResponse(Serializable):
-#     def __init__(
-#         self,
-#         result: bool
-#     ):
-#         self.result = result
-
-
 class DeleteGmailEmailRuleResponseModel(BaseModel, Serializable):
     result: bool
 
 
-class GmailModifyEmailRequest(Serializable):
-    def __init__(
-        self,
-        add_label_ids: List = [],
-        remove_label_ids: List = []
-    ):
-        self.add_label_ids = add_label_ids
-        self.remove_label_ids = remove_label_ids
+class GmailModifyEmailRequestModel(BaseModel, Serializable):
+    add_label_ids: List[str] = []
+    remove_label_ids: List[str] = []
 
     def to_dict(self) -> Dict:
         return {

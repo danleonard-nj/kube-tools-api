@@ -1,7 +1,7 @@
 import asyncio
 
-from domain.google import (GmailEmail, GmailModifyEmailRequest,
-                           GmailQueryResult, GoogleClientScope,
+from domain.google import (GmailEmail, GmailModifyEmailRequestModel,
+                           GmailQueryResultModel, GoogleClientScope,
                            GoogleEmailLabel)
 from framework.concurrency import TaskCollection
 from framework.configuration import Configuration
@@ -29,10 +29,9 @@ class GmailClient:
             'base_url')
 
         # Use 24 as default concurrency
-        concurrency = configuration.gmail.get(
-            'concurrency', 24)
+        # concurrency = configuration.gmail.get('concurrency', 3)
 
-        self._semaphore = asyncio.Semaphore(concurrency)
+        self._semaphore = asyncio.Semaphore(3)
 
         ArgumentNullException.if_none_or_whitespace(
             self._base_url, 'base_url')
@@ -83,18 +82,16 @@ class GmailClient:
         endpoint = f'{self._base_url}/v1/users/me/messages/{message_id}'
 
         auth_headers = await self._get_auth_headers()
-        await self._semaphore.acquire()
+        async with self._semaphore:
 
-        message_response = await self._http_client.get(
-            url=endpoint,
-            headers=auth_headers)
-
-        self._semaphore.release()
+            message_response = await self._http_client.get(
+                url=endpoint,
+                headers=auth_headers)
+            message_response.raise_for_status()
 
         content = message_response.json()
 
-        return GmailEmail(
-            data=content)
+        return GmailEmail(data=content)
 
     async def get_messages(
         self,
@@ -125,15 +122,18 @@ class GmailClient:
         # Build endpoint with message
         endpoint = f'{self._base_url}/v1/users/me/messages/{message_id}/modify'
 
-        modify_request = GmailModifyEmailRequest(
+        modify_request = GmailModifyEmailRequestModel(
             add_label_ids=to_add,
             remove_label_ids=to_remove)
 
         auth_headers = await self._get_auth_headers()
-        query_result = await self._http_client.post(
-            url=endpoint,
-            json=modify_request.to_dict(),
-            headers=auth_headers)
+
+        async with self._semaphore:
+            query_result = await self._http_client.post(
+                url=endpoint,
+                json=modify_request.to_dict(),
+                headers=auth_headers)
+            query_result.raise_for_status()
 
         logger.info(f'Modify tag status: {query_result.status_code}')
 
@@ -155,16 +155,17 @@ class GmailClient:
             GoogleEmailLabel.Unread
         ]
 
-        return await self.modify_tags(
-            message_id=message_id,
-            to_remove=remove_labels)
+        async with self._semaphore:
+            return await self.modify_tags(
+                message_id=message_id,
+                to_remove=remove_labels)
 
     async def search_inbox(
         self,
         query: str,
         max_results: int = None,
         page_token: str = None
-    ) -> GmailQueryResult:
+    ) -> GmailQueryResultModel:
 
         ArgumentNullException.if_none_or_whitespace(
             query, 'query')
@@ -196,8 +197,6 @@ class GmailClient:
 
         if not any(content.get('messages', [])):
             logger.info(f'No results for query: {query}')
-            return GmailQueryResult.empty_result()
+            return GmailQueryResultModel.empty_result()
 
-        response = GmailQueryResult(
-            data=content)
-        return response
+        return GmailQueryResultModel.model_validate(content)

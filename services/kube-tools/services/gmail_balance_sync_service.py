@@ -1,6 +1,7 @@
 import re
 from typing import List
 
+from clients.gpt_client import GPTClient
 from domain.bank import (BALANCE_EMAIL_EXCLUSION_KEYWORDS,
                          BALANCE_EMAIL_INCLUSION_KEYWORDS,
                          CAPITAL_ONE_QUICKSILVER, CAPITAL_ONE_SAVOR,
@@ -16,8 +17,8 @@ from domain.google import (GmailEmail, GmailEmailRuleModel,
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from framework.logger import get_logger
+from models.bank_config import BankingConfig
 from services.bank_service import BankService
-from services.chat_gpt_service import ChatGptService
 from utilities.utils import fire_task
 
 logger = get_logger(__name__)
@@ -26,17 +27,18 @@ logger = get_logger(__name__)
 class GmailBankSyncService:
     def __init__(
         self,
-        configuration: Configuration,
         bank_service: BankService,
-        chat_gpt_service: ChatGptService,
         cache_client: CacheClientAsync,
+        gpt_client: GPTClient,
+        banking_config: BankingConfig,
     ):
         self._bank_service = bank_service
-        self._chat_gpt_service = chat_gpt_service
         self._cache_client = cache_client
 
-        self._bank_rules = configuration.banking.get(
-            'rules')
+        self._gpt_client = gpt_client
+
+        # TODO: This probably doesn't belong in this config or in this service?
+        self._model = banking_config.balance_sync_gpt_model
 
     async def handle_balance_sync(
         self,
@@ -89,8 +91,7 @@ class GmailBankSyncService:
                 if gpt_result.usage > 0:
                     total_tokens += gpt_result.usage
 
-                if (gpt_result.is_success
-                        and gpt_result.balance != DEFAULT_BALANCE):
+                if (gpt_result.is_success and gpt_result.balance != DEFAULT_BALANCE):
                     balance = gpt_result.balance
                     break
 
@@ -183,21 +184,21 @@ class GmailBankSyncService:
         balance_prompt: str
     ) -> ChatGptBalanceCompletion:
 
-        key = CacheKey.chat_gpt_response_by_balance_prompt(
-            balance_prompt=balance_prompt)
+        # key = CacheKey.chat_gpt_response_by_balance_prompt(
+        #     balance_prompt=balance_prompt)
 
-        logger.info(f'GPT balance completion prompt cache key: {key}')
+        # logger.info(f'GPT balance completion prompt cache key: {key}')
 
-        cached_response = await self._cache_client.get_json(
-            key=key)
+        # cached_response = await self._cache_client.get_json(
+        #     key=key)
 
-        # Use cached balance completion if available
-        if cached_response is not None:
-            logger.info(f'Using cached GPT balance completion prompt: {cached_response}')
+        # # Use cached balance completion if available
+        # if cached_response is not None:
+        #     logger.info(f'Using cached GPT balance completion prompt: {cached_response}')
 
-            return ChatGptBalanceCompletion.from_balance_response(
-                balance=cached_response.get('balance'),
-                usage=cached_response.get('usage'))
+        #     return ChatGptBalanceCompletion.from_balance_response(
+        #         balance=cached_response.get('balance'),
+        #         usage=cached_response.get('usage'))
 
         # Max 5 attempts to parse balance from string
         for attempt in range(5):
@@ -207,16 +208,21 @@ class GmailBankSyncService:
 
                 # Submit the prompt to GPT and get the response
                 # and tokens used
-                balance, usage = await self._chat_gpt_service.get_chat_completion(
+                completion_result = await self._gpt_client.generate_completion(
+                    model=self._model,
                     prompt=balance_prompt)
+                logger.info(f'GPT response balance: {completion_result}')
+
+                balance = completion_result.content
+                usage = completion_result.tokens
 
                 logger.info(f'GPT response balance / usage: {balance} : {usage}')
 
-                # Fire the cache task
-                self._fire_cache_gpt_response(
-                    key=key,
-                    balance=balance,
-                    usage=usage)
+                # # Fire the cache task
+                # self._fire_cache_gpt_response(
+                #     key=key,
+                #     balance=balance,
+                #     usage=usage)
 
                 logger.info(f'Breaking from GPT loop')
                 break

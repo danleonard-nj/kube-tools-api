@@ -1,5 +1,4 @@
 from clients.azure_gateway_client import AzureGatewayClient
-from clients.chat_gpt_service_client import ChatGptServiceClient
 from clients.coinbase_client import CoinbaseClient, CoinbaseRESTClient
 from clients.email_gateway_client import EmailGatewayClient
 from clients.event_client import EventClient
@@ -51,6 +50,7 @@ from httpx import AsyncClient
 from models.bank_config import BankingConfig, PlaidConfig
 from models.coinbase_models import CoinbaseConfig
 from models.email_config import EmailConfig
+from models.openai_config import OpenAIConfig
 from models.podcast_config import PodcastConfig
 from models.robinhood_models import RobinhoodConfig
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -62,7 +62,6 @@ from services.bank_balance_service import BalanceSyncService
 from services.bank_service import BankService
 from services.bank_transaction_service import BankTransactionService
 from services.calendar_service import CalendarService
-from services.chat_gpt_service import ChatGptService
 from services.coinbase_service import CoinbaseService
 from services.conversation_service import ConversationService
 from services.event_service import EventService
@@ -187,6 +186,12 @@ def register_configs(descriptors):
         factory=lambda p: BankingConfig.model_validate(
             p.resolve(Configuration).banking)),
 
+    # Register custom OpenAI service config
+    descriptors.add_singleton(
+        dependency_type=OpenAIConfig,
+        factory=lambda p: OpenAIConfig.model_validate(
+            p.resolve(Configuration).openai)),
+
 
 def register_gmail_services(
     descriptors: ServiceCollection
@@ -215,7 +220,6 @@ def register_clients(
     descriptors.add_singleton(GoogleSearchClient)
     descriptors.add_singleton(EventClient)
     descriptors.add_singleton(GmailClient)
-    descriptors.add_singleton(ChatGptServiceClient)
     descriptors.add_singleton(PlaidClient)
     descriptors.add_singleton(OpenWeatherClient)
     descriptors.add_singleton(TorrentClient)
@@ -273,7 +277,6 @@ def register_services(
     descriptors.add_singleton(CalendarService)
     descriptors.add_singleton(RedisService)
     descriptors.add_singleton(GoogleDriveService)
-    descriptors.add_singleton(ChatGptService)
     descriptors.add_singleton(ConversationService)
     descriptors.add_singleton(CoinbaseService)
     descriptors.add_singleton(AndroidService)
