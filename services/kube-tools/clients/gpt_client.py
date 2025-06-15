@@ -1,13 +1,16 @@
+from enum import Enum, StrEnum
 import hashlib
 import openai
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
-from typing import List, Dict
+from typing import Any, List, Dict, Literal, Optional, Union
 
 from framework.logger import get_logger
 from pydantic import BaseModel
 
+from domain.gpt import GPTModel
 from models.openai_config import OpenAIConfig
+from openai.types.responses import ResponseIncludable
 
 logger = get_logger(__name__)
 
@@ -20,6 +23,61 @@ def md5(text: str) -> str:
 class CompletionResultModel(BaseModel):
     content: str
     tokens: int
+
+
+class ToolOutputAnnotation(BaseModel):
+    type: str
+    start_index: int
+    end_index: int
+    url: str
+    title: Optional[str] = None
+
+
+class ToolOutputContent(BaseModel):
+    type: str
+    text: Optional[str] = None
+    annotations: Optional[List[ToolOutputAnnotation]] = None
+
+
+class AssistantMessage(BaseModel):
+    id: str
+    type: Literal["message"]
+    role: str
+    status: str
+    content: List[ToolOutputContent]
+
+
+class ToolCall(BaseModel):
+    id: str
+    type: str
+    status: str
+
+
+ResponseOutput = Union[AssistantMessage, ToolCall]
+
+
+class ResponsesAPIResult(BaseModel):
+    id: str
+    model: str
+    status: str
+    output: List[ResponseOutput]
+    usage: Optional[Dict[str, Any]] = None
+    created_at: Optional[float] = None
+    tools: Optional[List[Dict[str, Any]]] = None
+
+
+class GptResponseToolType(StrEnum):
+    WEB_SEARCH_PREVIEW = "web_search_preview"
+    FILE_SEARCH = "file_search"
+    COMPUTER_USE = "computer_use"
+    CODE_INTERPRETER = "code_interpreter"
+    RETRIEVAL = "retrieval"
+    FUNCTION = "function"
+    IMAGE_GENERATION = "image_generation"
+    IMAGE_EDITING = "image_editing"
+    TEXT_TO_SPEECH = "text_to_speech"
+    TEXT_GENERATION = "text_generation"
+    BROWSER = "browser"
 
 
 class GPTClient:
@@ -40,9 +98,15 @@ class GPTClient:
 
         self.count = 0
 
-    async def generate_completion(self, prompt: str, model: str = "gpt-4o-mini",
-                                  temperature: float = 0.7, use_cache: bool = True,
-                                  cache_ttl: int = 3600) -> CompletionResultModel:
+    async def generate_completion(
+        self,
+        prompt: str,
+        model: str = GPTModel.GPT_4O_MINI,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        use_cache: bool = True,
+        cache_ttl: int = 3600
+    ) -> CompletionResultModel:
         """
         Generate a completion from the GPT model with optional caching
         Returns a CompletionResultModel.
@@ -56,12 +120,23 @@ class GPTClient:
                 # If cached, we don't know token count, so set to 0 or estimate if needed
                 return CompletionResultModel(content=cached_response, tokens=0)
 
+        messages = [{
+            'role': 'user',
+            'content': prompt
+        }]
+
+        if system_prompt:
+            messages.insert(0, {
+                'role': 'system',
+                'content': system_prompt
+            })
+
         # Generate new response
         logger.info(f"Generating new response using {model}: {prompt[:25]}...")
         try:
             response = await self._client.chat.completions.create(
                 model=model,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
                 temperature=temperature
             )
             content = response.choices[0].message.content.strip()
@@ -78,6 +153,60 @@ class GPTClient:
             return CompletionResultModel(content=content, tokens=tokens)
         except Exception as e:
             logger.error(f"Error generating completion with {model}: {str(e)}")
+            raise
+
+    async def generate_response(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        model: str = "gpt-4o",
+        use_all_tools: bool = False,
+        custom_tools: Optional[List[Dict[Literal['type'], GptResponseToolType]]] = None,
+        temperature: float = 1.0,
+        use_cache: bool = False,
+        cache_ttl: int = 3600
+    ) -> ResponsesAPIResult:
+        if use_cache and self._cache_client:
+            cached = await self._get_cached_response(input, model)
+            if cached:
+                logger.info(f"Using cached response for {model} input")
+                return ResponsesAPIResult.model_validate(cached)
+
+        tools = custom_tools or []
+
+        if use_all_tools:
+            tools = [
+                {"type": GptResponseToolType.WEB_SEARCH_PREVIEW},
+                {"type": GptResponseToolType.FILE_SEARCH},
+                {"type": GptResponseToolType.COMPUTER_USE},
+                {"type": GptResponseToolType.CODE_INTERPRETER},
+                {"type": GptResponseToolType.RETRIEVAL},
+                {"type": GptResponseToolType.FUNCTION},
+                {"type": GptResponseToolType.IMAGE_GENERATION},
+                {"type": GptResponseToolType.IMAGE_EDITING},
+                {"type": GptResponseToolType.TEXT_TO_SPEECH},
+                {"type": GptResponseToolType.TEXT_GENERATION},
+                {"type": GptResponseToolType.BROWSER}
+            ]
+
+        logger.info(f"Calling responses.create with tools={tools}")
+        try:
+            response = await self._client.responses.create(
+                model=model,
+                input=prompt,
+                instructions=system_prompt,
+                tools=tools,
+                temperature=temperature
+            )
+
+            parsed = response.model_dump()
+
+            if use_cache and self._cache_client:
+                await self._cache_response(input, parsed, model, cache_ttl)
+
+            return ResponsesAPIResult.model_validate(parsed)
+        except Exception as e:
+            logger.error(f"Error during responses.create: {str(e)}")
             raise
 
     async def _get_cached_response(self, prompt: str, model: str):
@@ -107,28 +236,28 @@ class GPTClient:
             ttl=ttl
         )
 
-    async def generate_response(
-        self,
-        input: str,
-        model: str = "gpt-4o",
-        tools: List[Dict] = None,
-        temperature: float = 1.0,
-        use_cache: bool = False,
-        cache_ttl: int = 3600
-    ) -> dict:
-        """
-        Generate a response with integrated tools via the responses.create endpoint.
-        """
-        tools = tools or []
-        logger.info(f"Generating response using {model} with tools: {tools}")
-        try:
-            response = await self._client.responses.create(
-                model=model,
-                input=input,
-                tools=tools,
-                temperature=temperature
-            )
-            return response
-        except Exception as e:
-            logger.error(f"Error generating response with {model} and tools: {str(e)}")
-            raise
+    # async def generate_response(
+    #     self,
+    #     input: str,
+    #     model: str = "gpt-4o",
+    #     tools: List[Dict] = None,
+    #     temperature: float = 1.0,
+    #     use_cache: bool = False,
+    #     cache_ttl: int = 3600
+    # ) -> dict:
+    #     """
+    #     Generate a response with integrated tools via the responses.create endpoint.
+    #     """
+    #     tools = tools or []
+    #     logger.info(f"Generating response using {model} with tools: {tools}")
+    #     try:
+    #         response = await self._client.responses.create(
+    #             model=model,
+    #             input=input,
+    #             tools=tools,
+    #             temperature=temperature
+    #         )
+    #         return response
+    #     except Exception as e:
+    #         logger.error(f"Error generating response with {model} and tools: {str(e)}")
+    #         raise

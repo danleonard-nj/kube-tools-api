@@ -128,3 +128,32 @@ class CalendarEvent(Serializable):
             reminders=data.get('reminders'),
             extended_properties=data.get('extendedProperties'),
             recurring_event_id=data.get('recurringEventId'))
+
+
+SAMPLE_CALENDAR_EVENT_JSON = '''
+{
+  "summary": "Doctor Appointment",
+  "location": "Location of the event",
+  "description": "Description of the event",
+  "start": {
+    "dateTime": "2025-06-14T18:00:00-04:00",
+    "timeZone": "America/New_York"
+  },
+  "end": {
+    "dateTime": "2025-06-14T19:00:00-04:00",
+    "timeZone": "America/New_York"
+  },
+  "attendees": [
+    { "email": "sample@sample.com", "displayName": "Sample Person", "optional": false }
+  ],
+  "reminders": {
+    "useDefault": false,
+    "overrides": [
+      { "method": "popup", "minutes": 15 },
+    ]
+  },
+  "visibility": "default",
+  "status": "confirmed"
+}
+
+'''

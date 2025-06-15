@@ -14,6 +14,15 @@ import unicodedata
 logger = get_logger(__name__)
 
 
+def strip_json_backticks(json_str: str) -> str:
+    """
+    Strips backticks from the start and end of a JSON string.
+    """
+    if '```' in json_str:
+        json_str = json_str.replace('```json', '').replace('```', '')
+    return json_str.strip()
+
+
 def parse_timestamp(
     value: Union[str, int, datetime]
 ) -> Union[int, None]:

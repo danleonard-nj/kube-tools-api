@@ -62,18 +62,10 @@ class GoogleAuthService:
         logger.info(f"Saved client '{client_name}' with fresh token")
         return True
 
-    async def get_token(self, client_name: str, scopes: list[str]) -> str:
-        """Get a token for the specified client and scopes"""
+    async def _get_and_refresh_credentials(self, client_name: str, scopes: list[str]) -> Credentials:
+        """Fetch and refresh credentials as needed, shared by get_token and get_credentials."""
         ArgumentNullException.if_none_or_whitespace(client_name, "client_name")
         ArgumentNullException.if_none(scopes, "scopes")
-        # Try cache first
-        cache_key = f"google_auth:{client_name}:{'-'.join(sorted(scopes))}"
-        cached_token = await self._cache.get_cache(key=cache_key)
-        if cached_token:
-            # Optionally, you could decode the JWT and check expiry, but Google tokens are opaque.
-            # So, we rely on cache TTL. If you want to be extra safe, always refresh if in doubt.
-            return cached_token
-
         # Get stored credentials from database
         stored_creds = await self._repo.get_client(client_name)
         if not stored_creds:
@@ -104,8 +96,25 @@ class GoogleAuthService:
             await self._repo.set_client(updated_creds)
         else:
             logger.info(f"[GoogleAuthService] Using valid token from DB for '{client_name}' (first 8: {str(creds.token)[:8]})")
+        return creds
 
+    async def get_token(self, client_name: str, scopes: list[str]) -> str:
+        """Get a token for the specified client and scopes"""
+        ArgumentNullException.if_none_or_whitespace(client_name, "client_name")
+        ArgumentNullException.if_none(scopes, "scopes")
+        # Try cache first
+        cache_key = f"google_auth:{client_name}:{'-'.join(sorted(scopes))}"
+        cached_token = await self._cache.get_cache(key=cache_key)
+        if cached_token:
+            # Optionally, you could decode the JWT and check expiry, but Google tokens are opaque.
+            # So, we rely on cache TTL. If you want to be extra safe, always refresh if in doubt.
+            return cached_token
+
+        creds = await self._get_and_refresh_credentials(client_name, scopes)
         # Cache the token for 50 minutes (10 min before expiry)
         await self._cache.set_cache(key=cache_key, value=creds.token, ttl=60)
-
         return creds.token
+
+    async def get_credentials(self, client_name: str, scopes: list[str]) -> Credentials:
+        """Get the Credentials object for the specified client and scopes, refreshing if needed."""
+        return await self._get_and_refresh_credentials(client_name, scopes)

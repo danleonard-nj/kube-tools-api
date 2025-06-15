@@ -48,6 +48,7 @@ from framework.di.service_collection import ServiceCollection
 from framework.di.static_provider import ProviderBase
 from httpx import AsyncClient
 from models.bank_config import BankingConfig, PlaidConfig
+from models.calendar_models import CalendarConfig
 from models.coinbase_models import CoinbaseConfig
 from models.email_config import EmailConfig
 from models.openai_config import OpenAIConfig
@@ -150,6 +151,18 @@ def register_factories(
 
 
 def register_configs(descriptors):
+    def register_config(
+        config_type: type,
+        config_name: str
+    ):
+        def resolve_func(provider): return (
+            config_type.model_validate(
+                getattr(provider.resolve(Configuration), config_name)))
+
+        descriptors.add_singleton(
+            dependency_type=config_type,
+            factory=resolve_func)
+
     # Register custom podcast service configuration
     descriptors.add_singleton(
         dependency_type=PodcastConfig,
@@ -191,6 +204,8 @@ def register_configs(descriptors):
         dependency_type=OpenAIConfig,
         factory=lambda p: OpenAIConfig.model_validate(
             p.resolve(Configuration).openai)),
+
+    register_config(CalendarConfig, 'calendar')
 
 
 def register_gmail_services(
