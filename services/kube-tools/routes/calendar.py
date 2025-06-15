@@ -1,9 +1,11 @@
 from pydantic import BaseModel
 from domain.auth import AuthPolicy
 from framework.rest.blueprints.meta import MetaBlueprint
-from quart import request
+from quart import request, jsonify
 from models.calendar_models import GoogleCalendarEvent
 from services.calendar_service import CalendarService
+from typing import Optional
+import base64
 
 calendar_bp = MetaBlueprint('calendar_bp', __name__)
 
@@ -37,33 +39,42 @@ async def sync_calendar_events(container):
     return await service.sync_calendar_events()
 
 
-class CalendarEventPromptRequest(BaseModel):
-    prompt: str
+class CalendarEventRequest(BaseModel):
+    prompt: Optional[str] = None
+    image_base64: Optional[str] = None
+    text: Optional[str] = None
 
 
 @calendar_bp.configure('/api/calendar/prompt', methods=['POST'], auth_scheme=AuthPolicy.Default)
-async def post_calendar_prompt(container):
+async def create_calendar_event_from_prompt(container):
+    """
+    Create a calendar event from a text prompt only.
+    Accepts JSON: {"prompt": ...}
+    """
     service: CalendarService = container.resolve(CalendarService)
-
     data = await request.get_json()
+    model = CalendarEventRequest.model_validate(data)
 
-    model = CalendarEventPromptRequest.model_validate(data)
+    image_bytes = None
+    if model.image_base64:
+        # Decode the base64 image
+        try:
+            image_bytes = base64.b64decode(model.image_base64)
+            model.image_base64 = image_bytes
+        except Exception as e:
+            return jsonify({"error": "Invalid base64 image"}), 400
 
-    result = await service.generate_calendar_json_from_prompt(
-        prompt=model.prompt)
-
-    return result.model_dump()
+    event = await service.create_event_from_input(
+        prompt=model.prompt,
+        image_bytes=image_bytes)
+    return event
 
 
 @calendar_bp.configure('/api/calendar/save', methods=['POST'], auth_scheme=AuthPolicy.Default)
 async def post_calendar_save(container):
     service: CalendarService = container.resolve(CalendarService)
-
     data = await request.get_json()
-
     model = GoogleCalendarEvent.model_validate(data)
-
     result = await service.create_calendar_event(
         event=model)
-
     return result
