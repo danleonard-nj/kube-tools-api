@@ -34,7 +34,7 @@ def get_calendar_system_prompt(locality: str) -> str:
     Your task is to create a JSON object that represents a Google Calendar event.
     If the location provided is vague or incomplete, use web_search to resolve the full address before generating the JSON event.
     The JSON object must look exactly like this:
-    {{SAMPLE_CALENDAR_EVENT_JSON}}
+    {SAMPLE_CALENDAR_EVENT_JSON}
 
     Respond ONLY with a JSON object.
     DO NOT include:
