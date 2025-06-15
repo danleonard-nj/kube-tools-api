@@ -27,3 +27,5 @@ markdown
 sib_api_v3_sdk
 coinbase-advanced-py
 pydantic[email]
+python-multipart
+aiofiles

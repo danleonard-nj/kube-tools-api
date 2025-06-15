@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from typing import Optional
 
 from clients.gpt_client import GPTClient, GptResponseToolType
 from data.google.google_calendar_repository import GooleCalendarEventRepository
@@ -27,6 +28,52 @@ def ensure_datetime(
     return parser.parse(value)
 
 
+def get_calendar_system_prompt(locality: str) -> str:
+    return f'''
+    You are a helpful assistant that generates Google Calendar events based on user input.
+    Your task is to create a JSON object that represents a Google Calendar event.
+    If the location provided is vague or incomplete, use web_search to resolve the full address before generating the JSON event.
+    The JSON object must look exactly like this:
+    {{SAMPLE_CALENDAR_EVENT_JSON}}
+
+    Respond ONLY with a JSON object.
+    DO NOT include:
+    - Markdown formatting (e.g. triple backticks)
+    - Commentary
+    - Headings
+    - Explanations
+    - Anything outside the raw JSON object
+
+    The first character of your reply must be '{{'. The last character must be '}}'. Nothing should appear before or after the JSON.
+    '''
+
+
+def get_calendar_user_prompt(locality: str, text: str = None, has_image: bool = False) -> str:
+    event_line = f"Event: {text}\n" if text else ""
+    base = (
+        """
+    Create a Google Calendar event from the following details:
+
+    """
+        + event_line +
+        f"User locality (for search reference if search is required): {locality}\n"
+        """
+    The recurrence IS NOT required, BUT if the user specifies it, it SHOULD BE included in the form of an an RRULE PARAMETER.
+    IF you are UNSURE of how to create an RRULE parameter, DO A WEB SEARCH to LEARN the syntax
+
+    Instructions:
+    - Fill in the JSON calendar object accordingly.
+    - You MUST include the user's name/email in the attendees field.
+    - You MUST add all reminder times as popup overrides.
+    - Do not include recurrence, conferenceData, or unused nulls if possible.
+    - Output ONLY the JSON object — no Markdown, no commentary, no headings.
+    """
+    )
+    if has_image:
+        base += '\nIf an image is provided, extract all relevant event details from the image as well as the text.'
+    return base
+
+
 class CalendarService:
     def __init__(
         self,
@@ -52,68 +99,21 @@ class CalendarService:
         self,
         prompt: str
     ) -> GoogleCalendarEvent:
-
-        base_prompt = prompt.strip()
         locality = self._config.preferences.get('home', 'New Jersey')
-
-        system_prompt = f'''
-        You are a helpful assistant that generates Google Calendar events based on user input.
-        Your task is to create a JSON object that represents a Google Calendar event.
-        If the location provided is vague or incomplete, use web_search to resolve the full address before generating the JSON event.
-        The JSON object must look exactly like this:
-        {SAMPLE_CALENDAR_EVENT_JSON}
-
-        Respond ONLY with a JSON object.
-        DO NOT include:
-        - Markdown formatting (e.g. triple backticks)
-        - Commentary
-        - Headings
-        - Explanations
-        - Anything outside the raw JSON object
-
-        The first character of your reply must be '{'. The last character must be '}'. Nothing should appear before or after the JSON.
-        '''
-
-        prompt = f'''
-        Create a Google Calendar event from the following details:
-
-        Event:
-        - Appointment: Neurology appointment
-        - Date: July 17, 2025
-        - Time: 9:45 AM
-        - Location: Cooper Hospital, Camden, NJ
-
-        User locality (for search reference if search is required): {locality}
-        
-        The recurrence IS NOT required, BUT if the user specifies it, it SHOULD BE included in the form
-        of an an RRULE PARAMETER.
-        IF you are UNSURE of how to create an RRULE parameter, DO A WEB SEARCH to LEARN the syntax
-
-        Instructions:
-        - Fill in the JSON calendar object accordingly.
-        - You MUST include the user's name/email in the attendees field.
-        - You MUST add all reminder times as popup overrides.
-        - Do not include recurrence, conferenceData, or unused nulls if possible.
-        - Output ONLY the JSON object — no Markdown, no commentary, no headings.
-        '''
-
+        system_prompt = get_calendar_system_prompt(locality)
+        user_prompt = get_calendar_user_prompt(locality, prompt)
         result = await self._gpt_client.generate_response(
-            prompt=base_prompt,
+            prompt=user_prompt,
             system_prompt=system_prompt,
             model=GPTModel.GPT_4O,
             custom_tools=[{'type': GptResponseToolType.WEB_SEARCH_PREVIEW}],
             temperature=0.0,
         )
-
-        # Grab the last message (first one or many could be web searches)
         content = result.output[-1].content[0].text
-
         stripped = strip_json_backticks(content)
-
         model = GoogleCalendarEvent.model_validate_json(
             stripped,
             strict=True)
-
         model.attendees = [
             Attendee(
                 email=self._config.preferences.get('email'),
@@ -129,7 +129,6 @@ class CalendarService:
                 ReminderOverride(method='popup', minutes=60 * 24),
             ]
         )
-
         return model
 
     async def create_calendar_event(
@@ -283,3 +282,92 @@ class CalendarService:
 
         logger.info(f'Event created: {created_event.get("id")}, summary: {created_event.get("summary")})')
         return created_event
+
+    async def create_event_from_image(self, image_bytes: bytes, text: Optional[str] = None) -> dict:
+        """
+        Process image (and optional text), send to ChatGPT, and create a calendar event.
+        Accepts image as bytes (from base64 decode).
+        """
+        locality = self._config.preferences.get('home', 'New Jersey')
+        system_prompt = get_calendar_system_prompt(locality)
+        user_prompt = get_calendar_user_prompt(locality, text, has_image=True)
+        gpt_result = await self._gpt_client.generate_response_with_image_and_tools(
+            image_bytes=image_bytes,
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            model=GPTModel.GPT_4O,
+            temperature=0.0,
+            custom_tools=[{'type': GptResponseToolType.WEB_SEARCH_PREVIEW}]
+        )
+        try:
+            event_data = GoogleCalendarEvent.model_validate_json(gpt_result)
+        except Exception as e:
+            logger.error(f"Failed to parse event from GPT: {e}")
+            return {"error": "Failed to parse event from GPT response."}
+        created_event = await self.create_calendar_event(event_data)
+        return {"event": created_event}
+
+    def _populate_event_defaults(self, event):
+        """
+        Helper to set attendees and reminders on a GoogleCalendarEvent.
+        """
+        event.attendees = [
+            Attendee(
+                email=self._config.preferences.get('email'),
+                displayName=self._config.preferences.get('name'),
+                optional=False
+            )
+        ]
+        event.reminders = Reminders(
+            useDefault=False,
+            overrides=[
+                ReminderOverride(method='popup', minutes=15),
+                ReminderOverride(method='popup', minutes=60),
+                ReminderOverride(method='popup', minutes=60 * 24),
+            ]
+        )
+        return event
+
+    async def create_event_from_input(self, prompt: Optional[str] = None, image_bytes: Optional[bytes] = None, text: Optional[str] = None) -> dict:
+        """
+        Create a calendar event from a prompt, an image, or both.
+        - If image_bytes is provided, uses image+text logic.
+        - If only prompt is provided, uses prompt logic.
+        - If neither, returns an error.
+        """
+        locality = self._config.preferences.get('home', 'New Jersey')
+        if image_bytes:
+            # Use image+text logic
+            system_prompt = get_calendar_system_prompt(locality)
+            user_prompt = get_calendar_user_prompt(locality, text or prompt, has_image=True)
+            gpt_result = await self._gpt_client.generate_response_with_image_and_tools(
+                image_bytes=image_bytes,
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                model=GPTModel.GPT_4O,
+                temperature=0.0,
+                custom_tools=[{'type': GptResponseToolType.WEB_SEARCH_PREVIEW}]
+            )
+            event_data = GoogleCalendarEvent.model_validate_json(gpt_result)
+            self._populate_event_defaults(event_data)
+            # created_event = await self.create_calendar_event(event_data)
+            return event_data.model_dump()
+        elif prompt:
+            # Use prompt logic
+            system_prompt = get_calendar_system_prompt(locality)
+            user_prompt = get_calendar_user_prompt(locality, prompt)
+            result = await self._gpt_client.generate_response(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                model=GPTModel.GPT_4O,
+                custom_tools=[{'type': GptResponseToolType.WEB_SEARCH_PREVIEW}],
+                temperature=0.0,
+            )
+            content = result.output[-1].content[0].text
+            stripped = strip_json_backticks(content)
+            model = GoogleCalendarEvent.model_validate_json(stripped, strict=True)
+            self._populate_event_defaults(model)
+            # created_event = await self.create_calendar_event(model)
+            return model.model_dump()
+        else:
+            return {"error": "No valid input provided. Supply either image_bytes or prompt."}
