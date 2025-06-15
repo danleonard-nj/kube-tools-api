@@ -30,7 +30,7 @@ def ensure_datetime(
 
 def get_calendar_system_prompt(locality: str) -> str:
     return f'''
-    You are a helpful assistant that generates Google Calendar events based on user input.
+    You are a helpful assistant that generates JSON Google Calendar events based on user input.
     Your task is to create a JSON object that represents a Google Calendar event.
     If the location provided is vague or incomplete, use web_search to resolve the full address before generating the JSON event.
     The JSON object must look exactly like this:
@@ -63,9 +63,8 @@ def get_calendar_user_prompt(locality: str, text: str = None, has_image: bool = 
 
     Instructions:
     - Fill in the JSON calendar object accordingly.
-    - You MUST include the user's name/email in the attendees field.
-    - You MUST add all reminder times as popup overrides.
-    - Do not include recurrence, conferenceData, or unused nulls if possible.
+    - Ensure you use a useful title for the event
+    - Additional requests from the user should be included in the description field
     - Output ONLY the JSON object — no Markdown, no commentary, no headings.
     """
     )
