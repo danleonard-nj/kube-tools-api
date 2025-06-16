@@ -55,18 +55,9 @@ async def create_calendar_event_from_prompt(container):
     data = await request.get_json()
     model = CalendarEventRequest.model_validate(data)
 
-    image_bytes = None
-    if model.image_base64:
-        # Decode the base64 image
-        try:
-            image_bytes = base64.b64decode(model.image_base64)
-            model.image_base64 = image_bytes
-        except Exception as e:
-            return jsonify({"error": "Invalid base64 image"}), 400
-
     event = await service.create_event_from_input(
         prompt=model.prompt,
-        image_bytes=image_bytes)
+        image_bytes=model.image_base64)
     return event
 
 

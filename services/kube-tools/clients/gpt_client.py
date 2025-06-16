@@ -230,17 +230,13 @@ class GPTClient:
         content = response.choices[0].message.content.strip()
         return content
 
-    async def generate_response_with_image_and_tools(self, image_bytes: bytes, prompt: str, system_prompt: str = None, model: str = "gpt-4o", temperature: float = 1.0, custom_tools: list = None) -> str:
+    async def generate_response_with_image_and_tools(self, image_bytes: str, prompt: str, system_prompt: str = None, model: str = "gpt-4o", temperature: float = 1.0, custom_tools: list = None) -> str:
         """
         Send an image and prompt (with optional system prompt and tools) to GPT and return the response content as string.
         Detects image type for correct MIME.
         Only includes tools if a valid function tool is provided.
         """
-        import base64
-        import imghdr
-        image_b64 = base64.b64encode(image_bytes).decode('utf-8')
-        image_type = imghdr.what(None, h=image_bytes) or 'jpeg'
-        mime_type = f"image/{'jpeg' if image_type == 'jpg' else image_type}"
+
         messages = []
         if system_prompt:
             messages.append({'role': 'system', 'content': system_prompt})
@@ -248,10 +244,10 @@ class GPTClient:
             'role': 'user',
             'content': [
                 {'type': 'text', 'text': prompt},
-                {'type': 'image_url', 'image_url': {'url': f'data:{mime_type};base64,{image_b64}'}}
+                {'type': 'image_url', 'image_url': {'url': image_bytes}}
             ]
         })
-        logger.info(f"Sending image, prompt, and tools to GPT: {prompt[:25]}... (MIME: {mime_type})")
+        logger.info(f"Sending image, prompt, and tools to GPT")
         kwargs = dict(model=model, messages=messages, temperature=temperature)
         # Only include tools if a valid function tool is provided
         if custom_tools and any('function' in t for t in custom_tools):
@@ -286,29 +282,3 @@ class GPTClient:
             {'content': response},
             ttl=ttl
         )
-
-    # async def generate_response(
-    #     self,
-    #     input: str,
-    #     model: str = "gpt-4o",
-    #     tools: List[Dict] = None,
-    #     temperature: float = 1.0,
-    #     use_cache: bool = False,
-    #     cache_ttl: int = 3600
-    # ) -> dict:
-    #     """
-    #     Generate a response with integrated tools via the responses.create endpoint.
-    #     """
-    #     tools = tools or []
-    #     logger.info(f"Generating response using {model} with tools: {tools}")
-    #     try:
-    #         response = await self._client.responses.create(
-    #             model=model,
-    #             input=input,
-    #             tools=tools,
-    #             temperature=temperature
-    #         )
-    #         return response
-    #     except Exception as e:
-    #         logger.error(f"Error generating response with {model} and tools: {str(e)}")
-    #         raise
