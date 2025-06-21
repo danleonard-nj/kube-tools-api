@@ -1,21 +1,17 @@
-from typing import List, Dict, Any
 from datetime import datetime
-import html
-import json
-from typing import List, Optional, Dict, Any
+
 import feedparser
-from librosa import time_to_frames
-from pydantic import BaseModel
+from clients.gpt_client import GPTClient
+from domain.gpt import GPTModel
 from framework.clients.cache_client import CacheClientAsync
 from framework.logger import get_logger
-from clients.gpt_client import GPTClient
-from sib_api_v3_sdk import ApiClient, Configuration as SibConfiguration
-from sib_api_v3_sdk.api.transactional_emails_api import TransactionalEmailsApi
-from sib_api_v3_sdk.models import SendSmtpEmail
-from domain.gpt import GPTModel
 from models.email_config import EmailConfig
 from models.ts_models import FeedEntry, TruthSocialConfig
 from services.truthsocial.email_generator import generate_truth_social_email
+from sib_api_v3_sdk import ApiClient
+from sib_api_v3_sdk import Configuration as SibConfiguration
+from sib_api_v3_sdk.api.transactional_emails_api import TransactionalEmailsApi
+from sib_api_v3_sdk.models import SendSmtpEmail
 
 logger = get_logger(__name__)
 
