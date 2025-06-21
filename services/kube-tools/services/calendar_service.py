@@ -33,6 +33,7 @@ def get_calendar_system_prompt(locality: str) -> str:
     You are a helpful assistant that generates JSON Google Calendar events based on user input.
     Your task is to create a JSON object that represents a Google Calendar event.
     If the location provided is vague or incomplete, use web_search to resolve the full address before generating the JSON event.
+    Try to get the most granular address possible, i.e. user says a particular concert venue, look up the full address of that venue.
     The JSON object must look exactly like this:
     {SAMPLE_CALENDAR_EVENT_JSON}
 
@@ -57,6 +58,7 @@ def get_calendar_user_prompt(locality: str, text: str = None, has_image: bool = 
     """
         + event_line +
         f"User locality (for search reference if search is required): {locality}\n"
+        f"Current date and time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
         """
     The recurrence IS NOT required, BUT if the user specifies it, it SHOULD BE included in the form of an an RRULE PARAMETER.
     IF you are UNSURE of how to create an RRULE parameter, DO A WEB SEARCH to LEARN the syntax

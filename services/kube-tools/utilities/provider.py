@@ -87,6 +87,7 @@ from services.robinhood.market_research_processor import MarketResearchProcessor
 from services.robinhood.prompt_generator import PromptGenerator
 from services.robinhood.robinhood_service import RobinhoodService
 from services.torrent_service import TorrentService
+from services.ts_push_service import TruthSocialConfig, TruthSocialPushService
 from services.usage_service import UsageService
 from services.weather_service import WeatherService
 
@@ -163,49 +164,16 @@ def register_configs(descriptors):
             dependency_type=config_type,
             factory=resolve_func)
 
-    # Register custom podcast service configuration
-    descriptors.add_singleton(
-        dependency_type=PodcastConfig,
-        factory=lambda p: PodcastConfig.model_validate(
-            p.resolve(Configuration).podcasts))
-
-    # Register custom Coinbase client config
-    descriptors.add_singleton(
-        dependency_type=CoinbaseConfig,
-        factory=lambda p: CoinbaseConfig.model_validate(
-            p.resolve(Configuration).coinbase))
-
-    # Register custom email client config
-    descriptors.add_singleton(
-        dependency_type=EmailConfig,
-        factory=lambda p: EmailConfig.model_validate(
-            p.resolve(Configuration).email)),
-
-    # Register custom Gmail service config
-    descriptors.add_singleton(
-        dependency_type=GmailConfig,
-        factory=lambda p: GmailConfig.model_validate(
-            p.resolve(Configuration).gmail)),
-
-    # Register custom Plaid service config
-    descriptors.add_singleton(
-        dependency_type=PlaidConfig,
-        factory=lambda p: PlaidConfig.model_validate(
-            p.resolve(Configuration).plaid)),
-
-    # Register custom Gmail service config
-    descriptors.add_singleton(
-        dependency_type=BankingConfig,
-        factory=lambda p: BankingConfig.model_validate(
-            p.resolve(Configuration).banking)),
-
-    # Register custom OpenAI service config
-    descriptors.add_singleton(
-        dependency_type=OpenAIConfig,
-        factory=lambda p: OpenAIConfig.model_validate(
-            p.resolve(Configuration).openai)),
-
+    register_config(RobinhoodConfig, 'robinhood')
+    register_config(CoinbaseConfig, 'coinbase')
+    register_config(PodcastConfig, 'podcasts')
+    register_config(EmailConfig, 'email')
+    register_config(GmailConfig, 'gmail')
+    register_config(PlaidConfig, 'plaid')
+    register_config(TruthSocialConfig, 'truth_social')
     register_config(CalendarConfig, 'calendar')
+    register_config(OpenAIConfig, 'openai')
+    register_config(BankingConfig, 'banking')
 
 
 def register_gmail_services(
@@ -295,6 +263,7 @@ def register_services(
     descriptors.add_singleton(ConversationService)
     descriptors.add_singleton(CoinbaseService)
     descriptors.add_singleton(AndroidService)
+    descriptors.add_singleton(TruthSocialPushService)
 
 
 def register_robinhood_services(

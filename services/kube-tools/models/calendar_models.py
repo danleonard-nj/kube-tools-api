@@ -38,7 +38,14 @@ class CreateRequest(BaseModel):
 
 
 class ConferenceData(BaseModel):
-    createRequest: CreateRequest
+    createRequest: Optional[CreateRequest] = None
+    entryPoints: Optional[list] = None
+    conferenceId: Optional[str] = None
+    signature: Optional[str] = None
+    notes: Optional[str] = None
+    parameters: Optional[dict] = None
+    # Allow extra fields for forward compatibility
+    model_config = {'extra': 'allow'}
 
 
 class ExtendedProperties(BaseModel):

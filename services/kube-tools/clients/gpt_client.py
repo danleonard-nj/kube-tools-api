@@ -105,7 +105,8 @@ class GPTClient:
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
         use_cache: bool = True,
-        cache_ttl: int = 3600
+        cache_ttl: int = 3600,
+        max_tokens: Optional[int] = None
     ) -> CompletionResultModel:
         """
         Generate a completion from the GPT model with optional caching
@@ -137,7 +138,8 @@ class GPTClient:
             response = await self._client.chat.completions.create(
                 model=model,
                 messages=messages,
-                temperature=temperature
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
             content = response.choices[0].message.content.strip()
             tokens = response.usage.total_tokens if hasattr(response, 'usage') and response.usage else 0
