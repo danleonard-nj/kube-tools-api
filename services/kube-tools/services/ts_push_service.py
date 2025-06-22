@@ -48,7 +48,7 @@ class TruthSocialPushService:
             html_content=html_body
         )
 
-        self._sib_email_api.send_transac_email(email)
+        result = self._sib_email_api.send_transac_email(email)
         logger.info(f"Email sent successfully to {recipient}")
 
     async def summarize_post(
