@@ -1,6 +1,8 @@
 from datetime import datetime
 
+from bs4 import BeautifulSoup
 import feedparser
+import httpx
 from clients.gpt_client import GPTClient
 from domain.gpt import GPTModel
 from framework.clients.cache_client import CacheClientAsync
@@ -22,7 +24,8 @@ class TruthSocialPushService:
         cache_client: CacheClientAsync,
         gpt_client: GPTClient,
         email_config: EmailConfig,
-        config: TruthSocialConfig
+        config: TruthSocialConfig,
+        http_client: httpx.AsyncClient
     ):
         self._cache_client = cache_client
         self._gpt_client = gpt_client
@@ -33,6 +36,8 @@ class TruthSocialPushService:
         self._sib_client = ApiClient(sib_config)
         self._sib_email_api = TransactionalEmailsApi(self._sib_client)
         self._recipients = config.recipients
+
+        self._http_client = http_client
 
     async def _send_email_sendinblue(self, recipient: str, subject: str, html_body: str) -> None:
         """Send email via Sendinblue API."""
@@ -92,23 +97,65 @@ class TruthSocialPushService:
             logger.info("No new posts found since the last check.")
             return []
 
+        original_link_mapping = {}
+
+        filtered_posts = []
+        summary_exclude = []
+        for post in new_posts:
+            if 'No Title' in post.title or post.summary == '<p></p>':
+                logger.info(f"Fetching page content for: {post.link}")
+                response = await self._http_client.get(post.link)
+                response.raise_for_status()
+
+                soup = BeautifulSoup(response.text, "html.parser")
+
+                # 3. Walk the rows of the info-table until we find the “Original URL” row
+                original_url = None
+                for tr in soup.select("table.status-details-table tr"):
+                    key_cell = tr.find("td", class_="status-details-table__key")
+                    if key_cell and key_cell.get_text(strip=True) == "Original URL":
+                        val_cell = tr.find("td", class_="status-details-table__value")
+                        a = val_cell.find("a", href=True)
+                        original_url = a["href"]
+                        break
+
+                if not original_url:
+                    logger.warning(f"Original URL not found for post: {post.id}")
+                    continue
+
+                logger.info(f"Original URL found: {original_url}")
+                original_link_mapping[post.id] = original_url
+
+                post.summary = original_url
+                post.title = f'See the original post here: {original_url}'
+                filtered_posts.append(post)
+                summary_exclude.append(post.id)
+            else:
+                logger.info(f"Post is valid, adding to filtered posts: {post.id}")
+                filtered_posts.append(post)
+
         if entries:
             new_latest_id = entries[0].id
             logger.info(f"Setting latest post ID: {new_latest_id}")
             await self._cache_client.set_cache(cache_key, new_latest_id)
 
-        summaries = {}
-        for post in new_posts:
+        summary_mapping = {}
+        for post in filtered_posts:
             content = post.summary
             logger.info(f"Summarizing post: {post.id}")
+            if post.id in summary_exclude:
+                logger.info(f"Skipping summary for post: {post.id}")
+                continue
+
             summary = await self.summarize_post(content)
-            summaries[post.id] = summary
+            summary_mapping[post.id] = summary
 
         results = []
 
-        for post in new_posts:
+        for post in filtered_posts:
             post_dict = post.model_dump()
-            post_dict['ai_summary'] = summaries.get(post.id, "No summary available.")
+            post_dict['ai_summary'] = summary_mapping.get(post.id, "No summary available.")
+            post_dict['original_link'] = original_link_mapping.get(post.id, post.link)
             results.append(post_dict)
 
         for recipient in self._recipients:

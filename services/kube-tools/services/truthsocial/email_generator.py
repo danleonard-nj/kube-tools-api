@@ -3,90 +3,9 @@ import html
 from typing import Any
 
 
-def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int = 10) -> str:
-    """
-    Generate HTML email from Truth Social posts JSON data.
-    Uses table-based layout for better email client compatibility.
-    """
-
-    def format_date(date_string: str) -> str:
-        """Convert date string to readable format."""
-        try:
-            dt = datetime.strptime(date_string, "%a, %d %b %Y %H:%M:%S %z")
-            return dt.strftime("%B %d, %Y • %I:%M %p")
-        except:
-            return date_string
-
-    def escape_html_content(text: str) -> str:
-        """Escape HTML characters in post content."""
-        return html.escape(text)
-
-    posts_to_include = posts_data[:max_posts]
-    post_cards_html = ""
-
-    for i, post in enumerate(posts_to_include):
-        published = post.get('published', '')
-        link = post.get('link', '#')
-        ai_summary = post.get('ai_summary', 'No AI analysis available')
-
-        formatted_date = format_date(published)
-        escaped_ai_summary = escape_html_content(ai_summary)
-        formatted_ai_summary = escaped_ai_summary.replace('\n', '<br>')
-
-        # Using table for reliable email client support
-        post_card_html = f"""
-            <div class="post-card">
-                <!-- Header with table for better email client support -->
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 16px;">
-                    <tr>
-                        <td style="vertical-align: middle;">
-                            <div class="post-badge">Truth Post</div>
-                        </td>
-                        <td style="vertical-align: middle; text-align: right;">
-                            <div class="post-date">{formatted_date}</div>
-                        </td>
-                    </tr>
-                </table>
-                
-                <div class="post-content">
-                    <div class="post-text">
-                        {post.get('summary', 'No content available')}
-                    </div>
-                </div>
-                
-                <div class="ai-summary-section">
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 12px;">
-                        <tr>
-                            <td style="vertical-align: middle; width: 28px;">
-                                <div class="ai-icon">AI</div>
-                            </td>
-                            <td style="vertical-align: middle; padding-left: 8px;">
-                                <div class="ai-summary-title">AI Analysis</div>
-                            </td>
-                        </tr>
-                    </table>
-                    <div class="ai-summary-text">
-                        {formatted_ai_summary}
-                    </div>
-                </div>
-                
-                <div class="post-link">
-                    <a href="{link}" target="_blank">
-                        View Original Post →
-                    </a>
-                </div>
-            </div>"""
-
-        post_cards_html += post_card_html
-
-    # Updated CSS with email-client-friendly styles and fixed AI icon alignment
-    html_template = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Truth Social Updates</title>
-    <style>
+def get_styles() -> str:
+    return """
+<style>
         * {{
             margin: 0;
             padding: 0;
@@ -277,7 +196,101 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
             border-collapse: collapse;
             vertical-align: middle;
         }}
-    </style>
+    </style>"""
+
+
+def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int = 10) -> str:
+    """
+    Generate HTML email from Truth Social posts JSON data.
+    Uses table-based layout for better email client compatibility.
+    """
+
+    def format_date(date_string: str) -> str:
+        """Convert date string to readable format."""
+        try:
+            dt = datetime.strptime(date_string, "%a, %d %b %Y %H:%M:%S %z")
+            return dt.strftime("%B %d, %Y • %I:%M %p")
+        except:
+            return date_string
+
+    def escape_html_content(text: str) -> str:
+        """Escape HTML characters in post content."""
+        return html.escape(text)
+
+    posts_to_include = posts_data[:max_posts]
+    post_cards_html = ""
+
+    for i, post in enumerate(posts_to_include):
+        published = post.get('published', '')
+        link = post.get('link', '#')
+        ai_summary = post.get('ai_summary', 'No AI analysis available')
+
+        formatted_date = format_date(published)
+        escaped_ai_summary = escape_html_content(ai_summary)
+        formatted_ai_summary = escaped_ai_summary.replace('\n', '<br>')
+
+        def get_ai_summary_section(formatted_ai_summary: str) -> str:
+            if 'No summary available' in formatted_ai_summary:
+                return ''
+
+            return f"""
+            <div class="ai-summary-section">
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 12px;">
+                    <tr>
+                        <td style="vertical-align: middle; width: 28px;">
+                            <div class="ai-icon">AI</div>
+                        </td>
+                        <td style="vertical-align: middle; padding-left: 8px;">
+                            <div class="ai-summary-title">AI Analysis</div>
+                        </td>
+                    </tr>
+                </table>
+                <div class="ai-summary-text">
+                    {formatted_ai_summary}
+                </div>
+            </div>
+            """
+
+        # Using table for reliable email client support
+        post_card_html = f"""
+            <div class="post-card">
+                <!-- Header with table for better email client support -->
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 16px;">
+                    <tr>
+                        <td style="vertical-align: middle;">
+                            <div class="post-badge">Truth Post</div>
+                        </td>
+                        <td style="vertical-align: middle; text-align: right;">
+                            <div class="post-date">{formatted_date}</div>
+                        </td>
+                    </tr>
+                </table>
+                
+                <div class="post-content">
+                    <div class="post-text">
+                        {post.get('summary', 'No content available')}
+                    </div>
+                </div>
+                
+                {get_ai_summary_section(formatted_ai_summary)}
+                
+                <div class="post-link">
+                    <a href="{link}" target="_blank">
+                        View Original Post →
+                    </a>
+                </div>
+            </div>"""
+
+        post_cards_html += post_card_html
+
+    # Updated CSS with email-client-friendly styles and fixed AI icon alignment
+    html_template = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Truth Social Updates</title>
+    {get_styles()}
 </head>
 <body>
     <div class="container">
