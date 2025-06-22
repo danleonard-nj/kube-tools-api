@@ -148,8 +148,6 @@ class GPTClient:
             if use_cache and self._cache_client:
                 await self._cache_response(prompt, content, model, cache_ttl)
 
-            with open(f'./prompts/response_{md5(prompt)}.txt', 'w', encoding='utf-8') as f:
-                f.write(content)
             self.count += 1
 
             return CompletionResultModel(content=content, tokens=tokens)
