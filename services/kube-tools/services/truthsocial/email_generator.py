@@ -208,13 +208,18 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
     """
 
     def format_date(date_string: str) -> str:
-        """Convert date string to readable Eastern Time format."""
+        """Convert date string to readable Eastern Time format, including day of week and 'today' if applicable."""
         try:
             # parse incoming timestamp with timezone offset
             dt = datetime.strptime(date_string, "%a, %d %b %Y %H:%M:%S %z")
             # convert to America/New_York (handles EST/EDT)
             dt = dt.astimezone(ZoneInfo("America/New_York"))
-            return dt.strftime("%B %d, %Y • %I:%M %p")
+            now = datetime.now(ZoneInfo("America/New_York"))
+            if dt.date() == now.date():
+                day_str = "Today"
+            else:
+                day_str = dt.strftime("%A")  # Full weekday name
+            return f"{day_str}, {dt.strftime('%B %d, %Y • %I:%M %p')}"
         except Exception:
             return date_string
 
