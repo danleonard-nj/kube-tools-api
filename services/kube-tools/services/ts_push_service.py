@@ -1,4 +1,5 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
 import feedparser
@@ -76,9 +77,15 @@ class TruthSocialPushService:
         latest_id = await self._cache_client.get_cache(cache_key)
         logger.info(f"Latest post ID from cache: {latest_id}")
 
-        # 2. Fetch and parse the entire feed
-        feed = feedparser.parse(self._feed_url)
-        entries = [FeedEntry.model_validate(e) for e in feed.entries]
+        # 2a. Fetch the feed
+        raw = feedparser.parse(self._feed_url)
+        # 2b. Sort entries newest->oldest by published date
+        raw.entries.sort(
+            key=lambda e: getattr(e, "published_parsed", 0),
+            reverse=True
+        )
+        # 2c. Wrap entries in models
+        entries = [FeedEntry.model_validate(e) for e in raw.entries]
         logger.info(f"Fetched {len(entries)} entries from the feed.")
 
         # 3. Collect all entries newer than latest_id
@@ -149,7 +156,8 @@ class TruthSocialPushService:
             logger.info(f"Sending email to {recipient}")
             html_content = generate_truth_social_email(results)
 
-            hour = datetime.now().hour
+            # compute time of day in Eastern
+            hour = datetime.now(ZoneInfo("America/New_York")).hour
             time_of_day = 'morning' if hour < 12 else 'afternoon' if hour < 18 else 'evening'
 
             subject = (

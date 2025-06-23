@@ -1,4 +1,5 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import html
 from typing import Any
 
@@ -207,11 +208,14 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
     """
 
     def format_date(date_string: str) -> str:
-        """Convert date string to readable format."""
+        """Convert date string to readable Eastern Time format."""
         try:
+            # parse incoming timestamp with timezone offset
             dt = datetime.strptime(date_string, "%a, %d %b %Y %H:%M:%S %z")
+            # convert to America/New_York (handles EST/EDT)
+            dt = dt.astimezone(ZoneInfo("America/New_York"))
             return dt.strftime("%B %d, %Y • %I:%M %p")
-        except:
+        except Exception:
             return date_string
 
     def escape_html_content(text: str) -> str:
@@ -221,7 +225,7 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
     posts_to_include = posts_data[:max_posts]
     post_cards_html = ""
 
-    for i, post in enumerate(posts_to_include):
+    for post in posts_to_include:
         published = post.get('published', '')
         link = post.get('link', '#')
         ai_summary = post.get('ai_summary', 'No AI analysis available')
@@ -233,7 +237,6 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
         def get_ai_summary_section(formatted_ai_summary: str) -> str:
             if 'No summary available' in formatted_ai_summary:
                 return ''
-
             return f"""
             <div class="ai-summary-section">
                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 12px;">
@@ -252,10 +255,8 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
             </div>
             """
 
-        # Using table for reliable email client support
         post_card_html = f"""
             <div class="post-card">
-                <!-- Header with table for better email client support -->
                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 16px;">
                     <tr>
                         <td style="vertical-align: middle;">
@@ -266,15 +267,12 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
                         </td>
                     </tr>
                 </table>
-                
                 <div class="post-content">
                     <div class="post-text">
                         {post.get('summary', 'No content available')}
                     </div>
                 </div>
-                
                 {get_ai_summary_section(formatted_ai_summary)}
-                
                 <div class="post-link">
                     <a href="{link}" target="_blank">
                         View Original Post →
@@ -284,7 +282,6 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
 
         post_cards_html += post_card_html
 
-    # Updated CSS with email-client-friendly styles and fixed AI icon alignment
     html_template = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -299,11 +296,9 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
             <h1>Truth Social Updates</h1>
             <p>Latest posts and AI analysis • {len(posts_to_include)} posts</p>
         </div>
-        
         <div class="content">
             {post_cards_html}
         </div>
-        
         <div class="footer">
             <p style="font-size: 12px; color: #9ca3af;">
                 AI Summaries powered by GPT-4O Mini<br>
