@@ -13,6 +13,7 @@ from clients.identity_client import IdentityClient
 from clients.open_weather_client import OpenWeatherClient
 from clients.plaid_client import PlaidClient
 from clients.robinhood_data_client import RobinhoodDataClient
+from clients.sib_client import SendInBlueClient
 from clients.storage_client import StorageClient
 from clients.torrent_client import TorrentClient
 from clients.twilio_gateway import TwilioGatewayClient
@@ -209,6 +210,7 @@ def register_clients(
     descriptors.add_singleton(GoogleAuthClient)
     descriptors.add_singleton(CoinbaseClient)
     descriptors.add_singleton(CoinbaseRESTClient)
+    descriptors.add_singleton(SendInBlueClient)
 
 
 def register_repositories(

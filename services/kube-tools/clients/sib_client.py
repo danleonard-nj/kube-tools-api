@@ -33,12 +33,13 @@ class SendInBlueClient:
         recipient: str,
         subject: str,
         html_body: str,
-        from_email: str = None
+        from_email: str = None,
+        from_name: Optional[str] = None
     ) -> None:
         """Send email via Sendinblue API."""
 
         from_email = from_email or self._email_config.default_sender.email
-        from_name = self._email_config.default_sender.name or 'KubeTools'
+        from_name = from_name or self._email_config.default_sender.name or 'KubeTools'
 
         logger.info(f"Sending email to {recipient} from {from_email}")
 
