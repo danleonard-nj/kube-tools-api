@@ -2,6 +2,9 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import html
 from typing import Any
+from framework.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def get_styles() -> str:
@@ -221,6 +224,7 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
                 day_str = dt.strftime("%A")  # Full weekday name
             return f"{day_str}, {dt.strftime('%B %d, %Y • %I:%M %p')}"
         except Exception:
+            logger.
             return date_string
 
     def escape_html_content(text: str) -> str:
