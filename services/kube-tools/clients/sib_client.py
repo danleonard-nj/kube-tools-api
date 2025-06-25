@@ -17,7 +17,7 @@ class EmailAddress(BaseModel):
 
 
 class SendInBlueClient:
-    def __int__(
+    def __init__(
         self,
         email_config: EmailConfig
     ):
