@@ -29,7 +29,7 @@ from utilities.utils import DateTimeUtil
 logger = get_logger(__name__)
 
 UPLOAD_CHUNK_SIZE = 1024 * 1024 * 4  # 8MB
-MAX_EPISODE_DOWNLOADS = 3
+MAX_EPISODE_DOWNLOADS = 10
 
 
 class PodcastServiceException(Exception):
@@ -298,14 +298,18 @@ class PodcastService:
         # Parse the RSS feed using feedparser
         parsed_feed = feedparser.parse(feed_data.text)
 
-        show_id = str(uuid.uuid4())
+        # Determine a stable show_id based on feed metadata
         if 'acast_showid' in parsed_feed.feed:
-            show_id = parsed_feed.feed['acast_showid']
+            show_id = str(parsed_feed.feed['acast_showid'])
         elif 'id' in parsed_feed.feed:
-            show_id = parsed_feed.feed['id']
-        elif 'link' in parsed_feed.feed:
-            hashed = uuid.UUID(md5(show_id.encode('utf-8')).hexdigest())
-            show_id = str(hashed)
+            show_id = str(parsed_feed.feed['id'])
+        elif 'title' in parsed_feed.feed:
+            # Use a hash of the title as a fallback
+            show_id = md5(parsed_feed.feed['title'].encode('utf-8')).hexdigest()
+        else:
+            # Last resort: generate a random UUID
+            # show_id = str(uuid.uuid4())
+            raise Exception(f'No stable show ID found in feed: {rss_feed.name}')
 
         show_title = parsed_feed.feed.get('title', rss_feed.name)
         # show_id = show_title  # You may want to hash or uuid this
