@@ -4,10 +4,8 @@ import html
 from typing import Any
 
 
-def get_styles() -> str: p
-
-
-return """
+def get_styles() -> str:
+    return """
 <style>
     * {
         margin: 0;
