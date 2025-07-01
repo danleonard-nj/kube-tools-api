@@ -13,3 +13,6 @@ services/kube-tools/services/market_research_processor.py
 services/kube-tools/prompts/*
 deploy.bat
 services/kube-tools/scripts/google_auth.py
+services/kube-tools/services/ts_push_service.py
+services/kube-tools/cbb_enum_wb.csv
+services/kube-tools/cbb_enumerated.json

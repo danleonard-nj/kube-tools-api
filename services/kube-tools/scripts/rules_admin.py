@@ -152,15 +152,42 @@ BASE_TEMPLATE = """
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <style>
+        :root {
+            --bs-body-bg: #f8f9fa;
+            --bs-body-color: #212529;
+            --bs-card-bg: #ffffff;
+            --bs-card-border-color: rgba(0, 0, 0, 0.125);
+            --bs-border-color: #dee2e6;
+            --bs-secondary-bg: #f8f9fa;
+            --bs-tertiary-bg: #ffffff;
+            --bs-text-muted: #6c757d;
+            --bs-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        }
+
+        [data-bs-theme="dark"] {
+            --bs-body-bg: #212529;
+            --bs-body-color: #dee2e6;
+            --bs-card-bg: #343a40;
+            --bs-card-border-color: rgba(255, 255, 255, 0.125);
+            --bs-border-color: #495057;
+            --bs-secondary-bg: #343a40;
+            --bs-tertiary-bg: #2b3035;
+            --bs-text-muted: #adb5bd;
+            --bs-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.3);
+        }
+
         body {
-            background-color: #f8f9fa;
+            background-color: var(--bs-body-bg);
+            color: var(--bs-body-color);
+            transition: background-color 0.3s ease, color 0.3s ease;
         }
         .navbar-brand {
             font-weight: 600;
         }
         .card {
-            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-            border: 1px solid rgba(0, 0, 0, 0.125);
+            box-shadow: var(--bs-shadow);
+            border: 1px solid var(--bs-card-border-color);
+            background-color: var(--bs-card-bg);
         }
         .action-badge {
             font-size: 0.75rem;
@@ -173,8 +200,8 @@ BASE_TEMPLATE = """
             transform: translateY(-2px);
         }
         .json-display {
-            background-color: #f8f9fa;
-            border: 1px solid #dee2e6;
+            background-color: var(--bs-secondary-bg);
+            border: 1px solid var(--bs-border-color);
             border-radius: 0.375rem;
             padding: 1rem;
             font-family: 'Courier New', monospace;
@@ -184,17 +211,17 @@ BASE_TEMPLATE = """
             overflow-y: auto;
         }
         .form-section {
-            background-color: white;
+            background-color: var(--bs-card-bg);
             border-radius: 0.5rem;
             padding: 1.5rem;
             margin-bottom: 1.5rem;
-            border: 1px solid #dee2e6;
+            border: 1px solid var(--bs-border-color);
         }
         .form-section h5 {
-            color: #495057;
+            color: var(--bs-body-color);
             margin-bottom: 1rem;
             padding-bottom: 0.5rem;
-            border-bottom: 2px solid #e9ecef;
+            border-bottom: 2px solid var(--bs-border-color);
         }
         .sidebar {
             position: fixed;
@@ -202,11 +229,11 @@ BASE_TEMPLATE = """
             left: -400px;
             width: 400px;
             height: 100vh;
-            background: white;
+            background: var(--bs-card-bg);
             box-shadow: 2px 0 10px rgba(0,0,0,0.1);
             transition: left 0.3s ease;
             z-index: 1050;
-            border-right: 1px solid #dee2e6;
+            border-right: 1px solid var(--bs-border-color);
         }
         .sidebar.open {
             left: 0;
@@ -229,8 +256,8 @@ BASE_TEMPLATE = """
         }
         .sidebar-header {
             padding: 1rem 1.5rem;
-            border-bottom: 1px solid #dee2e6;
-            background: #f8f9fa;
+            border-bottom: 1px solid var(--bs-border-color);
+            background: var(--bs-secondary-bg);
         }
         .sidebar-header .position-relative input {
             padding-right: 2.5rem;
@@ -242,12 +269,12 @@ BASE_TEMPLATE = """
         }
         .rule-list-item {
             padding: 0.75rem;
-            border: 1px solid #e9ecef;
+            border: 1px solid var(--bs-border-color);
             border-radius: 0.5rem;
             margin-bottom: 0.5rem;
             cursor: pointer;
             transition: all 0.2s ease;
-            background: white;
+            background: var(--bs-card-bg);
         }
         .rule-list-item:hover {
             border-color: #0d6efd;
@@ -256,11 +283,11 @@ BASE_TEMPLATE = """
         }
         .rule-list-item.active {
             border-color: #0d6efd;
-            background: #f8f9ff;
+            background: var(--bs-tertiary-bg);
         }
         .rule-list-meta {
             font-size: 0.75rem;
-            color: #6c757d;
+            color: var(--bs-text-muted);
             display: flex;
             justify-content: space-between;
             margin-top: 0.5rem;
@@ -268,6 +295,12 @@ BASE_TEMPLATE = """
         .view-toggle {
             position: fixed;
             top: 100px;
+            right: 20px;
+            z-index: 1000;
+        }
+        .theme-toggle {
+            position: fixed;
+            top: 160px;
             right: 20px;
             z-index: 1000;
         }
@@ -301,6 +334,9 @@ BASE_TEMPLATE = """
                 <a class="nav-link" href="{{ url_for('new_rule') }}">
                     <i class="bi bi-plus-circle-fill me-1"></i>New Rule
                 </a>
+                <button class="btn btn-link nav-link border-0" onclick="toggleTheme()" title="Toggle Dark Mode">
+                    <i class="bi bi-moon-fill" id="theme-icon"></i>
+                </button>
             </div>
         </div>
     </nav>
@@ -327,6 +363,13 @@ BASE_TEMPLATE = """
 
     <!-- Sidebar Overlay -->
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+    <!-- Theme Toggle Button -->
+    <div class="theme-toggle">
+        <button class="btn btn-outline-secondary btn-sm" onclick="toggleTheme()" title="Toggle Dark Mode">
+            <i class="bi bi-moon-fill" id="theme-icon-float"></i>
+        </button>
+    </div>
 
     <!-- View Toggle Button -->
     <div class="view-toggle">
@@ -356,6 +399,48 @@ BASE_TEMPLATE = """
     <script>
         let sidebarOpen = false;
         let rulesData = [];
+
+        // Theme management
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            setTheme(savedTheme);
+        }
+
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-bs-theme', theme);
+            localStorage.setItem('theme', theme);
+            
+            const icons = document.querySelectorAll('#theme-icon, #theme-icon-float');
+            icons.forEach(icon => {
+                if (theme === 'dark') {
+                    icon.className = 'bi bi-sun-fill';
+                } else {
+                    icon.className = 'bi bi-moon-fill';
+                }
+            });
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-bs-theme') || 'light';
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            setTheme(newTheme);
+        }
+
+        // Initialize theme on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initTheme();
+            
+            if (window.innerWidth >= 992) { // Bootstrap lg breakpoint
+                fetch('/api/rules')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.length > 0 && window.location.pathname === '/') {
+                            setTimeout(() => openSidebar(), 500); // Small delay for smooth experience
+                        }
+                    })
+                    .catch(error => console.error('Error checking rules:', error));
+            }
+        });
 
         function toggleSidebar() {
             if (sidebarOpen) {

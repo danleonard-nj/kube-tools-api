@@ -166,6 +166,9 @@ class TruthSocialPushService:
 
         # 8. Send emails to recipients
         if results:
+
+            # Reverse order of results to oldest->newest for email
+            results.reverse()
             for recipient in self._recipients:
                 logger.info(f"Sending email to {recipient}")
                 html_content = generate_truth_social_email(results)
