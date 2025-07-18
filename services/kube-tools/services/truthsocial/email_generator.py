@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 import html
 from typing import Any
@@ -207,8 +207,27 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
     Uses table-based layout for better email client compatibility.
     """
 
-    def format_date(date_string: str) -> str:
-        """Convert date string to readable Eastern Time format, including day of week and 'today' if applicable."""
+    def format_timestamp_to_eastern(timestamp: int) -> str:
+        """Convert Unix timestamp to readable Eastern Time format."""
+        try:
+            # Convert Unix timestamp to UTC datetime
+            dt_utc = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+            # Convert to Eastern Time
+            dt_et = dt_utc.astimezone(ZoneInfo("America/New_York"))
+
+            # Check if it's today
+            now_et = datetime.now(ZoneInfo("America/New_York"))
+            if dt_et.date() == now_et.date():
+                day_str = "Today"
+            else:
+                day_str = dt_et.strftime("%A")  # Full weekday name
+
+            return f"{day_str}, {dt_et.strftime('%B %d, %Y • %I:%M %p ET')}"
+        except Exception as e:
+            return f"Invalid timestamp: {timestamp}"
+
+    def format_date_fallback(date_string: str) -> str:
+        """Fallback for old date string format."""
         try:
             # parse incoming timestamp with timezone offset
             dt = datetime.strptime(date_string, "%a, %d %b %Y %H:%M:%S %z")
@@ -219,7 +238,7 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
                 day_str = "Today"
             else:
                 day_str = dt.strftime("%A")  # Full weekday name
-            return f"{day_str}, {dt.strftime('%B %d, %Y • %I:%M %p')}"
+            return f"{day_str}, {dt.strftime('%B %d, %Y • %I:%M %p ET')}"
         except Exception:
             return date_string
 
@@ -231,16 +250,22 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
     post_cards_html = ""
 
     for post in posts_to_include:
-        published = post.get('published', '')
-        link = post.get('link', '#')
+        # Try to use the new timestamp format first, fallback to old format
+        if 'published_timestamp' in post:
+            formatted_date = format_timestamp_to_eastern(post['published_timestamp'])
+        else:
+            # Fallback to old date string format
+            published = post.get('published', '')
+            formatted_date = format_date_fallback(published)
+
+        link = post.get('original_link', post.get('link', '#'))
         ai_summary = post.get('ai_summary', 'No AI analysis available')
 
-        formatted_date = format_date(published)
         escaped_ai_summary = escape_html_content(ai_summary)
         formatted_ai_summary = escaped_ai_summary.replace('\n', '<br>')
 
         def get_ai_summary_section(formatted_ai_summary: str) -> str:
-            if 'No summary available' in formatted_ai_summary:
+            if 'No summary available' in formatted_ai_summary or 'No AI analysis available' in formatted_ai_summary:
                 return ''
             return f"""
             <div class="ai-summary-section">

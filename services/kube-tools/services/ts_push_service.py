@@ -1,5 +1,5 @@
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone
+import time
 
 from bs4 import BeautifulSoup
 import feedparser
@@ -12,10 +12,6 @@ from framework.logger import get_logger
 from models.email_config import EmailConfig
 from models.ts_models import FeedEntry, TruthSocialConfig
 from services.truthsocial.email_generator import generate_truth_social_email
-from sib_api_v3_sdk import ApiClient
-from sib_api_v3_sdk import Configuration as SibConfiguration
-from sib_api_v3_sdk.api.transactional_emails_api import TransactionalEmailsApi
-from sib_api_v3_sdk.models import SendSmtpEmail
 
 logger = get_logger(__name__)
 
@@ -36,18 +32,11 @@ class TruthSocialPushService:
         self._gpt_client = gpt_client
         self._feed_url = config.rss_feed
         self._sib_client = sib_client
-
-        # sib_config = SibConfiguration()
-        # sib_config.api_key['api-key'] = email_config.sendinblue_api_key.get_secret_value()
-        # self._sib_client = ApiClient(sib_config)
-        # self._sib_email_api = TransactionalEmailsApi(self._sib_client)
         self._recipients = config.recipients
-
         self._http_client = http_client
 
     async def _send_email_sendinblue(self, recipient: str, subject: str, html_body: str) -> None:
         """Send email via Sendinblue API."""
-
         await self._sib_client.send_email(
             recipient=recipient,
             subject=subject,
@@ -55,21 +44,10 @@ class TruthSocialPushService:
             from_email='me@dan-leonard.com',
             from_name='TruthSocial Push'
         )
-
-        # email = SendSmtpEmail(
-        #     to=[{"email": recipient}],
-        #     sender={"email": 'me@dan-leonard.com', "name": "TruthSocial Push Service"},
-        #     subject=subject,
-        #     html_content=html_body
-        # )
-
-        # self._sib_email_api.send_transac_email(email)
         logger.info(f"Email sent successfully to {recipient}")
 
     async def summarize_post(self, content: str) -> str:
-        """
-        Summarizes the content of a post using GPT.
-        """
+        """Summarizes the content of a post using GPT."""
         prompt = (
             f"Summarize Donald Trump's post in a neutral, fact-based way, "
             f"if it needs to be summarized. Try to limit to 3 sentences maximum, "
@@ -83,6 +61,17 @@ class TruthSocialPushService:
         )
         return response.content if response else "No summary available."
 
+    def _get_midnight_today_utc_timestamp(self) -> int:
+        """Get Unix timestamp for midnight today in UTC."""
+        now_utc = datetime.now(timezone.utc)
+        midnight_today_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        return int(midnight_today_utc.timestamp())
+
+    def _published_parsed_to_timestamp(self, published_parsed) -> int:
+        """Convert feedparser's published_parsed to Unix timestamp."""
+        # published_parsed is a time.struct_time in UTC
+        return int(time.mktime(published_parsed))
+
     async def get_latest_posts(self) -> list[dict]:
         logger.info("Fetching latest posts from Truth Social feed...")
         cache_key = "truth_social_latest_timestamp"
@@ -90,10 +79,11 @@ class TruthSocialPushService:
         # 1. Retrieve the last seen timestamp from cache
         latest_timestamp = await self._cache_client.get_cache(cache_key)
         if not latest_timestamp:
-            # Default to midnight today in New York timezone if no timestamp is cached
-            midnight_today = datetime.now(ZoneInfo("America/New_York")).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-            latest_timestamp = midnight_today
-            logger.info(f"No cached timestamp found. Defaulting to midnight today: {latest_timestamp}")
+            # Default to midnight today UTC if no timestamp is cached
+            latest_timestamp = self._get_midnight_today_utc_timestamp()
+            logger.info(f"No cached timestamp found. Defaulting to midnight today UTC: {latest_timestamp}")
+        else:
+            latest_timestamp = int(latest_timestamp)
 
         logger.info(f"Latest timestamp from cache: {latest_timestamp}")
 
@@ -111,8 +101,8 @@ class TruthSocialPushService:
         # 3. Collect all entries newer than latest_timestamp
         new_entries: list[FeedEntry] = []
         for entry in entries:
-            entry_timestamp = datetime(*entry.published_parsed[:6], tzinfo=ZoneInfo("America/New_York"))
-            if latest_timestamp and entry_timestamp <= datetime.fromisoformat(latest_timestamp):
+            entry_timestamp = self._published_parsed_to_timestamp(entry.published_parsed)
+            if entry_timestamp <= latest_timestamp:
                 break
             new_entries.append(entry)
 
@@ -120,8 +110,8 @@ class TruthSocialPushService:
             logger.info("No new posts found since the last check.")
             return []
 
-        # 4. Limit how many to process (e.g., avoid spamming)
-        to_process = new_entries  # Process all new entries, not just the first 5
+        # 4. Process all new entries
+        to_process = new_entries
         logger.info(f"Processing {len(to_process)} new entries.")
 
         # 5. Fetch original URLs for 'No Title' or empty summaries
@@ -170,27 +160,30 @@ class TruthSocialPushService:
             post_dict = post.model_dump()
             post_dict['ai_summary'] = summary_mapping.get(post.id, "No summary available.")
             post_dict['original_link'] = original_link_mapping.get(post.id, post.link)
+            # Add Unix timestamp for easier handling
+            post_dict['published_timestamp'] = self._published_parsed_to_timestamp(post.published_parsed)
             results.append(post_dict)
 
         # 8. Send emails to recipients
-        for recipient in self._recipients:
-            logger.info(f"Sending email to {recipient}")
-            html_content = generate_truth_social_email(results)
+        if results:
+            for recipient in self._recipients:
+                logger.info(f"Sending email to {recipient}")
+                html_content = generate_truth_social_email(results)
 
-            # compute time of day in Eastern
-            hour = datetime.now(ZoneInfo("America/New_York")).hour
-            time_of_day = 'morning' if hour < 12 else 'afternoon' if hour < 18 else 'evening'
+                # compute time of day in Eastern for email subject
+                now_et = datetime.now(timezone.utc).astimezone().replace(tzinfo=None)
+                hour = now_et.hour
+                time_of_day = 'morning' if hour < 12 else 'afternoon' if hour < 18 else 'evening'
 
-            subject = (
-                f"See {len(results)} new Truth Social "
-                f"{'posts' if len(results) > 1 else 'post'} for you this {time_of_day}!"
-            )
-            await self._send_email_sendinblue(recipient, subject, html_content)
+                subject = (
+                    f"See {len(results)} new Truth Social "
+                    f"{'posts' if len(results) > 1 else 'post'} for you this {time_of_day}!"
+                )
+                await self._send_email_sendinblue(recipient, subject, html_content)
 
-        # 9. After successful processing, update cache to newest timestamp
-        newest_seen_timestamp = entries[0].published_parsed
-        newest_seen_datetime = datetime(*newest_seen_timestamp[:6]).isoformat()
-        logger.info(f"Updating cache with latest timestamp: {newest_seen_datetime}")
-        await self._cache_client.set_cache(cache_key, newest_seen_datetime, CACHE_TTL_MINUTES)
+            # 9. After successful processing, update cache to newest timestamp
+            newest_timestamp = self._published_parsed_to_timestamp(entries[0].published_parsed)
+            logger.info(f"Updating cache with latest timestamp: {newest_timestamp}")
+            await self._cache_client.set_cache(cache_key, str(newest_timestamp), CACHE_TTL_MINUTES)
 
         return results
