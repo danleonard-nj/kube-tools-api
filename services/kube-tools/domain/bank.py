@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 from pydantic import BaseModel
 
@@ -92,11 +92,14 @@ class PlaidBalanceRequest(Serializable):
         self,
         client_id: str,
         secret: str,
-        access_token: str
+        access_token: str,
+        options: dict = None
     ):
         self.client_id = client_id
         self.secret = secret
         self.access_token = access_token
+        if options:
+            self.options = options
 
 
 class PlaidTransactionRequestOptions(Serializable):
@@ -134,6 +137,22 @@ class PlaidTransactionsRequest(Serializable):
                 self.options = options.to_dict()
             else:
                 self.options = options
+
+
+class PlaidTransactionsSyncRequest(Serializable):
+    def __init__(
+        self,
+        client_id: str,
+        secret: str,
+        access_token: str,
+        cursor: str = "",
+        count: int = 50
+    ):
+        self.client_id = client_id
+        self.secret = secret
+        self.access_token = access_token
+        self.cursor = cursor
+        self.count = count
 
 
 class GetBalancesResponse(Serializable):
@@ -280,24 +299,14 @@ class SyncResult(Serializable):
         self.transaction = transaction
 
 
-class BankBalance(Serializable):
-    def __init__(
-        self,
-        balance_id: str,
-        bank_key: str,
-        balance: float,
-        timestamp: int,
-        gpt_tokens: int = 0,
-        message_bk: str = None,
-        sync_type: str = None
-    ):
-        self.balance_id = balance_id
-        self.bank_key = bank_key
-        self.balance = balance
-        self.gpt_tokens = gpt_tokens
-        self.message_bk = message_bk
-        self.sync_type = sync_type
-        self.timestamp = timestamp
+class BankBalance(BaseModel, Serializable):
+    balance_id: str
+    bank_key: str
+    balance: float
+    timestamp: int
+    gpt_tokens: Optional[int] = 0
+    message_bk: Optional[str] = None
+    sync_type: Optional[str] = None
 
     @staticmethod
     def from_entity(

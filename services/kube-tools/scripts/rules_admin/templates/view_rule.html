@@ -1,0 +1,175 @@
+{% extends "base.html" %} {% block title %}{{ rule.name }} - Rules
+Admin{% endblock %} {% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item">
+        <a href="{{ url_for('index') }}">Dashboard</a>
+      </li>
+      <li class="breadcrumb-item active">{{ rule.name }}</li>
+    </ol>
+  </nav>
+  <div class="btn-group" role="group">
+    <a
+      href="{{ url_for('edit_rule', rule_id=rule.rule_id) }}"
+      class="btn btn-primary">
+      <i class="bi bi-pencil me-1"></i>Edit
+    </a>
+    <button
+      type="button"
+      class="btn btn-danger"
+      data-bs-toggle="modal"
+      data-bs-target="#deleteModal">
+      <i class="bi bi-trash me-1"></i>Delete
+    </button>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-lg-8">
+    <div class="card mb-4">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i class="bi bi-info-circle me-2"></i>Rule Details
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="row mb-3">
+          <div class="col-sm-3 fw-bold">Name:</div>
+          <div class="col-sm-9">{{ rule.name }}</div>
+        </div>
+        <div class="row mb-3">
+          <div class="col-sm-3 fw-bold">Description:</div>
+          <div class="col-sm-9">{{ rule.description }}</div>
+        </div>
+        <div class="row mb-3">
+          <div class="col-sm-3 fw-bold">Query:</div>
+          <div class="col-sm-9"><code>{{ rule.query }}</code></div>
+        </div>
+        <div class="row mb-3">
+          <div class="col-sm-3 fw-bold">Action:</div>
+          <div class="col-sm-9">
+            <span
+              class="badge {% if rule.action == 'sms' %}bg-success {% elif rule.action == 'bank-sync' %}bg-info {% elif rule.action == 'archive' %}bg-warning {% elif rule.action == 'email-forward' %}bg-primary {% elif rule.action == 'webhook' %}bg-secondary {% elif rule.action == 'mark-read' %}bg-dark {% else %}bg-dark{% endif %}">
+              {{ action_types.get(rule.action, {}).get('name',
+              rule.action) }}
+            </span>
+          </div>
+        </div>
+        <div class="row mb-3">
+          <div class="col-sm-3 fw-bold">Max Results:</div>
+          <div class="col-sm-9">{{ rule.max_results }}</div>
+        </div>
+        <div class="row mb-3">
+          <div class="col-sm-3 fw-bold">Processed Count:</div>
+          <div class="col-sm-9">{{ rule.count_processed }}</div>
+        </div>
+      </div>
+    </div>
+
+    {% if rule.data %}
+    <div class="card mb-4">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i class="bi bi-gear me-2"></i>Action Configuration
+        </h5>
+      </div>
+      <div class="card-body">
+        {% for key, value in rule.data.items() %}
+        <div class="row mb-2">
+          <div class="col-sm-4 fw-bold">
+            {{ key.replace('_', ' ').title() }}:
+          </div>
+          <div class="col-sm-8">
+            {% if value is mapping %}
+            <div class="json-display">{{ value | json_pretty }}</div>
+            {% elif value is boolean %}
+            <span
+              class="badge {{ 'bg-success' if value else 'bg-secondary' }}">
+              {{ 'Yes' if value else 'No' }}
+            </span>
+            {% else %}
+            <code>{{ value }}</code>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card mb-4">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i class="bi bi-clock-history me-2"></i>Timestamps
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <small class="text-muted d-block">Created</small>
+          <strong>{{ rule.created_date | datetime }}</strong>
+        </div>
+        <div class="mb-3">
+          <small class="text-muted d-block">Last Modified</small>
+          <strong>{{ rule.modified_date | datetime }}</strong>
+        </div>
+        <div class="mb-0">
+          <small class="text-muted d-block">Rule ID</small>
+          <code class="small">{{ rule.rule_id }}</code>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i class="bi bi-code-square me-2"></i>Raw Data
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="json-display">{{ rule | json_pretty }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Confirm Delete</h5>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>
+          Are you sure you want to delete the rule
+          <strong>"{{ rule.name }}"</strong>?
+        </p>
+        <p class="text-muted">This action cannot be undone.</p>
+      </div>
+      <div class="modal-footer">
+        <button
+          type="button"
+          class="btn btn-secondary"
+          data-bs-dismiss="modal">
+          Cancel
+        </button>
+        <form
+          method="POST"
+          action="{{ url_for('delete_rule', rule_id=rule.rule_id) }}"
+          class="d-inline">
+          <button type="submit" class="btn btn-danger">
+            Delete Rule
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

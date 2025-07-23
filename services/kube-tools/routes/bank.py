@@ -5,6 +5,7 @@ from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
 from services.bank_service import BankService
+from services.banking.plaid_sync_service import PlaidSyncService
 from services.coinbase_service import CoinbaseService
 from utilities.utils import parse_timestamp
 
@@ -113,3 +114,10 @@ async def get_crypto(container):
     service: CoinbaseService = container.resolve(CoinbaseService)
 
     return await service.get_accounts()
+
+
+@bank_bp.configure('/api/bank/plaid/sync', methods=['POST'], auth_scheme=AuthPolicy.Default)
+async def post_plaid_sync(container):
+    service: PlaidSyncService = container.resolve(PlaidSyncService)
+
+    return await service.sync_all()

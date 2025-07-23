@@ -1,0 +1,111 @@
+{% extends "base.html" %} 
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h1 class="h3 mb-1">
+      <i class="bi bi-google me-2" style="color: #4285f4;"></i>
+      Google Integration
+    </h1>
+    <p class="text-muted mb-0">Manage Gmail connection and access inbox</p>
+  </div>
+  {% if session.get('google_credentials') %}
+  <span class="badge bg-success">
+    <i class="bi bi-check-circle me-1"></i>Connected
+  </span>
+  {% else %}
+  <span class="badge bg-warning">
+    <i class="bi bi-exclamation-triangle me-1"></i>Not Connected
+  </span>
+  {% endif %}
+</div>
+
+<div class="row g-4">
+  <!-- Authentication Card -->
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm admin-card">
+      <div class="card-body p-4">
+        <div class="d-flex align-items-center mb-3">
+          <i class="bi bi-shield-lock text-primary me-2" style="font-size: 1.5rem;"></i>
+          <h5 class="mb-0">Authentication</h5>
+        </div>
+        <p class="text-muted mb-3">
+          {% if session.get('google_credentials') %}
+          Google account is connected and ready to use.
+          {% else %}
+          Connect your Google account to access Gmail API.
+          {% endif %}
+        </p>
+        <a href="{{ url_for('google_login') }}" class="btn btn-outline-primary">
+          <i class="bi bi-google me-2"></i>
+          {% if session.get('google_credentials') %}Re-authenticate{% else %}Connect Google{% endif %}
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Inbox Access Card -->
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm admin-card {% if not session.get('google_credentials') %}disabled{% endif %}">
+      <div class="card-body p-4">
+        <div class="d-flex align-items-center mb-3">
+          <i class="bi bi-envelope text-primary me-2" style="font-size: 1.5rem;"></i>
+          <h5 class="mb-0">Gmail Inbox</h5>
+        </div>
+        <p class="text-muted mb-3">
+          {% if session.get('google_credentials') %}
+          Access and manage Gmail messages for rule processing.
+          {% else %}
+          Authentication required to access Gmail inbox.
+          {% endif %}
+        </p>
+        {% if session.get('google_credentials') %}
+        <a href="{{ url_for('google_inbox') }}" class="btn btn-primary">
+          <i class="bi bi-envelope-open me-2"></i>Open Inbox
+        </a>
+        {% else %}
+        <button class="btn btn-outline-secondary" disabled>
+          <i class="bi bi-lock me-2"></i>Authentication Required
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Quick Actions -->
+{% if session.get('google_credentials') %}
+<div class="card border-0 shadow-sm mt-4 admin-card">
+  <div class="card-body p-4">
+    <h5 class="mb-3">
+      <i class="bi bi-lightning me-2"></i>Quick Actions
+    </h5>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('google_inbox') }}" class="btn btn-sm btn-outline-primary">
+        <i class="bi bi-envelope me-1"></i>View Messages
+      </a>
+      <a href="{{ url_for('google_login') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-clockwise me-1"></i>Refresh Token
+      </a>
+      <button class="btn btn-sm btn-outline-danger" onclick="disconnectGoogle()">
+        <i class="bi bi-x-circle me-1"></i>Disconnect
+      </button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function disconnectGoogle() {
+  if (confirm('Are you sure you want to disconnect from Google? You will need to re-authenticate to access Gmail.')) {
+    // Clear session and redirect
+    fetch('/google/disconnect', { method: 'POST' })
+      .then(() => window.location.reload())
+      .catch(() => alert('Failed to disconnect. Please try again.'));
+  }
+}
+</script>
+{% endblock %}

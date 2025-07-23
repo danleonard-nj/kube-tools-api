@@ -1,7 +1,7 @@
 from typing import List
 
 from domain.bank import (PlaidBalanceRequest, PlaidTransactionRequestOptions,
-                         PlaidTransactionsRequest)
+                         PlaidTransactionsRequest, PlaidTransactionsSyncRequest)
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from httpx import AsyncClient
@@ -34,7 +34,9 @@ class PlaidClient:
 
     async def get_balance(
         self,
-        access_token: str
+        access_token: str,
+        institution_id: str = None,
+        options: dict = None
     ):
         ArgumentNullException.if_none_or_whitespace(
             access_token, 'access_token')
@@ -48,13 +50,18 @@ class PlaidClient:
         balance_request = PlaidBalanceRequest(
             client_id=self._client_id,
             secret=self._client_secret,
-            access_token=access_token)
+            access_token=access_token,
+            options=options)
 
         response = await self._http_client.post(
             url=endpoint,
             json=balance_request.to_dict())
 
         logger.info(f'Status: {response.status_code}')
+
+        if response.status_code != 200:
+            logger.error(f'Error response: {response.text}')
+            response.raise_for_status()
 
         return response.json()
 
@@ -99,5 +106,41 @@ class PlaidClient:
             json=transactions_request.to_dict())
 
         logger.info(f'Status: {response.status_code}')
+
+        if response.status_code != 200:
+            logger.error(f'Error response: {response.text}')
+            response.raise_for_status()
+
+        return response.json()
+
+    async def sync_transactions(
+        self,
+        access_token: str,
+        institution_id: str = None,
+        options: dict = None
+    ):
+        ArgumentNullException.if_none_or_whitespace(
+            access_token, 'access_token')
+
+        logger.info(f'Sync transactions w/ access token: {access_token}')
+
+        endpoint = f'{self._base_url}/transactions/sync'
+
+        # Create sync request with institution-specific handling
+        sync_request = PlaidTransactionsSyncRequest(
+            client_id=self._client_id,
+            secret=self._client_secret,
+            access_token=access_token,
+            options=options)
+
+        response = await self._http_client.post(
+            url=endpoint,
+            json=sync_request.to_dict())
+
+        logger.info(f'Status: {response.status_code}')
+
+        if response.status_code != 200:
+            logger.error(f'Error response: {response.text}')
+            response.raise_for_status()
 
         return response.json()

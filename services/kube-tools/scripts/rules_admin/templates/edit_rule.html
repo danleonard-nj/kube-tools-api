@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}{% if rule %}Edit {{ rule.name }}{% else %}New Rule{% endif %} - Rules Admin{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Dashboard</a></li>
+            {% if rule %}
+                <li class="breadcrumb-item"><a href="{{ url_for('view_rule', rule_id=rule.rule_id) }}">{{ rule.name }}</a></li>
+                <li class="breadcrumb-item active">Edit</li>
+            {% else %}
+                <li class="breadcrumb-item active">New Rule</li>
+            {% endif %}
+        </ol>
+    </nav>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <form method="POST" action="{{ url_for('save_rule') }}">
+            {% if rule %}
+                <input type="hidden" name="rule_id" value="{{ rule.rule_id }}">
+            {% endif %}
+
+            <div class="form-section">
+                <h5><i class="bi bi-info-circle me-2"></i>Basic Information</h5>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="name" class="form-label">Rule Name *</label>
+                        <input type="text" class="form-control" id="name" name="name" 
+                               value="{{ rule.name if rule else '' }}" required>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="max_results" class="form-label">Max Results *</label>
+                        <input type="number" class="form-control" id="max_results" name="max_results" 
+                               value="{{ rule.max_results if rule else 10 }}" min="1" required>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="description" class="form-label">Description</label>
+                    <textarea class="form-control" id="description" name="description" rows="2">{{ rule.description if rule else '' }}</textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="query" class="form-label">Search Query *</label>
+                    <input type="text" class="form-control" id="query" name="query" 
+                           value="{{ rule.query if rule else '' }}" required>
+                    <div class="form-text">Gmail search query (e.g., "from:example.com OR subject:alert")</div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h5><i class="bi bi-lightning me-2"></i>Action Configuration</h5>
+                <div class="mb-3">
+                    <label for="action" class="form-label">Action Type *</label>
+                    <select class="form-select" id="action" name="action" required onchange="updateActionFields()">
+                        <option value="">Select an action...</option>
+                        {% for action_key, action_config in action_types.items() %}
+                            <option value="{{ action_key }}" 
+                                    {% if rule and rule.action == action_key %}selected{% endif %}>
+                                {{ action_config.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                {% for action_key, action_config in action_types.items() %}
+                <div id="fields-{{ action_key }}" class="action-fields" style="display: none;">
+                    <h6 class="text-muted mb-3">{{ action_config.name }} Settings</h6>
+                    {% for field_name, field_config in action_config.fields.items() %}
+                        <div class="mb-3">
+                            <label for="{{ field_name }}" class="form-label">{{ field_config.label }}</label>
+                            {% if field_config.type == 'boolean' %}
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="{{ field_name }}" name="{{ field_name }}"
+                                           {% if rule and rule.data.get(field_name) %}checked{% endif %}>
+                                    <label class="form-check-label" for="{{ field_name }}">
+                                        Enable {{ field_config.label }}
+                                    </label>
+                                </div>
+                            {% elif field_config.type == 'select' %}
+                                <select class="form-select" id="{{ field_name }}" name="{{ field_name }}">
+                                    {% for option in field_config.options %}
+                                        <option value="{{ option }}"
+                                                {% if rule and rule.data.get(field_name) == option %}selected{% endif %}>
+                                            {{ option.title() }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            {% elif field_config.type == 'text' %}
+                                <textarea class="form-control" id="{{ field_name }}" name="{{ field_name }}" rows="3">{{ rule.data.get(field_name, '') if rule else '' }}</textarea>
+                            {% elif field_config.type == 'json' %}
+                                <textarea class="form-control font-monospace" id="{{ field_name }}" name="{{ field_name }}" rows="4"
+                                          placeholder='{"key": "value"}'>{% if rule and rule.data.get(field_name) %}{{ rule.data.get(field_name) | json_pretty }}{% endif %}</textarea>
+                                <div class="form-text">Enter valid JSON</div>
+                            {% else %}
+                                <input type="{{ field_config.type }}" class="form-control" id="{{ field_name }}" name="{{ field_name }}"
+                                       value="{{ rule.data.get(field_name, '') if rule else '' }}">
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="d-flex justify-content-between">
+                <a href="{% if rule %}{{ url_for('view_rule', rule_id=rule.rule_id) }}{% else %}{{ url_for('index') }}{% endif %}" 
+                   class="btn btn-secondary">
+                    <i class="bi bi-arrow-left me-1"></i>Cancel
+                </a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i>Save Rule
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateActionFields() {
+    const actionSelect = document.getElementById('action');
+    const actionFields = document.querySelectorAll('.action-fields');
+    
+    // Hide all action fields
+    actionFields.forEach(field => {
+        field.style.display = 'none';
+    });
+    
+    // Show fields for selected action
+    if (actionSelect.value) {
+        const selectedFields = document.getElementById('fields-' + actionSelect.value);
+        if (selectedFields) {
+            selectedFields.style.display = 'block';
+        }
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updateActionFields();
+});
+</script>
+{% endblock %}

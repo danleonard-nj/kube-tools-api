@@ -23,7 +23,6 @@ class TruthSocialPushService:
         self,
         cache_client: CacheClientAsync,
         gpt_client: GPTClient,
-        email_config: EmailConfig,
         config: TruthSocialConfig,
         http_client: httpx.AsyncClient,
         sib_client: SendInBlueClient

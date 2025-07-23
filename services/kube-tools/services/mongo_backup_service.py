@@ -52,7 +52,7 @@ class MongoBackupService:
         # Upload the export to blob storage
         upload_start = datetime.utcnow()
 
-        blob_result = await self.__upload_export_blob(
+        blob_result = await self._upload_export_blob(
             blob_name=blob_name)
 
         upload_end = datetime.utcnow()
@@ -159,8 +159,7 @@ class MongoBackupService:
                 purged.append(result.to_dict())
 
         if any(purge_queue):
-            # Get a list of distinct blob names
-            # to purge
+            # Get a list of distinct blob names to purge
             blob_names = list(set([
                 blob.blob_name
                 for blob in purge_queue
@@ -178,7 +177,7 @@ class MongoBackupService:
 
         return purged
 
-    async def __upload_export_blob(
+    async def _upload_export_blob(
         self,
         blob_name: str
     ) -> Dict:
@@ -212,24 +211,3 @@ class MongoBackupService:
             subject='MongoDB Backup Service',
             recipient='dcl525@gmail.com',
             message=f'MongoDB backup completed successfully: {blob_name}')
-
-    async def _write_history_record(
-        self,
-        blob_name: str,
-        elapsed: timedelta,
-        stdout: str,
-        stderr: str
-    ) -> None:
-
-        ArgumentNullException.if_none_or_whitespace(blob_name, 'blob_name')
-
-        record = MongoExportHistoryRecord(
-            blob_name=blob_name,
-            elapsed=elapsed,
-            stderr=stderr,
-            stdout=stdout)
-
-        logger.info(f'Writing history record: {record.to_dict()}')
-
-        await self._export_repository.insert(
-            document=record.to_dict())

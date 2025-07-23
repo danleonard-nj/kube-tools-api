@@ -238,6 +238,7 @@ class GmailEmailRuleModel(BaseModel, Serializable):
     data: Any
     created_date: datetime
     count_processed: int = 0
+    last_processed_date: Optional[datetime] = None
     modified_date: Optional[datetime] = None
 
     def get_selector(
@@ -277,6 +278,7 @@ class GmailEmailRuleModel(BaseModel, Serializable):
             action=data.get('action'),
             data=config,
             count_processed=data.get('count_processed'),
+            last_processed_date=data.get('last_processed_date'),
             created_date=data.get('created_date')
         )
 
@@ -293,6 +295,7 @@ class GmailEmailRuleModel(BaseModel, Serializable):
             action=data.get('action'),
             data=config,
             count_processed=data.get('count_processed'),
+            last_processed_date=data.get('last_processed_date'),
             created_date=data.get('created_date')
         )
 
@@ -383,7 +386,74 @@ class GoogleDriveFileUpload:
             self._data.close()
 
 
-class EmailRuleLog(Serializable):
+class EmailRuleLogType:
+    RULE_EXECUTION = "rule_execution"
+    EMAIL_PROCESSING = "email_processing"
+    ERROR = "error"
+    PERFORMANCE_METRIC = "performance_metric"
+
+
+class EmailRuleExecutionLog(BaseModel, Serializable):
+    log_id: str
+    log_type: Optional[str] = EmailRuleLogType.RULE_EXECUTION
+    rule_id: str
+    rule_name: str
+    execution_id: str
+    status: str
+    start_time: datetime
+    end_time: Optional[datetime] = None
+    emails_found: Optional[int] = None
+    emails_processed: Optional[int] = None
+    emails_failed: Optional[int] = None
+    error_message: Optional[str] = None
+    execution_duration_ms: Optional[int] = None
+    created_date: Optional[datetime] = None
+
+
+class EmailProcessingLog(BaseModel, Serializable):
+    log_id: str
+    log_type: Optional[str] = EmailRuleLogType.EMAIL_PROCESSING
+    rule_id: str
+    rule_name: Optional[str] = None
+    email_id: str
+    email_subject: str
+    email_from: str
+    labels_ids: Optional[List[str]] = None
+    action_type: str
+    status: str
+    processing_time_ms: Optional[int] = None
+    error_message: Optional[str] = None
+    action_details: Optional[Dict] = None
+    created_date: Optional[datetime] = None
+
+
+class EmailRuleErrorLog(BaseModel, Serializable):
+    log_id: str
+    log_type: Optional[str] = EmailRuleLogType.ERROR
+    execution_id: Optional[str]
+    rule_id: Optional[str]
+    email_id: Optional[str]
+    error_type: str
+    error_message: str
+    stack_trace: Optional[str] = None
+    context: Optional[Dict] = None
+    created_date: Optional[datetime] = None
+
+
+class EmailRulePerformanceLog(BaseModel, Serializable):
+    log_id: str
+    log_type: Optional[str] = EmailRuleLogType.PERFORMANCE_METRIC
+    execution_id: str
+    rule_id: str
+    metric_name: str
+    metric_value: float
+    metric_unit: str
+    additional_data: Optional[Dict] = None
+    created_date: Optional[datetime] = None
+
+
+# Legacy model - keeping for backward compatibility
+class EmailRuleLog(BaseModel, Serializable):
     def __init__(
         self,
         log_id: str,

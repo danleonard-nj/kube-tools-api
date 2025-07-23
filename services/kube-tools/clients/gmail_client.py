@@ -1,5 +1,6 @@
 import asyncio
 
+from domain import cache
 from domain.google import (GmailEmail, GmailModifyEmailRequestModel,
                            GmailQueryResultModel, GoogleClientScope,
                            GoogleEmailLabel)
@@ -11,6 +12,8 @@ from framework.uri import build_url
 from framework.validators.nulls import none_or_whitespace
 from httpx import AsyncClient
 from services.google_auth_service import GoogleAuthService
+from framework.concurrency.concurrency import fire_task
+from framework.clients.cache_client import CacheClientAsync
 
 logger = get_logger(__name__)
 
@@ -20,10 +23,12 @@ class GmailClient:
         self,
         configuration: Configuration,
         auth_service: GoogleAuthService,
-        http_client: AsyncClient
+        http_client: AsyncClient,
+        cache_client: CacheClientAsync
     ):
         self._auth_service = auth_service
         self._http_client = http_client
+        self._cache_client = cache_client
 
         self._base_url = configuration.gmail.get(
             'base_url')
@@ -78,6 +83,13 @@ class GmailClient:
 
         logger.debug(f'Fetching message: {message_id}')
 
+        key = f'gmail:message:{message_id}'
+        cached = await self._cache_client.get_json(key)
+
+        if cached:
+            logger.debug(f'Cache hit for message: {message_id}')
+            return GmailEmail.model_validate(cached)
+
         # Build endpoint with message
         endpoint = f'{self._base_url}/v1/users/me/messages/{message_id}'
 
@@ -90,6 +102,15 @@ class GmailClient:
             message_response.raise_for_status()
 
         content = message_response.json()
+
+        # Cache the message content
+        fire_task(
+            self._cache_client.set_json(
+                key=key,
+                value=content,
+                ttl=60 * 24
+            )
+        )
 
         return GmailEmail(data=content)
 

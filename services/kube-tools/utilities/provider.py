@@ -7,12 +7,10 @@ from clients.google_auth_client import GoogleAuthClient
 from clients.google_drive_client import GoogleDriveClient
 from clients.google_drive_client_async import GoogleDriveClientAsync
 from clients.google_maps_client import GoogleMapsClient
-from clients.google_search_client import GoogleSearchClient
 from clients.gpt_client import GPTClient
 from clients.identity_client import IdentityClient
 from clients.open_weather_client import OpenWeatherClient
 from clients.plaid_client import PlaidClient
-from clients.robinhood_data_client import RobinhoodDataClient
 from clients.sib_client import SendInBlueClient
 from clients.storage_client import StorageClient
 from clients.torrent_client import TorrentClient
@@ -54,7 +52,6 @@ from models.coinbase_models import CoinbaseConfig
 from models.email_config import EmailConfig
 from models.openai_config import OpenAIConfig
 from models.podcast_config import PodcastConfig
-from models.robinhood_models import RobinhoodConfig
 from motor.motor_asyncio import AsyncIOMotorClient
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
@@ -63,6 +60,7 @@ from services.api_event_service import ApiEventHistoryService
 from services.bank_balance_service import BalanceSyncService
 from services.bank_service import BankService
 from services.bank_transaction_service import BankTransactionService
+from services.banking.plaid_sync_service import PlaidAccountRepository, PlaidAdminItemRepository, PlaidSyncRepository, PlaidSyncService, PlaidTransactionRepository
 from services.calendar_service import CalendarService
 from services.coinbase_service import CoinbaseService
 from services.conversation_service import ConversationService
@@ -83,10 +81,6 @@ from services.podcast_service import PodcastService
 from services.redis_service import RedisService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
 from services.conversation_service import ConversationService
-from services.robinhood.email_generator import EmailGenerator
-from services.robinhood.market_research_processor import MarketResearchProcessor
-from services.robinhood.prompt_generator import PromptGenerator
-from services.robinhood.robinhood_service import RobinhoodService
 from services.torrent_service import TorrentService
 from services.ts_push_service import TruthSocialConfig, TruthSocialPushService
 from services.usage_service import UsageService
@@ -165,7 +159,6 @@ def register_configs(descriptors):
             dependency_type=config_type,
             factory=resolve_func)
 
-    register_config(RobinhoodConfig, 'robinhood')
     register_config(CoinbaseConfig, 'coinbase')
     register_config(PodcastConfig, 'podcasts')
     register_config(EmailConfig, 'email')
@@ -201,7 +194,6 @@ def register_clients(
     descriptors.add_singleton(EmailGatewayClient)
     descriptors.add_singleton(StorageClient)
     descriptors.add_singleton(GoogleMapsClient)
-    descriptors.add_singleton(GoogleSearchClient)
     descriptors.add_singleton(EventClient)
     descriptors.add_singleton(GmailClient)
     descriptors.add_singleton(PlaidClient)
@@ -211,6 +203,7 @@ def register_clients(
     descriptors.add_singleton(CoinbaseClient)
     descriptors.add_singleton(CoinbaseRESTClient)
     descriptors.add_singleton(SendInBlueClient)
+    descriptors.add_singleton(GPTClient)
 
 
 def register_repositories(
@@ -235,6 +228,10 @@ def register_repositories(
     descriptors.add_singleton(GoogleAuthRepository)
     descriptors.add_singleton(InboundSMSRepository)
     descriptors.add_singleton(AndroidNetworkDiagnosticsRepository)
+    descriptors.add_singleton(PlaidAdminItemRepository)
+    descriptors.add_singleton(PlaidAccountRepository)
+    descriptors.add_singleton(PlaidTransactionRepository)
+    descriptors.add_singleton(PlaidSyncRepository)
 
 
 def register_services(
@@ -266,25 +263,26 @@ def register_services(
     descriptors.add_singleton(CoinbaseService)
     descriptors.add_singleton(AndroidService)
     descriptors.add_singleton(TruthSocialPushService)
+    descriptors.add_singleton(PlaidSyncService)
 
 
-def register_robinhood_services(
-    descriptors: ServiceCollection
-):
-    descriptors.add_singleton(RobinhoodService)
+# def register_robinhood_services(
+#     descriptors: ServiceCollection
+# ):
+#     descriptors.add_singleton(RobinhoodService)
 
-    descriptors.add_singleton(RobinhoodDataClient)
-    descriptors.add_singleton(GPTClient)
+#     descriptors.add_singleton(RobinhoodDataClient)
+#     descriptors.add_singleton(GPTClient)
 
-    descriptors.add_singleton(PromptGenerator)
-    descriptors.add_singleton(EmailGenerator)
+#     descriptors.add_singleton(PromptGenerator)
+#     descriptors.add_singleton(EmailGenerator)
 
-    descriptors.add_singleton(MarketResearchProcessor)
+#     descriptors.add_singleton(MarketResearchProcessor)
 
-    descriptors.add_singleton(
-        dependency_type=RobinhoodConfig,
-        factory=lambda p: RobinhoodConfig.model_validate(
-            p.resolve(Configuration).robinhood))
+#     descriptors.add_singleton(
+#         dependency_type=RobinhoodConfig,
+#         factory=lambda p: RobinhoodConfig.model_validate(
+#             p.resolve(Configuration).robinhood))
 
 
 class ContainerProvider(ProviderBase):
@@ -297,7 +295,7 @@ class ContainerProvider(ProviderBase):
         register_repositories(descriptors=descriptors)
         register_clients(descriptors=descriptors)
         register_services(descriptors=descriptors)
-        register_robinhood_services(descriptors=descriptors)
+        # register_robinhood_services(descriptors=descriptors)
         register_gmail_services(descriptors=descriptors)
         register_configs(descriptors=descriptors)
 
