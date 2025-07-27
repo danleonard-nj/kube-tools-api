@@ -193,12 +193,10 @@ class PlaidSyncService:
         item_repo: PlaidAdminItemRepository,
         account_repo: PlaidAccountRepository,
         transaction_repo: PlaidTransactionRepository,
-        sync_repo: PlaidSyncRepository
+        sync_repo: PlaidSyncRepository,
+        plaid_client: PlaidClient
     ):
-        self.plaid_client = PlaidClient(
-            client_id=plaid_config.client_id,
-            client_secret=plaid_config.client_secret)
-
+        self.plaid_client = plaid_client
         self.items_repo = item_repo
         self.accounts = account_repo
         self.transactions = transaction_repo
@@ -218,7 +216,7 @@ class PlaidSyncService:
         if institution_id in INSTITUTIONS_REQUIRING_MIN_LAST_UPDATED:
             logger.info(f"Institution {institution_id} requires min_last_updated_datetime")
             options = {
-                "min_last_updated_datetime": datetime.now(timezone.utc).isoformat()
+                "min_last_updated_datetime": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
             }
         else:
             logger.info(f"Institution {institution_id} does not require min_last_updated_datetime")
@@ -380,9 +378,9 @@ class PlaidSyncService:
 
         # Sync each item
         for item in items:
-            if 'capital' not in item.institution_name.lower():
-                logger.info(f"Skipping item {item.institution_name} due to filter")
-                continue
+            # if 'capital' not in item.institution_name.lower():
+            #     logger.info(f"Skipping item {item.institution_name} due to filter")
+            #     continue
             try:
                 logger.info(f"Syncing item: {item.institution_name} (access_token: {item.access_token[:20]}...)")
                 await self.sync_balances(item.access_token)

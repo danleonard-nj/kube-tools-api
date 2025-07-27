@@ -11,6 +11,7 @@ plaid_bp = MetaBlueprint('plaid_bp', __name__)
 async def get_plaid_sync(container):
     service: PlaidSyncService = container.resolve(PlaidSyncService)
     await service.sync_all()
+    return jsonify({"status": "complete"}), 200
 
 
 # Fetch all accounts endpoint
