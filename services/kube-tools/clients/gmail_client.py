@@ -76,6 +76,11 @@ class GmailClient:
 
         return response
 
+    def _get_cache_key(
+        message_id: str
+    ):
+        return f'gmail:message:{message_id}'
+
     async def get_message(
         self,
         message_id: str
@@ -83,7 +88,7 @@ class GmailClient:
 
         logger.debug(f'Fetching message: {message_id}')
 
-        key = f'gmail:message:{message_id}'
+        key = self._get_cache_key(message_id=message_id)
         cached = await self._cache_client.get_json(key)
 
         if cached:
@@ -138,6 +143,10 @@ class GmailClient:
         ArgumentNullException.if_none_or_whitespace(
             message_id, 'message_id')
 
+        cache_key = self._get_cache_key(message_id=message_id)
+        logger.info(f'Invalidating cache for message: {message_id}')
+        await self._cache_client.delete_key(cache_key)
+
         logger.info(f'Tags: add + {to_add} | remove - {to_remove}')
 
         # Build endpoint with message
@@ -168,6 +177,10 @@ class GmailClient:
 
         ArgumentNullException.if_none_or_whitespace(
             message_id, 'message_id')
+
+        cache_key = self._get_cache_key(message_id=message_id)
+        logger.info(f'Invalidating cache for message: {message_id}')
+        await self._cache_client.delete_key(cache_key)
 
         logger.info(f'Gmail archive message: {message_id}')
 
