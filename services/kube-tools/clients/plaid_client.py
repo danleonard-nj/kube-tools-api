@@ -116,8 +116,8 @@ class PlaidClient:
     async def sync_transactions(
         self,
         access_token: str,
-        institution_id: str = None,
-        options: dict = None
+        cursor: str = None,
+        count: int = 100,
     ):
         ArgumentNullException.if_none_or_whitespace(
             access_token, 'access_token')
@@ -131,7 +131,9 @@ class PlaidClient:
             client_id=self._client_id,
             secret=self._client_secret,
             access_token=access_token,
-            options=options)
+            cursor=cursor,
+            count=count
+        )
 
         response = await self._http_client.post(
             url=endpoint,

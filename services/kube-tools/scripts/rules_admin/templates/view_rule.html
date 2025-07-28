@@ -36,11 +36,39 @@ Admin{% endblock %} {% block content %}
       <div class="card-body">
         <div class="row mb-3">
           <div class="col-sm-3 fw-bold">Name:</div>
-          <div class="col-sm-9">{{ rule.name }}</div>
+          <div class="col-sm-9">
+            {{ rule.name }} {% if not rule.get('is_active', True) %}
+            <span class="badge bg-secondary ms-2">
+              <i class="bi bi-pause-circle me-1"></i>Inactive
+            </span>
+            {% else %}
+            <span class="badge bg-success ms-2">
+              <i class="bi bi-play-circle me-1"></i>Active
+            </span>
+            {% endif %}
+          </div>
         </div>
         <div class="row mb-3">
           <div class="col-sm-3 fw-bold">Description:</div>
           <div class="col-sm-9">{{ rule.description }}</div>
+        </div>
+        <div class="row mb-3">
+          <div class="col-sm-3 fw-bold">Status:</div>
+          <div class="col-sm-9">
+            <div class="form-check form-switch d-inline-block">
+              <input class="form-check-input" type="checkbox"
+              id="status-toggle" {% if rule.get('is_active', True)
+              %}checked{% endif %} onchange="toggleRuleStatus('{{
+              rule.rule_id }}', this)">
+              <label class="form-check-label" for="status-toggle">
+                <span id="status-text">
+                  {% if rule.get('is_active', True) %} Rule is active
+                  and processing emails {% else %} Rule is inactive
+                  and not processing emails {% endif %}
+                </span>
+              </label>
+            </div>
+          </div>
         </div>
         <div class="row mb-3">
           <div class="col-sm-3 fw-bold">Query:</div>
@@ -172,4 +200,47 @@ Admin{% endblock %} {% block content %}
     </div>
   </div>
 </div>
+
+<script>
+  async function toggleRuleStatus(ruleId, checkbox) {
+    const originalChecked = checkbox.checked;
+    const statusText = document.getElementById('status-text');
+    const badge = document.querySelector('.badge');
+
+    try {
+      const response = await fetch(`/rule/${ruleId}/toggle`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Update the status text and badge
+        if (data.is_active) {
+          statusText.textContent =
+            'Rule is active and processing emails';
+          badge.className = 'badge bg-success ms-2';
+          badge.innerHTML =
+            '<i class="bi bi-play-circle me-1"></i>Active';
+        } else {
+          statusText.textContent =
+            'Rule is inactive and not processing emails';
+          badge.className = 'badge bg-secondary ms-2';
+          badge.innerHTML =
+            '<i class="bi bi-pause-circle me-1"></i>Inactive';
+        }
+      } else {
+        // Revert checkbox on error
+        checkbox.checked = !originalChecked;
+        alert('Failed to toggle rule status');
+      }
+    } catch (error) {
+      // Revert checkbox on error
+      checkbox.checked = !originalChecked;
+      alert('Error toggling rule status: ' + error.message);
+    }
+  }
+</script>
 {% endblock %}

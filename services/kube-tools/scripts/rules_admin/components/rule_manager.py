@@ -47,6 +47,9 @@ class RuleManager:
         rule_data['created_date'] = datetime.utcnow()
         rule_data['modified_date'] = datetime.utcnow()
         rule_data['count_processed'] = 0
+        # Set default active status if not provided
+        if 'is_active' not in rule_data:
+            rule_data['is_active'] = True
 
         self.rules_collection.insert_one(rule_data)
         return rule_data['rule_id']
@@ -68,3 +71,21 @@ class RuleManager:
         """Delete a rule"""
         result = self.rules_collection.delete_one({'rule_id': rule_id})
         return result.deleted_count > 0
+
+    def toggle_rule_status(self, rule_id: str) -> bool:
+        """Toggle the active status of a rule"""
+        rule = self.get_rule_by_id(rule_id)
+        if not rule:
+            return False
+
+        new_status = not rule.get('is_active', True)
+        result = self.rules_collection.update_one(
+            {'rule_id': rule_id},
+            {
+                '$set': {
+                    'is_active': new_status,
+                    'modified_date': datetime.utcnow()
+                }
+            }
+        )
+        return result.modified_count > 0

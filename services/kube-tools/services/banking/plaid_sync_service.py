@@ -1,13 +1,10 @@
-from http import client
-from framework.mongo.mongo_repository import MongoRepositoryAsync
-from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
-from framework.clients.cache_client import CacheClientAsync
+from typing import List, Optional
 from framework.logger import get_logger
 
+from data.plaid_repository import PlaidAccountRepository, PlaidAdminItemRepository, PlaidSyncRepository, PlaidTransactionRepository
 from models.bank_config import PlaidConfig
+from models.plaid_models import Account, AccountBalance, SyncState, Transaction
 from services.banking.models import PlaidItemModel
 from clients.plaid_client import PlaidClient
 
@@ -19,170 +16,7 @@ logger.info("Initializing PlaidSyncService")
 INSTITUTIONS_REQUIRING_MIN_LAST_UPDATED = {"ins_128026"}
 
 
-class PlaidAdminItemRepository(MongoRepositoryAsync):
-    def __init__(
-        self,
-        client: AsyncIOMotorClient
-    ):
-        super().__init__(
-            client=client,
-            database='plaid_admin',
-            collection='plaid_items')
-
-    async def get_item_by_access_token(self, access_token: str):
-        """Get item by access_token."""
-        logger.info(f"Getting item for access_token: {access_token}")
-        item_doc = await self.collection.find_one({'access_token': access_token})
-        logger.info(f"Found item: {item_doc}")
-        return item_doc
-
-
-class PlaidAccountRepository(MongoRepositoryAsync):
-    def __init__(
-        self,
-        client: AsyncIOMotorClient
-    ):
-        super().__init__(
-            client=client,
-            database='plaid',
-            collection='accounts')
-
-    async def upsert_account(self, account: dict):
-        """Upsert an account by account_id."""
-        logger.info(f"Upserting account in repo: {account.get('account_id')}")
-        result = await self.collection.replace_one(
-            {'account_id': account['account_id']},
-            account,
-            upsert=True
-        )
-        logger.info(f"Upsert result: matched={result.matched_count}, modified={result.modified_count}, upserted_id={result.upserted_id}")
-        return result
-
-    async def get_all_accounts(self):
-        """Get all accounts."""
-        logger.info("Getting all accounts from repo")
-        accounts = await self.collection.find().to_list(length=None)
-        logger.info(f"Found {len(accounts)} accounts")
-        return accounts
-
-
-class PlaidTransactionRepository(MongoRepositoryAsync):
-    def __init__(
-        self,
-        client: AsyncIOMotorClient
-    ):
-        super().__init__(
-            client=client,
-            database='plaid',
-            collection='transactions')
-
-    async def update_transaction(self, transaction_id: str, update_fields: dict):
-        """Update a transaction by transaction_id with the given fields."""
-        logger.info(f"Updating transaction in repo: {transaction_id} with fields: {update_fields}")
-        result = await self.collection.update_one(
-            {'transaction_id': transaction_id},
-            {'$set': update_fields}
-        )
-        logger.info(f"Update result: matched={result.matched_count}, modified={result.modified_count}")
-        return result
-
-    async def upsert_transaction(self, transaction: dict):
-        """Upsert a transaction by transaction_id."""
-        logger.info(f"Upserting transaction in repo: {transaction.get('transaction_id')}")
-        result = await self.collection.replace_one(
-            {'transaction_id': transaction['transaction_id']},
-            transaction,
-            upsert=True
-        )
-        logger.info(f"Upsert result: matched={result.matched_count}, modified={result.modified_count}, upserted_id={result.upserted_id}")
-        return result
-
-    async def delete_transaction(self, transaction_id: str):
-        """Delete a transaction by transaction_id."""
-        logger.info(f"Deleting transaction in repo: {transaction_id}")
-        result = await self.collection.delete_one({'transaction_id': transaction_id})
-        logger.info(f"Delete result: deleted_count={result.deleted_count}")
-        return result
-
-    async def find_transactions(self, query: dict, limit: Optional[int] = None):
-        """Find transactions matching the query."""
-        logger.info(f"Finding transactions with query: {query}, limit: {limit}")
-        if limit:
-            transactions = await self.collection.find(query).limit(limit).to_list(length=limit)
-        else:
-            transactions = await self.collection.find(query).to_list(length=None)
-        logger.info(f"Found {len(transactions)} transactions")
-        return transactions
-
-
-class PlaidSyncRepository(MongoRepositoryAsync):
-    def __init__(
-        self,
-        client: AsyncIOMotorClient
-    ):
-        super().__init__(
-            client=client,
-            database='plaid',
-            collection='sync')
-
-    async def get_sync_state(self, access_token: str):
-        """Get sync state by access_token."""
-        logger.info(f"Getting sync state for access_token: {access_token}")
-        state_doc = await self.collection.find_one({'access_token': access_token})
-        logger.info(f"Found sync state: {state_doc}")
-        return state_doc
-
-    async def upsert_sync_state(self, sync_state: dict):
-        """Upsert sync state by access_token."""
-        logger.info(f"Upserting sync state for access_token: {sync_state.get('access_token')}")
-        result = await self.collection.replace_one(
-            {'access_token': sync_state['access_token']},
-            sync_state,
-            upsert=True
-        )
-        logger.info(f"Upsert result: matched={result.matched_count}, modified={result.modified_count}, upserted_id={result.upserted_id}")
-        return result
-
-
 # Models that match Plaid's API response
-
-# Plaid AccountBalance model
-class AccountBalance(BaseModel):
-    available: Optional[float] = None
-    current: Optional[float] = None
-    iso_currency_code: Optional[str] = None
-    unofficial_currency_code: Optional[str] = None
-    limit: Optional[float] = None
-    last_updated_datetime: Optional[str] = None
-
-
-class Account(BaseModel):
-    account_id: str
-    access_token: str
-    name: str
-    official_name: Optional[str] = None
-    type: str
-    subtype: Optional[str] = None
-    balances: AccountBalance
-    mask: Optional[str] = None
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-class Transaction(BaseModel):
-    transaction_id: str
-    account_id: str
-    access_token: str
-    amount: float
-    date: datetime
-    name: str
-    category: Optional[List[str]] = None
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-class SyncState(BaseModel):
-    access_token: str
-    cursor: str = ""
-    last_sync: Optional[datetime] = None
 
 
 class PlaidSyncService:
@@ -275,7 +109,7 @@ class PlaidSyncService:
         """Get the current sync cursor for transactions."""
         state_doc = await self.sync_state.get_sync_state(access_token)
         cursor = state_doc['cursor'] if state_doc else ''
-        logger.info(f"Using cursor: {cursor}")
+        logger.info(f"Retrieved cursor from database: '{cursor}' for access_token: {access_token[:20]}...")
         return cursor
 
     async def _fetch_transaction_data(self, access_token: str, cursor: str) -> dict:
@@ -284,20 +118,12 @@ class PlaidSyncService:
         item_doc = await self.items_repo.get_item_by_access_token(access_token)
         institution_id = item_doc.get('institution_id') if item_doc else None
 
-        # Build options for institutions that need min_last_updated_datetime
-        options = {
-            "cursor": cursor,
-            "count": 50
-        }
-
-        if institution_id in INSTITUTIONS_REQUIRING_MIN_LAST_UPDATED:
-            logger.info(f"Institution {institution_id} requires min_last_updated_datetime for transactions")
-            options["min_last_updated_datetime"] = datetime.now(timezone.utc).isoformat()
+        logger.info(f"Fetching transactions with cursor: '{cursor}' for institution: {institution_id}")
 
         response = await self.plaid_client.sync_transactions(
             access_token=access_token,
-            institution_id=institution_id,
-            options=options
+            cursor=cursor,
+            count=50
         )
 
         logger.info(f"Received {len(response['added'])} new, {len(response['modified'])} modified, and {len(response['removed'])} removed transactions")
@@ -359,6 +185,8 @@ class PlaidSyncService:
 
     async def _update_sync_state(self, access_token: str, next_cursor: str):
         """Update the sync state with new cursor and timestamp."""
+        logger.info(f"Updating sync state with new cursor: '{next_cursor}' for access_token: {access_token[:20]}...")
+
         sync_state = SyncState(
             access_token=access_token,
             cursor=next_cursor,
@@ -366,7 +194,7 @@ class PlaidSyncService:
         )
 
         await self.sync_state.upsert_sync_state(sync_state.model_dump())
-        logger.info(f"Sync state updated for access_token: {access_token}")
+        logger.info(f"Sync state updated successfully for access_token: {access_token[:20]}...")
 
     async def sync_all(self):
         """Sync balances for all linked items."""
@@ -378,13 +206,16 @@ class PlaidSyncService:
 
         # Sync each item
         for item in items:
-            # if 'capital' not in item.institution_name.lower():
+            # if 'fargo' not in item.institution_name.lower():
             #     logger.info(f"Skipping item {item.institution_name} due to filter")
             #     continue
             try:
                 logger.info(f"Syncing item: {item.institution_name} (access_token: {item.access_token[:20]}...)")
                 await self.sync_balances(item.access_token)
                 logger.info(f"Successfully synced item: {item.institution_name}")
+
+                await self.sync_transactions(item.access_token)
+                logger.info(f"Successfully synced transactions for item: {item.institution_name}")
             except Exception as e:
                 logger.error(f"Failed to sync item {item.institution_name}: {e}")
                 # Continue with other items even if one fails

@@ -1,7 +1,7 @@
 import asyncio
 
 from domain import cache
-from domain.google import (GmailEmail, GmailModifyEmailRequestModel,
+from domain.google import (GmailEmail, GmailEmailRuleModel, GmailModifyEmailRequestModel,
                            GmailQueryResultModel, GoogleClientScope,
                            GoogleEmailLabel)
 from framework.concurrency import TaskCollection
@@ -88,7 +88,7 @@ class GmailClient:
 
         if cached:
             logger.debug(f'Cache hit for message: {message_id}')
-            return GmailEmail.model_validate(cached)
+            return GmailEmail(data=cached)
 
         # Build endpoint with message
         endpoint = f'{self._base_url}/v1/users/me/messages/{message_id}'

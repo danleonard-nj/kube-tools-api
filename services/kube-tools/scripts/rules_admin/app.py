@@ -241,6 +241,7 @@ def save_rule():
             'max_results': int(request.form['max_results']),
             'query': request.form['query'].strip(),
             'action': request.form['action'],
+            'is_active': 'is_active' in request.form,  # Handle checkbox
             'data': {}
         }
         logger.info(f"Processing action type: {rule_data['action']}")
@@ -295,6 +296,22 @@ def delete_rule(rule_id):
         logger.error(f'Failed to delete rule {rule_id}')
         flash('Failed to delete rule', 'error')
     return redirect(url_for('index'))
+
+
+@app.route('/rule/<rule_id>/toggle', methods=['POST'])
+@login_required
+def toggle_rule(rule_id):
+    logger.info(f'Toggle rule {rule_id} requested')
+    if rule_manager.toggle_rule_status(rule_id):
+        rule = rule_manager.get_rule_by_id(rule_id)
+        status = "activated" if rule.get('is_active') else "deactivated"
+        logger.info(f'Rule {rule_id} {status} successfully')
+        flash(f'Rule {status} successfully', 'success')
+        return jsonify({'success': True, 'is_active': rule.get('is_active')})
+    else:
+        logger.error(f'Failed to toggle rule {rule_id}')
+        flash('Failed to toggle rule', 'error')
+        return jsonify({'success': False}), 500
 
 
 @app.route('/api/rules')

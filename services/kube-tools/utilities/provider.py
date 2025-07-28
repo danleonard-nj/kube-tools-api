@@ -33,6 +33,7 @@ from data.google.google_reverse_geocode_repository import \
 from data.location_repository import (WeatherStationRepository,
                                       ZipLatLongRepository)
 from data.mongo_export_repository import MongoExportRepository
+from data.plaid_repository import PlaidAccountRepository, PlaidAdminItemRepository, PlaidSyncRepository, PlaidTransactionRepository
 from data.podcast_repository import PodcastRepository
 from data.sms_inbound_repository import InboundSMSRepository
 from data.weather_repository import WeatherRepository
@@ -60,7 +61,7 @@ from services.api_event_service import ApiEventHistoryService
 from services.bank_balance_service import BalanceSyncService
 from services.bank_service import BankService
 from services.bank_transaction_service import BankTransactionService
-from services.banking.plaid_sync_service import PlaidAccountRepository, PlaidAdminItemRepository, PlaidSyncRepository, PlaidSyncService, PlaidTransactionRepository
+from services.banking.plaid_sync_service import PlaidSyncService
 from services.calendar_service import CalendarService
 from services.coinbase_service import CoinbaseService
 from services.conversation_service import ConversationService
@@ -266,25 +267,6 @@ def register_services(
     descriptors.add_singleton(PlaidSyncService)
 
 
-# def register_robinhood_services(
-#     descriptors: ServiceCollection
-# ):
-#     descriptors.add_singleton(RobinhoodService)
-
-#     descriptors.add_singleton(RobinhoodDataClient)
-#     descriptors.add_singleton(GPTClient)
-
-#     descriptors.add_singleton(PromptGenerator)
-#     descriptors.add_singleton(EmailGenerator)
-
-#     descriptors.add_singleton(MarketResearchProcessor)
-
-#     descriptors.add_singleton(
-#         dependency_type=RobinhoodConfig,
-#         factory=lambda p: RobinhoodConfig.model_validate(
-#             p.resolve(Configuration).robinhood))
-
-
 class ContainerProvider(ProviderBase):
     @classmethod
     def configure_container(cls):
@@ -295,7 +277,6 @@ class ContainerProvider(ProviderBase):
         register_repositories(descriptors=descriptors)
         register_clients(descriptors=descriptors)
         register_services(descriptors=descriptors)
-        # register_robinhood_services(descriptors=descriptors)
         register_gmail_services(descriptors=descriptors)
         register_configs(descriptors=descriptors)
 

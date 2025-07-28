@@ -202,6 +202,8 @@ class UpdateEmailRuleRequestModel(BaseModel, Serializable):
     action: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
     max_results: Optional[int] = None
+    is_active: Optional[bool] = None
+    count_processed: Optional[int] = None
 
     @staticmethod
     def from_dict(
@@ -214,7 +216,9 @@ class UpdateEmailRuleRequestModel(BaseModel, Serializable):
             query=data.get('query'),
             action=data.get('action'),
             data=data.get('data'),
-            max_results=data.get('max_results')
+            max_results=data.get('max_results'),
+            is_active=data.get('is_active'),
+            count_processed=data.get('count_processed')
         )
 
 
@@ -237,6 +241,7 @@ class GmailEmailRuleModel(BaseModel, Serializable):
     action: str
     data: Any
     created_date: datetime
+    is_active: bool
     count_processed: int = 0
     last_processed_date: Optional[datetime] = None
     modified_date: Optional[datetime] = None
@@ -257,11 +262,13 @@ class GmailEmailRuleModel(BaseModel, Serializable):
         ArgumentNullException.if_none(update_request, 'update_request')
 
         self.name = update(self.name, update_request.name)
+        self.is_active = update(self.is_active, update_request.is_active)
         self.description = update(self.description, update_request.description)
         self.max_results = update(self.max_results, update_request.max_results)
         self.query = update(self.query, update_request.query)
         self.action = update(self.action, update_request.action)
         self.data = update(self.data, update_request.data)
+        self.count_processed = update(self.count_processed, update_request.count_processed)
 
         self.modified_date = datetime.utcnow()
 
@@ -279,7 +286,8 @@ class GmailEmailRuleModel(BaseModel, Serializable):
             data=config,
             count_processed=data.get('count_processed'),
             last_processed_date=data.get('last_processed_date'),
-            created_date=data.get('created_date')
+            created_date=data.get('created_date'),
+            is_active=data.get('is_active')
         )
 
     @staticmethod

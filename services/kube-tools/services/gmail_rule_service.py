@@ -57,7 +57,11 @@ class GmailRuleService:
 
         logger.info(f'{len(rules)} rules retrieved')
 
-        return rules
+        active = [rule for rule in rules if rule.is_active]
+
+        logger.info(f'{len(active)} active rules retrieved')
+
+        return active
 
     async def create_rule(
         self,
@@ -90,6 +94,7 @@ class GmailRuleService:
             action=create_request.action,
             data=create_request.data,
             max_results=create_request.max_results,
+            is_active=True,
             created_date=datetime.now())
 
         # Insert the rule entity
@@ -170,8 +175,7 @@ class GmailRuleService:
 
         # Update fields on the rule from the
         # update request
-        rule.update_rule(
-            update_request=update_request)
+        rule.update_rule(update_request=update_request)
 
         # Update the rule in the db
         result = await self._email_rule_repository.replace(

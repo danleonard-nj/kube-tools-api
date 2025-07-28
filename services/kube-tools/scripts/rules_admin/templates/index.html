@@ -40,7 +40,7 @@ endblock %} {% block content %}
           type="text"
           class="form-control"
           id="searchInput"
-          placeholder="Search by name, description..."
+          placeholder="Search by name, description, query..."
           oninput="filterRules()" />
         <i
           class="bi bi-search position-absolute top-50 end-0 translate-middle-y me-3"></i>
@@ -75,6 +75,36 @@ endblock %} {% block content %}
         >
       </div>
       {% endfor %}
+    </div>
+
+    <div class="mb-4">
+      <label class="form-label">Rule Status</label>
+      <div class="form-check">
+        <input
+          class="form-check-input status-filter"
+          type="checkbox"
+          value="active"
+          id="filterActive"
+          checked
+          onchange="filterRules()" />
+        <label class="form-check-label" for="filterActive">
+          <i class="bi bi-play-circle text-success me-1"></i>Active
+          Rules
+        </label>
+      </div>
+      <div class="form-check">
+        <input
+          class="form-check-input status-filter"
+          type="checkbox"
+          value="inactive"
+          id="filterInactive"
+          checked
+          onchange="filterRules()" />
+        <label class="form-check-label" for="filterInactive">
+          <i class="bi bi-pause-circle text-secondary me-1"></i
+          >Inactive Rules
+        </label>
+      </div>
     </div>
 
     <div class="mb-4">
@@ -117,14 +147,17 @@ endblock %} {% block content %}
   <table class="table table-hover align-middle" id="rulesTable">
     <thead class="table-light">
       <tr>
-        <th style="width: 25%">
+        <th style="width: 20%">
           <i class="bi bi-card-text me-1"></i>Rule
         </th>
-        <th style="width: 30%">
+        <th style="width: 25%">
           <i class="bi bi-search me-1"></i>Query
         </th>
-        <th style="width: 15%">
+        <th style="width: 12%">
           <i class="bi bi-gear me-1"></i>Action
+        </th>
+        <th style="width: 8%" class="text-center">
+          <i class="bi bi-toggle-on me-1"></i>Status
         </th>
         <th style="width: 10%" class="text-center">
           <i class="bi bi-bar-chart me-1"></i>Stats
@@ -132,25 +165,31 @@ endblock %} {% block content %}
         <th style="width: 15%">
           <i class="bi bi-clock me-1"></i>Modified
         </th>
-        <th style="width: 5%" class="text-center">Actions</th>
+        <th style="width: 10%" class="text-center">Actions</th>
       </tr>
     </thead>
     <tbody id="rulesTableBody">
       {% for rule in rules %}
       <tr
-        class="rule-row"
+        class="rule-row {% if not rule.get('is_active', True) %}table-secondary{% endif %}"
         data-name="{{ rule.name|lower }}"
         data-action="{{ rule.action }}"
         data-created="{{ rule.created_date }}"
         data-modified="{{ rule.modified_date }}"
-        data-description="{{ rule.description|lower }}">
+        data-description="{{ rule.description|lower }}"
+        data-active="{{ rule.get('is_active', True) }}">
         <td>
           <div class="rule-info">
             <h6 class="mb-1 rule-name">
               <a
                 href="{{ url_for('view_rule', rule_id=rule.rule_id) }}"
-                class="text-decoration-none text-dark">
-                {{ rule.name }}
+                class="text-decoration-none {% if rule.get('is_active', True) %}text-dark{% else %}text-muted{% endif %}">
+                {{ rule.name }} {% if not rule.get('is_active', True)
+                %}
+                <i
+                  class="bi bi-pause-circle text-muted ms-1"
+                  title="Inactive"></i>
+                {% endif %}
               </a>
             </h6>
             <small class="text-muted rule-description"
@@ -167,6 +206,20 @@ endblock %} {% block content %}
             {{ action_types.get(rule.action, {}).get('name',
             rule.action) }}
           </span>
+        </td>
+        <td class="text-center">
+          <div class="form-check form-switch d-inline-block">
+            <input class="form-check-input" type="checkbox"
+            id="status-{{ rule.rule_id }}" {% if rule.get('is_active',
+            True) %}checked{% endif %} onchange="toggleRuleStatus('{{
+            rule.rule_id }}', this)" title="Click to toggle
+            active/inactive">
+            <label
+              class="form-check-label visually-hidden"
+              for="status-{{ rule.rule_id }}">
+              Toggle Status
+            </label>
+          </div>
         </td>
         <td class="text-center">
           <div class="d-flex flex-column align-items-center">
@@ -279,12 +332,20 @@ endblock %} {% block content %}
     const rows = document.querySelectorAll('.rule-row');
     allRules = Array.from(rows).map((row) => ({
       element: row,
-      name: row.dataset.name,
-      action: row.dataset.action,
-      description: row.dataset.description,
-      created: row.dataset.created,
-      modified: row.dataset.modified,
+      name: row.dataset.name || '',
+      action: row.dataset.action || '',
+      description: row.dataset.description || '',
+      created: row.dataset.created || '',
+      modified: row.dataset.modified || '',
+      active: row.dataset.active || 'True',
+      // Also store the query text for searching
+      query: (
+        row.querySelector('.query-preview')?.textContent || ''
+      ).toLowerCase(),
     }));
+
+    // Initialize filter state
+    filterRules();
   });
 
   function toggleSidebar() {
@@ -314,34 +375,72 @@ endblock %} {% block content %}
   }
 
   function filterRules() {
-    const searchTerm = document
-      .getElementById('searchInput')
-      .value.toLowerCase();
-    const filterAll = document.getElementById('filterAll').checked;
-    const actionFilters = Array.from(
-      document.querySelectorAll('.action-filter:checked')
-    ).map((cb) => cb.value);
+    try {
+      const searchTerm = document
+        .getElementById('searchInput')
+        .value.toLowerCase()
+        .trim();
+      const filterAll = document.getElementById('filterAll').checked;
+      const actionFilters = Array.from(
+        document.querySelectorAll('.action-filter:checked')
+      ).map((cb) => cb.value);
 
-    let visibleCount = 0;
+      const statusFilters = Array.from(
+        document.querySelectorAll('.status-filter:checked')
+      ).map((cb) => cb.value);
 
-    allRules.forEach((rule) => {
-      const matchesSearch =
-        !searchTerm ||
-        rule.name.includes(searchTerm) ||
-        rule.description.includes(searchTerm);
+      let visibleCount = 0;
 
-      const matchesAction =
-        filterAll || actionFilters.includes(rule.action);
-
-      if (matchesSearch && matchesAction) {
-        rule.element.style.display = '';
-        visibleCount++;
-      } else {
-        rule.element.style.display = 'none';
+      // Ensure allRules is populated
+      if (!allRules || allRules.length === 0) {
+        console.warn('allRules is empty, reinitializing...');
+        const rows = document.querySelectorAll('.rule-row');
+        allRules = Array.from(rows).map((row) => ({
+          element: row,
+          name: row.dataset.name || '',
+          action: row.dataset.action || '',
+          description: row.dataset.description || '',
+          created: row.dataset.created || '',
+          modified: row.dataset.modified || '',
+          active: row.dataset.active || 'True',
+          query: (
+            row.querySelector('.query-preview')?.textContent || ''
+          ).toLowerCase(),
+        }));
       }
-    });
 
-    document.getElementById('rulesCount').textContent = visibleCount;
+      allRules.forEach((rule) => {
+        // Enhanced search - check name, description, and query
+        const matchesSearch =
+          !searchTerm ||
+          (rule.name && rule.name.includes(searchTerm)) ||
+          (rule.description &&
+            rule.description.includes(searchTerm)) ||
+          (rule.query && rule.query.includes(searchTerm));
+
+        const matchesAction =
+          filterAll || actionFilters.includes(rule.action);
+
+        const ruleIsActive = rule.active === 'True';
+        const matchesStatus =
+          (statusFilters.includes('active') && ruleIsActive) ||
+          (statusFilters.includes('inactive') && !ruleIsActive);
+
+        if (matchesSearch && matchesAction && matchesStatus) {
+          rule.element.style.display = '';
+          visibleCount++;
+        } else {
+          rule.element.style.display = 'none';
+        }
+      });
+
+      const countElement = document.getElementById('rulesCount');
+      if (countElement) {
+        countElement.textContent = visibleCount;
+      }
+    } catch (error) {
+      console.error('Error in filterRules:', error);
+    }
   }
 
   function sortRules(sortBy) {
@@ -374,6 +473,22 @@ endblock %} {% block content %}
 
     // Re-append sorted elements
     rows.forEach((row) => tbody.appendChild(row));
+
+    // Update allRules array to match new order
+    allRules = Array.from(tbody.querySelectorAll('.rule-row')).map(
+      (row) => ({
+        element: row,
+        name: row.dataset.name || '',
+        action: row.dataset.action || '',
+        description: row.dataset.description || '',
+        created: row.dataset.created || '',
+        modified: row.dataset.modified || '',
+        active: row.dataset.active || 'True',
+        query: (
+          row.querySelector('.query-preview')?.textContent || ''
+        ).toLowerCase(),
+      })
+    );
   }
 
   function confirmDelete(ruleId, ruleName) {
@@ -386,6 +501,59 @@ endblock %} {% block content %}
       document.getElementById('deleteModal')
     );
     modal.show();
+  }
+
+  async function toggleRuleStatus(ruleId, checkbox) {
+    const originalChecked = checkbox.checked;
+
+    try {
+      const response = await fetch(`/rule/${ruleId}/toggle`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Update the row styling
+        const row = checkbox.closest('tr');
+        if (data.is_active) {
+          row.classList.remove('table-secondary');
+          row
+            .querySelector('.rule-name a')
+            .classList.remove('text-muted');
+          row
+            .querySelector('.rule-name a')
+            .classList.add('text-dark');
+          const pauseIcon = row.querySelector('.bi-pause-circle');
+          if (pauseIcon) pauseIcon.remove();
+        } else {
+          row.classList.add('table-secondary');
+          row
+            .querySelector('.rule-name a')
+            .classList.remove('text-dark');
+          row
+            .querySelector('.rule-name a')
+            .classList.add('text-muted');
+          if (!row.querySelector('.bi-pause-circle')) {
+            const icon = document.createElement('i');
+            icon.className = 'bi bi-pause-circle text-muted ms-1';
+            icon.title = 'Inactive';
+            row.querySelector('.rule-name a').appendChild(icon);
+          }
+        }
+        row.dataset.active = data.is_active;
+      } else {
+        // Revert checkbox on error
+        checkbox.checked = !originalChecked;
+        alert('Failed to toggle rule status');
+      }
+    } catch (error) {
+      // Revert checkbox on error
+      checkbox.checked = !originalChecked;
+      alert('Error toggling rule status: ' + error.message);
+    }
   }
 
   // Handle "All Types" checkbox

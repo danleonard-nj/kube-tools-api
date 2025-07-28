@@ -38,9 +38,22 @@
                                value="{{ rule.max_results if rule else 10 }}" min="1" required>
                     </div>
                 </div>
-                <div class="mb-3">
-                    <label for="description" class="form-label">Description</label>
-                    <textarea class="form-control" id="description" name="description" rows="2">{{ rule.description if rule else '' }}</textarea>
+                <div class="row">
+                    <div class="col-md-8 mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" name="description" rows="2">{{ rule.description if rule else '' }}</textarea>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Rule Status</label>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="is_active" name="is_active"
+                                   {% if not rule or rule.get('is_active', True) %}checked{% endif %}>
+                            <label class="form-check-label" for="is_active">
+                                <span class="fw-bold">Rule is Active</span><br>
+                                <small class="text-muted">When enabled, this rule will process emails</small>
+                            </label>
+                        </div>
+                    </div>
                 </div>
                 <div class="mb-3">
                     <label for="query" class="form-label">Search Query *</label>

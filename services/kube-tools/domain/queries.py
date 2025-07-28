@@ -229,5 +229,6 @@ class EmailRulesByNamesQuery(Queryable):
         return {
             'name': {
                 '$in': self.rule_names
-            }
+            },
+            'is_active': True
         }

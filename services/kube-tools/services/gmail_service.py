@@ -5,7 +5,7 @@ from clients.gmail_client import GmailClient
 from clients.twilio_gateway import TwilioGatewayClient
 from domain.enums import ProcessGmailRuleResultType
 from domain.google import (GmailEmailRuleModel, GmailRuleAction, GoogleClientScope,
-                           ProcessGmailRuleResponse)
+                           ProcessGmailRuleResponse, UpdateEmailRuleRequestModel)
 from framework.concurrency import TaskCollection
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
@@ -77,6 +77,17 @@ class GmailService:
                     raise GmailServiceError(f'Unsupported rule action: {rule.action}')
                 affected_count = await processor.process_rule(rule)
                 logger.info(f'Rule: {rule.name}: Emails affected: {affected_count}')
+
+                # Increment the count_processed on the rule entity
+                rule.count_processed += affected_count
+
+                # Persist the updated count_processed to the database
+                update_request = UpdateEmailRuleRequestModel(
+                    rule_id=rule.rule_id,
+                    count_processed=rule.count_processed
+                )
+                await self._rule_service.update_rule(update_request)
+
                 return ProcessGmailRuleResponse(
                     status=ProcessGmailRuleResultType.Success,
                     rule=rule,
