@@ -81,12 +81,14 @@ class GmailService:
                 # Increment the count_processed on the rule entity
                 rule.count_processed += affected_count
 
-                # Persist the updated count_processed to the database
-                update_request = UpdateEmailRuleRequestModel(
-                    rule_id=rule.rule_id,
-                    count_processed=rule.count_processed
-                )
-                await self._rule_service.update_rule(update_request)
+                if affected_count > 0:
+                    logger.info(f'Rule: {rule.name}: Updated count_processed to {rule.count_processed}')
+                    # Persist the updated count_processed to the database
+                    update_request = UpdateEmailRuleRequestModel(
+                        rule_id=rule.rule_id,
+                        count_processed=rule.count_processed
+                    )
+                    await self._rule_service.update_rule(update_request)
 
                 return ProcessGmailRuleResponse(
                     status=ProcessGmailRuleResultType.Success,

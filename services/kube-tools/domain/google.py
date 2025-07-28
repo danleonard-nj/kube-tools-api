@@ -239,7 +239,7 @@ class GmailEmailRuleModel(BaseModel, Serializable):
     max_results: int = 10
     query: str
     action: str
-    data: Any
+    data: GmailEmailRuleDataModel
     created_date: datetime
     is_active: bool
     count_processed: int = 0

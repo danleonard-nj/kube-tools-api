@@ -168,10 +168,7 @@ class GmailRuleService:
 
         # Fetch the existing rule (throws on
         # rule not found)
-        rule = await self.get_rule(
-            rule_id=update_request.rule_id)
-
-        logger.info(f'Updating rule: {rule.to_dict()}')
+        rule = await self.get_rule(rule_id=update_request.rule_id)
 
         # Update fields on the rule from the
         # update request
@@ -182,7 +179,7 @@ class GmailRuleService:
             selector=rule.get_selector(),
             document=rule.to_dict())
 
-        logger.info(f'Updated rule: {result.acknowledged}')
+        logger.info(f'Updated rule: {result.modified_count}')
 
         return rule
 

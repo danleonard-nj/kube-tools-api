@@ -74,8 +74,7 @@ class GmailBankSyncService:
 
                 # Reduce message length
                 logger.info(f'Cleaning message string')
-                segment = self._clean_message_string(
-                    value=segment)
+                segment = self._clean_message_string(value=segment)
 
                 logger.info(f'Generating balance prompt')
                 # Generate the GPT prompt to get the balance from
