@@ -77,6 +77,7 @@ class GmailClient:
         return response
 
     def _get_cache_key(
+        self,
         message_id: str
     ):
         return f'gmail:message:{message_id}'
