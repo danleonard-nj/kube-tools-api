@@ -6,9 +6,9 @@ swagger-gen
 google-api-python-client 
 google-auth-httplib2 
 google-auth-oauthlib
+aiogoogle
 lxml
 myfitnesspal
-aiogoogle
 uvicorn
 azure-storage-blob
 deprecated
@@ -25,7 +25,7 @@ readability-lxml
 robin_stocks
 markdown
 sib_api_v3_sdk
-coinbase-advanced-py
+coinbase-advanced-py==1.2.2
 pydantic[email]
 python-multipart
 aiofiles

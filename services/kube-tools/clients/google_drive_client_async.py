@@ -4,6 +4,7 @@ from datetime import datetime
 
 import aiofiles
 import httpx
+from framework.clients.cache_client import CacheClientAsync
 from domain.drive import (GoogleDriveFileDetailsRequestModel,
                           GoogleDriveFileExistsRequestModel,
                           GoogleDrivePermissionRequestModel,
@@ -31,10 +32,12 @@ class GoogleDriveClientAsync:
     def __init__(
         self,
         http_client: AsyncClient,
-        auth_service: GoogleAuthService
+        auth_service: GoogleAuthService,
+        cache_client: CacheClientAsync
     ):
         self._http_client = http_client
         self._auth_service = auth_service
+        self._cache_client = cache_client
 
     async def _get_auth_headers(
         self
@@ -383,6 +386,7 @@ class GoogleDriveClientAsync:
     ):
         """
         Fetches drive file details from Google Drive API.
+        Uses caching to avoid repeated expensive paginated API calls.
 
         Args:
             max_results (int): The maximum number of file details to fetch. Defaults to 250.
@@ -391,7 +395,20 @@ class GoogleDriveClientAsync:
             list: A list of file details.
 
         """
-        logger.info(f'Fetching drive file details')
+        from domain.cache import CacheKey
+        import json
+
+        logger.info(f'Fetching drive file details for max_results: {max_results}')
+
+        # Check cache first
+        cache_key = CacheKey.google_drive_file_details(max_results)
+        cached_result = await self._cache_client.get(cache_key)
+
+        if cached_result:
+            logger.info(f"Found cached drive file details for max_results: {max_results}")
+            return json.loads(cached_result)
+
+        logger.info(f"Fetching drive file details from API - not found in cache")
 
         headers = await self._get_auth_headers()
         all_files = []
@@ -418,7 +435,13 @@ class GoogleDriveClientAsync:
                 logger.info('No more pages to fetch or max results reached')
                 break
 
-        return all_files[:max_results]
+        final_results = all_files[:max_results]
+
+        # Cache the results for 15 minutes (900 seconds) since file lists can change but not too frequently
+        await self._cache_client.set(cache_key, json.dumps(final_results, default=str), 900)
+        logger.info(f"Cached drive file details for max_results: {max_results}")
+
+        return final_results
 
     async def file_exists(
         self,
@@ -427,6 +450,7 @@ class GoogleDriveClientAsync:
     ):
         """
         Check if a file exists in Google Drive.
+        Uses caching to avoid repeated API calls for the same file existence checks.
 
         Args:
             filename (str): The name of the file to check.
@@ -435,8 +459,19 @@ class GoogleDriveClientAsync:
         Returns:
             bool: True if the file exists, False otherwise.
         """
+        from domain.cache import CacheKey
 
         logger.info(f'Checking if file exists: {filename}')
+
+        # Check cache first (cache for shorter time since files can be added/deleted more frequently)
+        cache_key = CacheKey.google_drive_file_exists(filename, directory_id)
+        cached_result = await self._cache_client.get(cache_key)
+
+        if cached_result is not None:
+            logger.info(f"Found cached file existence result for '{filename}': {cached_result}")
+            return bool(cached_result == 'true')
+
+        logger.info(f"Checking file existence for '{filename}' - not found in cache")
 
         headers = await self._get_auth_headers()
 
@@ -451,6 +486,10 @@ class GoogleDriveClientAsync:
         # Check if the file exists
         file_exists = len(response.json().get('files', [])) > 0
 
+        # Cache the result for 5 minutes (300 seconds) since files can change more frequently
+        await self._cache_client.set(cache_key, 'true' if file_exists else 'false', 300)
+        logger.info(f"Cached file existence result for '{filename}': {file_exists}")
+
         logger.info(f'File exists: {file_exists}')
 
         return file_exists
@@ -458,10 +497,23 @@ class GoogleDriveClientAsync:
     async def resolve_drive_folder_id(self, folder_path: str) -> str:
         """
         Given a folder path like 'Podcasts/CBB', resolve and create (if needed) the folder structure in Google Drive and return the final folder's ID.
+        Uses caching to avoid repeated API calls for the same folder paths.
         """
         from domain.google import GoogleDriveDirectory
+        from domain.cache import CacheKey
+
         if not folder_path or folder_path.strip() == "":
             return GoogleDriveDirectory.PodcastDirectoryId
+
+        # Check cache first
+        cache_key = CacheKey.google_drive_folder_id(folder_path)
+        cached_folder_id = await self._cache_client.get(cache_key)
+
+        if cached_folder_id:
+            logger.info(f"Found cached folder ID for path '{folder_path}': {cached_folder_id}")
+            return cached_folder_id
+
+        logger.info(f"Resolving folder path '{folder_path}' - not found in cache")
 
         # Split path and start from root Podcasts folder
         parts = folder_path.strip("/\\").split("/")
@@ -505,4 +557,9 @@ class GoogleDriveClientAsync:
                     logger.error(f"No 'id' in folder creation response for '{part}': {create_json}")
                     raise Exception(f"No 'id' in folder creation response for '{part}': {create_json}")
                 parent_id = create_json['id']
+
+        # Cache the resolved folder ID for 24 hours (86400 seconds)
+        await self._cache_client.set(cache_key, parent_id, 86400)
+        logger.info(f"Cached folder ID for path '{folder_path}': {parent_id}")
+
         return parent_id

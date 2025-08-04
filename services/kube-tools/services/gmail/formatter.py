@@ -104,6 +104,7 @@ class MessageFormatter:
         # Get summary from ChatGPT
         result = await self._gpt_client.generate_completion(
             prompt=prompt,
+            system_prompt='The response should be concise for an SMS message, no markdown, etc'
             # TODO: Move to configuration
             model=GPTModel.GPT_4O_MINI
         )

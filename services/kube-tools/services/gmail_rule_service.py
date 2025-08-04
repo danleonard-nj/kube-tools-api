@@ -27,19 +27,6 @@ class GmailRuleService:
         self._log_repository = log_repository
         self._feature_client = feature_client
 
-    async def get_rules_by_name(
-        self,
-        rule_names: List[str]
-    ):
-        logger.info(f'Fetching rules by name: {rule_names}')
-
-        entities = await self._email_rule_repository.get_email_rules_by_names(
-            names=rule_names)
-
-        logger.info(f'Rules retrieved: {len(entities)}')
-
-        return [GmailEmailRuleModel.from_entity(data=entity) for entity in entities]
-
     async def get_rules(
         self
     ) -> List[GmailEmailRuleModel]:

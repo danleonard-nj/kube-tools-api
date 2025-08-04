@@ -114,7 +114,7 @@ class GmailClient:
             self._cache_client.set_json(
                 key=key,
                 value=content,
-                ttl=60 * 24
+                ttl=60
             )
         )
 
