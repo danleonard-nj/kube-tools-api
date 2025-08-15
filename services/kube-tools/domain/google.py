@@ -229,7 +229,13 @@ class GmailEmailRuleDataModel(BaseModel, Serializable):
     chat_gpt_include_summary: Optional[bool] = None
     chat_gpt_prompt_template: Optional[str] = None
 
+    # Send SMS to additional recipients other than the configured one
     sms_additional_recipients: Optional[List[str]] = None
+
+    # Post-rule action forward to
+    post_forward_email: Optional[bool] = None
+    post_forward_email_to: Optional[str] = None
+    post_forward_email_cc: Optional[str] = None
 
 
 class GmailEmailRuleModel(BaseModel, Serializable):

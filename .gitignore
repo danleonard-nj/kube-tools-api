@@ -15,3 +15,4 @@ deploy.bat
 services/kube-tools/scripts/google_auth.py
 services/kube-tools/scripts/rules_admin/admin_google_creds.json
 services/kube-tools/scripts/ad_login_test.py
+dev.Dockerfile

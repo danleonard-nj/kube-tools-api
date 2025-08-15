@@ -44,12 +44,27 @@ class SmsRuleProcessor(BaseRuleProcessor):
             message=message_body
         )
 
+        # Send SMS notifications to additional recipients
         if rule.data.sms_additional_recipients:
             for recipient in rule.data.sms_additional_recipients:
                 logger.info(f'Sending SMS notification to additional recipient: {recipient}')
                 await self._twilio_gateway.send_sms(
                     recipient=recipient,
                     message=message_body)
+
+        # Post-rule action email auto-forwarding
+        if rule.data.post_forward_email:
+            recipients = [r.strip() for r in rule.data.post_forward_email_to.split(',') if r and r.strip()]
+            logger.info(f'Forwarding email {message_id} to: {recipients}')
+            for forward_recipient in recipients:
+                logger.info(f'Forwarding email {message_id} to: {forward_recipient}')
+                await self._gmail_client.forward_email(
+                    message_id=message_id,
+                    to_email=forward_recipient,
+                    cc_emails=rule.data.post_forward_email_cc,
+                    subject_prefix='GRE Auto-Fwd: ',
+                    outer_content=f'Forwarded via GRE as a post-action for rule {rule.name} ({rule.id}) and original Gmail message {message_id}'
+                )
 
     def _get_tag_modification(self) -> Optional[TagModification]:
         """Mark as processed and remove from inbox."""
