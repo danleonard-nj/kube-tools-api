@@ -49,32 +49,21 @@ class SmsRuleProcessor(BaseRuleProcessor):
         """Send SMS notification for the message."""
         message_body = await self._message_formatter.format_sms_message(rule, message)
 
-        # If post-forward is enabled, prepare recipients and append a note to the SMS body.
-        forward_recipients = []
-        if getattr(rule.data, 'post_forward_email', False):
-            to_field = getattr(rule.data, 'post_forward_email_to', '') or ''
-            forward_recipients = [r.strip() for r in to_field.split(',') if r and r.strip()]
-            if forward_recipients:
-                message_body += f"\n\nOriginal email forwarded to: {', '.join(forward_recipients)}"
-
         logger.info(f'Sending SMS notification for message: {message_id}')
         await self._twilio_gateway.send_sms(
             recipient=self._sms_recipient,
             message=message_body
         )
 
-        # Send SMS notifications to additional recipients
-        # Send SMS notifications to additional recipients
-        if rule.data.sms_additional_recipients:
-            await self._handle_sms_additional_recipients(
-                rule=rule,
-                message_body=message_body)
-
-        # Post-rule action email auto-forwarding
         if rule.data.post_forward_email:
             await self._handle_post_action_auto_forward(
                 rule=rule,
                 message_id=message_id)
+
+        if rule.data.sms_additional_recipients:
+            await self._handle_sms_additional_recipients(
+                rule=rule,
+                message_body=message_body)
 
     def _get_tag_modification(self) -> Optional[TagModification]:
         """Mark as processed and remove from inbox."""

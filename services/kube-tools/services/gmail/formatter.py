@@ -71,6 +71,9 @@ class MessageFormatter:
 
         parts.append(f'From: {message.headers[GoogleEmailHeader.From]}')
 
+        if rule.data.post_forward_email:
+            parts.append(f'\nFwd: {rule.data.post_forward_email_to}')
+
         return '\n'.join(parts)
 
     def _build_message_with_summary(
