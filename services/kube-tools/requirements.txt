@@ -29,3 +29,14 @@ coinbase-advanced-py
 pydantic[email]
 python-multipart
 aiofiles
+# azure-identity
+# azure-mgmt-resource
+# azure-mgmt-compute
+# azure-mgmt-storage
+# azure-mgmt-sql
+# azure-mgmt-web
+# azure-mgmt-network
+# azure-mgmt-consumption
+# azure-mgmt-costmanagement
+# azure-mgmt-monitor
+# sib-api-v3-sdk

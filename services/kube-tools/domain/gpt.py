@@ -31,6 +31,11 @@ class GPTModel:
     GPT_4O_2024_05_13 = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-4o-2024-05-13"
     GPT_4O_MINI = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-4o-mini"
 
+    GPT_5 = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-5"
+    GPT_5_MINI = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-5-mini"
+    GPT_5_NANO = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-5-nano"
+    GPT_5_CHAT = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-5-chat"
+
 
 def get_content(parsed):
     return (

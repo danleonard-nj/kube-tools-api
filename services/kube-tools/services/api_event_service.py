@@ -80,3 +80,22 @@ class ApiEventHistoryService:
         logger.info(f'Found {len(records)} event history records')
 
         return results
+
+    async def purge_events_older_than(self, days: int) -> int:
+        """Purge api event records older than `days` days.
+
+        Returns the number of deleted documents.
+        """
+        logger.info(f'Purging api events older than {days} days')
+
+        # convert days to seconds and compute cutoff unix timestamp
+        cutoff_timestamp = int(time.time()) - (days * 24 * 60 * 60)
+
+        # many repositories expose `collection` (see other repos) so call delete_many
+        result = await self._repository.collection.delete_many({
+            'timestamp': {'$lt': cutoff_timestamp}
+        })
+
+        deleted = int(getattr(result, 'deleted_count', 0))
+        logger.info(f'Purged {deleted} api events')
+        return deleted

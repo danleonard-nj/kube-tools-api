@@ -54,7 +54,7 @@ class TruthSocialPushService:
         )
         response = await self._gpt_client.generate_completion(
             prompt=prompt,
-            model=GPTModel.GPT_4O_MINI,
+            model=GPTModel.GPT_5_NANO,
             max_tokens=250,
             temperature=0.5
         )

@@ -28,3 +28,15 @@ async def get_event_history(container):
         start_timestamp=start,
         end_timestamp=end,
         include_body=include_body)
+
+
+@api_event_history_bp.configure('/api/logs/events/purge', methods=['POST'], auth_scheme=AuthPolicy.Default)
+async def purge_event_history(container):
+    service: ApiEventHistoryService = container.resolve(
+        ApiEventHistoryService)
+
+    days = int(request.args.get('days', 30))
+
+    result = await service.purge_events_older_than(days=days)
+
+    return {'deleted': result}

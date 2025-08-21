@@ -32,16 +32,12 @@ class CoinbaseService:
 
         logger.info(f'Getting accounts from coinbase for currencies: {self._currencies}')
 
-        result = self._coinbase_client.get_accounts()
+        result = self._coinbase_client.get_accounts().to_dict()
 
         account_data = result.get('accounts', [])
 
-        accounts: list[CoinbaseAccount] = []
-        for account in account_data:
-            accounts.append(CoinbaseAccount.model_validate(account))
-
         accounts = [CoinbaseAccount.model_validate(account) for account in account_data if account.get('currency') in self._currencies]
-        results: list[CoinbaseAccount] = []
+
         exchanges = await self.get_exchange_rates()
 
         for account in accounts:
