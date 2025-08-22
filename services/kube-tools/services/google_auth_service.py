@@ -112,7 +112,7 @@ class GoogleAuthService:
 
         creds = await self._get_and_refresh_credentials(client_name, scopes)
         # Cache the token for 50 minutes (10 min before expiry)
-        await self._cache.set_cache(key=cache_key, value=creds.token, ttl=60)
+        await self._cache.set_cache(key=cache_key, value=creds.token, ttl=50)
         return creds.token
 
     async def get_credentials(self, client_name: str, scopes: list[str]) -> Credentials:
