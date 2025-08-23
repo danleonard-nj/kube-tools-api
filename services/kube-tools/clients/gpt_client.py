@@ -171,7 +171,8 @@ class GPTClient:
         temperature: float = 1.0,
         use_cache: bool = False,
         cache_ttl: int = 3600,
-        max_output_tokens: Optional[int] = None
+        max_output_tokens: Optional[int] = None,
+        response_format: Optional[dict] = None
     ) -> ResponseResultModel:
         if use_cache and self._cache_client:
             cached = await self._get_cached_response(prompt, model)
@@ -205,6 +206,7 @@ class GPTClient:
                 tools=tools,
                 temperature=temperature,
                 max_output_tokens=max_output_tokens
+                # response_format=response_format
             )
 
             result = ResponseResultModel(
@@ -221,28 +223,16 @@ class GPTClient:
             logger.error(f"Error during responses.create: {str(e)}")
             raise
 
-    async def generate_response_with_image(self, image_bytes: bytes, prompt: str, model: str = "gpt-4o", temperature: float = 1.0) -> str:
-        """
-        Send an image and prompt to GPT and return the response content as string.
-        """
-        # This is a placeholder. Actual implementation depends on OpenAI API support for image input.
-        # For now, assume we can send image as base64 or bytes in the prompt or as a separate parameter.
-        import base64
-        image_b64 = base64.b64encode(image_bytes).decode('utf-8')
-        messages = [
-            {'role': 'user', 'content': prompt},
-            {'role': 'user', 'content': {'type': 'image', 'data': image_b64}}
-        ]
-        logger.info(f"Sending image and prompt to GPT: {prompt[:25]}...")
-        response = await self._client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature
-        )
-        content = response.choices[0].message.content.strip()
-        return content
-
-    async def generate_response_with_image_and_tools(self, image_bytes: str, prompt: str, system_prompt: str = None, model: str = "gpt-4o", temperature: float = 1.0, custom_tools: list = None) -> str:
+    async def generate_response_with_image_and_tools(
+        self,
+        image_bytes: str,
+        prompt: str,
+        system_prompt: str = None,
+        model: str = "gpt-4o",
+        temperature: float = 1.0,
+        custom_tools: list = None,
+        response_format: Optional[dict] = None
+    ) -> str:
         """
         Send an image and prompt (with optional system prompt and tools) to GPT and return the response content as string.
         Detects image type for correct MIME.
@@ -250,23 +240,25 @@ class GPTClient:
         """
 
         messages = []
-        if system_prompt:
-            messages.append({'role': 'system', 'content': system_prompt})
+        # if system_prompt:
+        #     messages.append({'role': 'system', 'content': system_prompt})
+
         messages.append({
             'role': 'user',
             'content': [
-                {'type': 'text', 'text': prompt},
-                {'type': 'image_url', 'image_url': {'url': image_bytes}}
+                {'type': 'input_text', 'text': prompt},
+                {'type': 'input_image', 'image_url': image_bytes}
             ]
         })
         logger.info(f"Sending image, prompt, and tools to GPT")
-        kwargs = dict(model=model, messages=messages, temperature=temperature)
-        # Only include tools if a valid function tool is provided
-        if custom_tools and any('function' in t for t in custom_tools):
-            kwargs['tools'] = custom_tools
-        response = await self._client.chat.completions.create(**kwargs)
-        content = response.choices[0].message.content.strip()
-        return content
+        return await self.generate_response(
+            model=model,
+            prompt=messages,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            custom_tools=custom_tools
+            # response_format=response_format
+        )
 
     async def _get_cached_response(self, prompt: str, model: str):
         """Get cached response for a prompt if available"""

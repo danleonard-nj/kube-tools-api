@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional
+from urllib import response
 
 from clients.gpt_client import GPTClient, GptResponseToolType
 from data.google.google_calendar_repository import GooleCalendarEventRepository
@@ -17,6 +18,89 @@ from services.google_auth_service import GoogleAuthService
 from utilities.utils import strip_json_backticks
 
 logger = get_logger(__name__)
+
+CALENDAR_EVENT_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "calendar_event",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "summary": {"type": "string"},
+                "location": {"type": "string"},
+                "description": {"type": "string"},
+                "start": {
+                    "type": "object",
+                    "properties": {
+                        "dateTime": {
+                            "type": "string",
+                            "pattern": r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$"
+                        },
+                        "timeZone": {"type": "string"}
+                    },
+                    "required": ["dateTime", "timeZone"],
+                    "additionalProperties": False
+                },
+                "end": {
+                    "type": "object",
+                    "properties": {
+                        "dateTime": {
+                            "type": "string",
+                            "pattern": r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$"
+                        },
+                        "timeZone": {"type": "string"}
+                    },
+                    "required": ["dateTime", "timeZone"],
+                    "additionalProperties": False
+                },
+                "attendees": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "email": {"type": "string", "format": "email"},
+                            "displayName": {"type": "string"},
+                            "optional": {"type": "boolean"}
+                        },
+                        "required": ["email"],
+                        "additionalProperties": False
+                    }
+                },
+                "reminders": {
+                    "type": "object",
+                    "properties": {
+                        "useDefault": {"type": "boolean"},
+                        "overrides": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "method": {"type": "string"},
+                                    "minutes": {"type": "integer"}
+                                },
+                                "required": ["method", "minutes"],
+                                "additionalProperties": False
+                            }
+                        }
+                    },
+                    "required": ["useDefault"],
+                    "additionalProperties": False
+                },
+                "visibility": {
+                    "type": "string",
+                    "enum": ["default", "public", "private", "confidential"]
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["confirmed", "tentative", "cancelled"]
+                }
+            },
+            "required": ["summary", "start", "end"],
+            "additionalProperties": False
+        },
+        "strict": True
+    }
+}
 
 
 def ensure_datetime(
@@ -284,29 +368,29 @@ class CalendarService:
         logger.info(f'Event created: {created_event.get("id")}, summary: {created_event.get("summary")})')
         return created_event
 
-    async def create_event_from_image(self, image_bytes: bytes, text: Optional[str] = None) -> dict:
-        """
-        Process image (and optional text), send to ChatGPT, and create a calendar event.
-        Accepts image as bytes (from base64 decode).
-        """
-        locality = self._config.preferences.get('home', 'New Jersey')
-        system_prompt = get_calendar_system_prompt(locality)
-        user_prompt = get_calendar_user_prompt(locality, text, has_image=True)
-        gpt_result = await self._gpt_client.generate_response_with_image_and_tools(
-            image_bytes=image_bytes,
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            model=GPTModel.GPT_4O,
-            temperature=0.0,
-            custom_tools=[{'type': GptResponseToolType.WEB_SEARCH_PREVIEW}]
-        )
-        try:
-            event_data = GoogleCalendarEvent.model_validate_json(gpt_result)
-        except Exception as e:
-            logger.error(f"Failed to parse event from GPT: {e}")
-            return {"error": "Failed to parse event from GPT response."}
-        created_event = await self.create_calendar_event(event_data)
-        return {"event": created_event}
+    # async def create_event_from_image(self, image_bytes: bytes, text: Optional[str] = None) -> dict:
+    #     """
+    #     Process image (and optional text), send to ChatGPT, and create a calendar event.
+    #     Accepts image as bytes (from base64 decode).
+    #     """
+    #     locality = self._config.preferences.get('home', 'New Jersey')
+    #     system_prompt = get_calendar_system_prompt(locality)
+    #     user_prompt = get_calendar_user_prompt(locality, text, has_image=True)
+    #     gpt_result = await self._gpt_client.generate_response_with_image_and_tools(
+    #         image_bytes=image_bytes,
+    #         prompt=user_prompt,
+    #         system_prompt=system_prompt,
+    #         model=GPTModel.GPT_4O,
+    #         temperature=0.0,
+    #         custom_tools=[{'type': GptResponseToolType.WEB_SEARCH_PREVIEW}]
+    #     )
+    #     try:
+    #         event_data = GoogleCalendarEvent.model_validate_json(gpt_result)
+    #     except Exception as e:
+    #         logger.error(f"Failed to parse event from GPT: {e}")
+    #         return {"error": "Failed to parse event from GPT response."}
+    #     created_event = await self.create_calendar_event(event_data)
+    #     return {"event": created_event}
 
     def _populate_event_defaults(self, event):
         """
@@ -341,34 +425,49 @@ class CalendarService:
             # Use image+text logic
             system_prompt = get_calendar_system_prompt(locality)
             user_prompt = get_calendar_user_prompt(locality, text or prompt, has_image=True)
-            gpt_result = await self._gpt_client.generate_response_with_image_and_tools(
+
+            model = GPTModel.GPT_5_MINI
+            result = await self._gpt_client.generate_response_with_image_and_tools(
                 image_bytes=image_bytes,
                 prompt=user_prompt,
                 system_prompt=system_prompt,
-                model=GPTModel.GPT_4O,
-                temperature=0.0,
-                custom_tools=[{'type': GptResponseToolType.WEB_SEARCH_PREVIEW}]
+                model=model,
+                custom_tools=[{'type': GptResponseToolType.WEB_SEARCH_PREVIEW}],
+                response_format=CALENDAR_EVENT_SCHEMA
             )
-            event_data = GoogleCalendarEvent.model_validate_json(gpt_result)
+
+            logger.info(f'Used model {result.usage} tokens with model {model}')
+
+            # Parse the calendar event model
+            event_data = GoogleCalendarEvent.model_validate_json(result.text)
+
+            # Set the defaults
             self._populate_event_defaults(event_data)
-            # created_event = await self.create_calendar_event(event_data)
             return event_data.model_dump()
+
+        # Just a prompt, no image data
         elif prompt:
             # Use prompt logic
             system_prompt = get_calendar_system_prompt(locality)
             user_prompt = get_calendar_user_prompt(locality, prompt)
+
+            model = GPTModel.GPT_5_MINI
             result = await self._gpt_client.generate_response(
                 prompt=user_prompt,
                 system_prompt=system_prompt,
-                model=GPTModel.GPT_4O,
+                model=model,
                 custom_tools=[{'type': GptResponseToolType.WEB_SEARCH_PREVIEW}],
-                temperature=0.0,
+                response_format=CALENDAR_EVENT_SCHEMA
             )
-            content = result.output[-1].content[0].text
-            stripped = strip_json_backticks(content)
+
+            logger.info(f'Used model {result.usage} tokens with model {model}')
+            stripped = strip_json_backticks(result.text)
+
+            # Parse the calendar event model
             model = GoogleCalendarEvent.model_validate_json(stripped, strict=True)
+
+            # Populate default attendees and reminders
             self._populate_event_defaults(model)
-            # created_event = await self.create_calendar_event(model)
             return model.model_dump()
         else:
             return {"error": "No valid input provided. Supply either image_bytes or prompt."}
