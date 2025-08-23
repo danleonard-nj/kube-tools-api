@@ -13,6 +13,7 @@ from framework.logger import get_logger
 from models.email_config import EmailConfig
 from models.ts_models import FeedEntry, TruthSocialConfig
 from services.truthsocial.email_generator import generate_truth_social_email
+from framework.clients.feature_client import FeatureClientAsync
 
 logger = get_logger(__name__)
 
@@ -26,14 +27,22 @@ class TruthSocialPushService:
         gpt_client: GPTClient,
         config: TruthSocialConfig,
         http_client: httpx.AsyncClient,
-        sib_client: SendInBlueClient
+        sib_client: SendInBlueClient,
+        feature_client: FeatureClientAsync
     ):
         self._cache_client = cache_client
         self._gpt_client = gpt_client
         self._feed_url = config.rss_feed
         self._sib_client = sib_client
+        self._feature_client = feature_client
         self._recipients = config.recipients
         self._http_client = http_client
+
+    async def _get_gpt_model(
+        self
+    ):
+        logger.info("Getting configured model for TS push service")
+        return await self._feature_client.is_enabled('gpt-model-ts-push-service')
 
     async def _send_email_sendinblue(self, recipient: str, subject: str, html_body: str) -> None:
         """Send email via Sendinblue API."""
@@ -46,7 +55,7 @@ class TruthSocialPushService:
         )
         logger.info(f"Email sent successfully to {recipient}")
 
-    async def summarize_post(self, content: str) -> str:
+    async def summarize_post(self, content: str, model: str) -> str:
         """Summarizes the content of a post using GPT."""
         prompt = (
             f"Summarize president Donald Trump's post in a neutral, fact-based way, "
@@ -56,7 +65,7 @@ class TruthSocialPushService:
 
         response = await self._gpt_client.generate_response(
             prompt=prompt,
-            model=GPTModel.GPT_5
+            model=model
         )
 
         return response.text if response else "No summary available."
@@ -152,7 +161,8 @@ class TruthSocialPushService:
         posts_to_summarize = [post for post in filtered_posts if post.id not in summary_exclude]
 
         if posts_to_summarize:
-            logger.info(f"Summarizing {len(posts_to_summarize)} posts concurrently...")
+            model = await self._get_gpt_model()
+            logger.info(f"Summarizing {len(posts_to_summarize)} posts using model {model}...")
             # Create tasks for concurrent summarization
             summarization_tasks = [
                 self.summarize_post(post.summary) for post in posts_to_summarize
