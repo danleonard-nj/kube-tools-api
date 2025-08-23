@@ -4,9 +4,6 @@ import enum
 class BankKey(enum.StrEnum):
     Amex = 'amex'
     WellsFargo = 'wells-fargo'
-    WellsFargoChecking = 'wells-fargo-checking'
-    WellsFargoActiveCash = 'wells-fargo-active-cash'
-    WellsFargoPlatinum = 'wells-fargo-platinum'
     Chase = 'chase'
     CapitalOne = 'capital-one'
     CapitalOneQuickSilver = 'capital-one-quicksilver'

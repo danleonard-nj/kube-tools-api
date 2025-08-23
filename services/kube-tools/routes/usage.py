@@ -2,6 +2,7 @@ from domain.features import Feature
 from framework.clients.feature_client import FeatureClientAsync
 from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
+from services.openai_usage_service import OpenAiUsageService
 from services.usage_service import UsageService
 
 usage_bp = MetaBlueprint('usage_bp', __name__)
@@ -25,3 +26,14 @@ async def usage_report(container):
         range_key=range_key)
 
     return result
+
+
+@usage_bp.configure('/api/usage/openai', methods=['POST'], auth_scheme='execute')
+async def post_usage_openai(container):
+    service: OpenAiUsageService = container.resolve(
+        OpenAiUsageService)
+
+    return await service.send_report(
+        days_back=14,
+        recipients='dcl525@gmail.com'
+    )

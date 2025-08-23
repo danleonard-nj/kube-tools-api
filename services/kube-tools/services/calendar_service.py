@@ -96,41 +96,41 @@ class CalendarService:
 
         event = GoogleCalendarEvent.model_validate(json_str)
 
-    async def generate_calendar_json_from_prompt(
-        self,
-        prompt: str
-    ) -> GoogleCalendarEvent:
-        locality = self._config.preferences.get('home', 'New Jersey')
-        system_prompt = get_calendar_system_prompt(locality)
-        user_prompt = get_calendar_user_prompt(locality, prompt)
-        result = await self._gpt_client.generate_response(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            model=GPTModel.GPT_4O,
-            custom_tools=[{'type': GptResponseToolType.WEB_SEARCH_PREVIEW}],
-            temperature=0.0,
-        )
-        content = result.output[-1].content[0].text
-        stripped = strip_json_backticks(content)
-        model = GoogleCalendarEvent.model_validate_json(
-            stripped,
-            strict=True)
-        model.attendees = [
-            Attendee(
-                email=self._config.preferences.get('email'),
-                displayName=self._config.preferences.get('name'),
-                optional=False
-            )
-        ]
-        model.reminders = Reminders(
-            useDefault=False,
-            overrides=[
-                ReminderOverride(method='popup', minutes=15),
-                ReminderOverride(method='popup', minutes=60),
-                ReminderOverride(method='popup', minutes=60 * 24),
-            ]
-        )
-        return model
+    # async def generate_calendar_json_from_prompt(
+    #     self,
+    #     prompt: str
+    # ) -> GoogleCalendarEvent:
+    #     locality = self._config.preferences.get('home', 'New Jersey')
+    #     system_prompt = get_calendar_system_prompt(locality)
+    #     user_prompt = get_calendar_user_prompt(locality, prompt)
+    #     result = await self._gpt_client.generate_response(
+    #         prompt=user_prompt,
+    #         system_prompt=system_prompt,
+    #         model=GPTModel.GPT_4O,
+    #         custom_tools=[{'type': GptResponseToolType.WEB_SEARCH_PREVIEW}],
+    #         temperature=0.0,
+    #     )
+    #     content = result.output[-1].content[0].text
+    #     stripped = strip_json_backticks(content)
+    #     model = GoogleCalendarEvent.model_validate_json(
+    #         stripped,
+    #         strict=True)
+    #     model.attendees = [
+    #         Attendee(
+    #             email=self._config.preferences.get('email'),
+    #             displayName=self._config.preferences.get('name'),
+    #             optional=False
+    #         )
+    #     ]
+    #     model.reminders = Reminders(
+    #         useDefault=False,
+    #         overrides=[
+    #             ReminderOverride(method='popup', minutes=15),
+    #             ReminderOverride(method='popup', minutes=60),
+    #             ReminderOverride(method='popup', minutes=60 * 24),
+    #         ]
+    #     )
+    #     return model
 
     async def create_calendar_event(
         self,

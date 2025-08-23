@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 import time
 
@@ -48,17 +49,17 @@ class TruthSocialPushService:
     async def summarize_post(self, content: str) -> str:
         """Summarizes the content of a post using GPT."""
         prompt = (
-            f"Summarize Donald Trump's post in a neutral, fact-based way, "
+            f"Summarize president Donald Trump's post in a neutral, fact-based way, "
             f"if it needs to be summarized. Try to limit to 3 sentences maximum, "
-            f"shooting for 1-2 sentences:\n\n{content}"
+            f"shooting for 1-2 sentences as a concise summary:\n\n{content}"
         )
-        response = await self._gpt_client.generate_completion(
+
+        response = await self._gpt_client.generate_response(
             prompt=prompt,
-            model=GPTModel.GPT_5_NANO,
-            max_tokens=250,
-            temperature=0.5
+            model=GPTModel.GPT_5
         )
-        return response.content if response else "No summary available."
+
+        return response.text if response else "No summary available."
 
     def _get_midnight_today_utc_timestamp(self) -> int:
         """Get Unix timestamp for midnight today in UTC."""
@@ -146,12 +147,27 @@ class TruthSocialPushService:
             else:
                 filtered_posts.append(post)
 
-        # 6. Summarize posts as needed
+        # 6. Summarize posts concurrently
         summary_mapping: dict[str, str] = {}
-        for post in filtered_posts:
-            if post.id in summary_exclude:
-                continue
-            summary_mapping[post.id] = await self.summarize_post(post.summary)
+        posts_to_summarize = [post for post in filtered_posts if post.id not in summary_exclude]
+
+        if posts_to_summarize:
+            logger.info(f"Summarizing {len(posts_to_summarize)} posts concurrently...")
+            # Create tasks for concurrent summarization
+            summarization_tasks = [
+                self.summarize_post(post.summary) for post in posts_to_summarize
+            ]
+
+            # Execute all summarization tasks concurrently
+            summaries = await asyncio.gather(*summarization_tasks, return_exceptions=True)
+
+            # Map results back to post IDs, handling any exceptions
+            for post, summary in zip(posts_to_summarize, summaries):
+                if isinstance(summary, Exception):
+                    logger.error(f"Failed to summarize post {post.id}: {summary}")
+                    summary_mapping[post.id] = "Summary unavailable due to error."
+                else:
+                    summary_mapping[post.id] = summary
 
         # 7. Build the results
         results: list[dict] = []

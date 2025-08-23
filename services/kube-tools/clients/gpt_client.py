@@ -20,6 +20,12 @@ def md5(text: str) -> str:
     return hashlib.md5(text.encode('utf-8')).hexdigest()
 
 
+class ResponseResultModel(BaseModel):
+    text: str
+    usage: int
+    data: dict
+
+
 class CompletionResultModel(BaseModel):
     content: str
     tokens: int
@@ -164,13 +170,14 @@ class GPTClient:
         custom_tools: Optional[List[Dict[Literal['type'], GptResponseToolType]]] = None,
         temperature: float = 1.0,
         use_cache: bool = False,
-        cache_ttl: int = 3600
-    ) -> ResponsesAPIResult:
+        cache_ttl: int = 3600,
+        max_output_tokens: Optional[int] = None
+    ) -> ResponseResultModel:
         if use_cache and self._cache_client:
-            cached = await self._get_cached_response(input, model)
+            cached = await self._get_cached_response(prompt, model)
             if cached:
-                logger.info(f"Using cached response for {model} input")
-                return ResponsesAPIResult.model_validate(cached)
+                logger.info(f"Using cached response for {model} prompt")
+                return ResponseResultModel.model_validate(cached)
 
         tools = custom_tools or []
 
@@ -189,22 +196,27 @@ class GPTClient:
                 {"type": GptResponseToolType.BROWSER}
             ]
 
-        logger.info(f"Calling responses.create with tools={tools}")
+        logger.info(f"Calling responses.create with model {model} and tools={tools}")
         try:
             response = await self._client.responses.create(
                 model=model,
                 input=prompt,
                 instructions=system_prompt,
                 tools=tools,
-                temperature=temperature
+                temperature=temperature,
+                max_output_tokens=max_output_tokens
             )
 
-            parsed = response.model_dump()
+            result = ResponseResultModel(
+                text=response.output_text,
+                usage=response.usage.total_tokens if response.usage else 0,
+                data=response.model_dump()
+            )
 
             if use_cache and self._cache_client:
-                await self._cache_response(input, parsed, model, cache_ttl)
+                await self._cache_response(prompt, result.model_dump(), model, cache_ttl)
+            return result
 
-            return ResponsesAPIResult.model_validate(parsed)
         except Exception as e:
             logger.error(f"Error during responses.create: {str(e)}")
             raise
@@ -269,7 +281,7 @@ class GPTClient:
             return cached['content']
         return None
 
-    async def _cache_response(self, prompt: str, response: str, model: str, ttl: int):
+    async def _cache_response(self, prompt: str, data: dict, model: str, ttl: int):
         """Cache a response for future use"""
         if not self._cache_client:
             return
@@ -279,6 +291,6 @@ class GPTClient:
 
         await self._cache_client.set_json(
             cache_key,
-            {'content': response},
+            data,
             ttl=ttl
         )

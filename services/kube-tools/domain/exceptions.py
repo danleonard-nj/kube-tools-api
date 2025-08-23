@@ -50,7 +50,7 @@ class ChatGptException(Exception):
     def __init__(self, message, status_code, gpt_error, *args: object) -> None:
         self.status_code = status_code
         self.gpt_error = gpt_error
-        self.message = messag
+        self.message = message
 
         self.retry = (
             status_code == 429

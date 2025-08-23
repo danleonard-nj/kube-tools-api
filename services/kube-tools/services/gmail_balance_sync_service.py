@@ -2,6 +2,7 @@ import re
 from typing import List
 
 from clients.gpt_client import GPTClient
+from clients.sib_client import SendInBlueClient
 from domain.bank import (BALANCE_EMAIL_EXCLUSION_KEYWORDS,
                          BALANCE_EMAIL_INCLUSION_KEYWORDS,
                          CAPITAL_ONE_QUICKSILVER, CAPITAL_ONE_SAVOR,
@@ -17,9 +18,11 @@ from domain.google import (GmailEmail, GmailEmailRuleModel,
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from framework.logger import get_logger
+from domain.gpt import GPTModel
 from models.bank_config import BankingConfig
 from services.bank_service import BankService
 from utilities.utils import fire_task
+
 
 logger = get_logger(__name__)
 
@@ -30,15 +33,17 @@ class GmailBankSyncService:
         bank_service: BankService,
         cache_client: CacheClientAsync,
         gpt_client: GPTClient,
-        banking_config: BankingConfig,
+        sib_client: SendInBlueClient,
+        banking_config: BankingConfig
     ):
         self._bank_service = bank_service
         self._cache_client = cache_client
 
         self._gpt_client = gpt_client
+        self._sib_client = sib_client
 
         # TODO: This probably doesn't belong in this config or in this service?
-        self._model = banking_config.balance_sync_gpt_model
+        self._model = GPTModel.GPT_5
 
     async def handle_balance_sync(
         self,
@@ -75,6 +80,9 @@ class GmailBankSyncService:
                 # Reduce message length
                 logger.info(f'Cleaning message string')
                 segment = self._clean_message_string(value=segment)
+
+                # TODO: Move to using GPT to determine appropriate bank key
+                determined_bank_key = await self._determine_bank_key(email_body_segments)
 
                 logger.info(f'Generating balance prompt')
                 # Generate the GPT prompt to get the balance from
@@ -118,6 +126,15 @@ class GmailBankSyncService:
                 bank_key=bank_key,
                 email_body_segments=email_body_segments)
 
+            if determined_bank_key == bank_key:
+                logger.info(f'Determined bank key matches provided bank key: {bank_key}')
+            else:
+                logger.info(f'Determined bank key {determined_bank_key} does not match provided bank key {bank_key}, using determined bank key')
+                await self._send_bank_key_mismatch_notification(
+                    expected_key=bank_key,
+                    determined_key=determined_bank_key
+                )
+
             # Store the balance record
             captured = await self._bank_service.capture_balance(
                 bank_key=bank_key,
@@ -132,6 +149,32 @@ class GmailBankSyncService:
 
         except Exception as ex:
             logger.exception(f'Error parsing balance: {str(ex)}')
+
+    async def _send_bank_key_mismatch_notification(
+        self,
+        expected_key,
+        determined_key
+    ):
+        html = f"""
+        <html>
+            <body>
+                <p><b>Bank Key Mismatch Detected</b></p>
+                <br>
+                <p>The legacy bank key and GPT-generated bank keys did not match.</p>
+                <p>Expected bank key: <b>{expected_key}</b></p>
+                <p>Determined bank key: <b>{determined_key}</b></p>
+            </body>
+        </html>
+        """
+
+        # Send notification about the mismatch
+        await self._sib_client.send_email(
+            recipient='dcl525@gmail.com',
+            subject='Bank Key Mismatch Detected',
+            html_body=html,
+            from_email='me@dan-leonard.com',
+            from_name='Kubetools Gmail Balance Sync Service'
+        )
 
     def _handle_account_specific_balance_sync(
         self,
@@ -178,63 +221,68 @@ class GmailBankSyncService:
 
         return balance
 
+    async def _determine_bank_key(
+        self,
+        email_body_segments: List[str]
+
+    ):
+        prompt = (
+            f"Given the following email segments: {email_body_segments}, determine the closest bank key if there is one. "
+            f"The response must be a single word corresponding to a BankKey enum member. "
+            f"Ensure it is the most granular option (i.e. capital-one-venture over less granular capital-one). "
+            f"Here are the possible bank keys: {', '.join([key.value for key in BankKey])}. "
+            f"If no bank key matches, respond with 'none'."
+        )
+
+        try:
+            completion_result = await self._gpt_client.generate_response(
+                model=GPTModel.GPT_5_MINI,
+                prompt=prompt
+            )
+
+            logger.info(f'GPT response for bank key determination: {completion_result}')
+            # Assuming the GPT response text directly gives the bank key
+            bank_key_str = completion_result.text.strip()
+
+            allowed_keys = [x.value for x in BankKey]
+
+            # Failed to find a bank key
+            if bank_key_str == 'none' or bank_key_str not in allowed_keys:
+                logger.info(f'GPT did not determine a valid bank key from response: {bank_key_str}')
+                return None
+
+            return BankKey(bank_key_str)
+        except Exception as ex:
+            logger.error(f'Error determining bank key with GPT: {ex}')
+            return None
+
     async def _get_chat_gpt_balance_completion(
         self,
         balance_prompt: str
     ) -> ChatGptBalanceCompletion:
 
-        # key = CacheKey.chat_gpt_response_by_balance_prompt(
-        #     balance_prompt=balance_prompt)
-
-        # logger.info(f'GPT balance completion prompt cache key: {key}')
-
-        # cached_response = await self._cache_client.get_json(
-        #     key=key)
-
-        # # Use cached balance completion if available
-        # if cached_response is not None:
-        #     logger.info(f'Using cached GPT balance completion prompt: {cached_response}')
-
-        #     return ChatGptBalanceCompletion.from_balance_response(
-        #         balance=cached_response.get('balance'),
-        #         usage=cached_response.get('usage'))
-
         # Max 5 attempts to parse balance from string
         for attempt in range(5):
             try:
-                logger.info(
-                    f'Parse balance from string w/ GPT: Attempt {attempt + 1}')
+                logger.info(f'Parse balance from string w/ GPT: Attempt {attempt + 1}')
 
-                # Submit the prompt to GPT and get the response
-                # and tokens used
-                completion_result = await self._gpt_client.generate_completion(
+                completion_result = await self._gpt_client.generate_response(
                     model=self._model,
-                    prompt=balance_prompt)
+                    prompt=balance_prompt
+                )
+
                 logger.info(f'GPT response balance: {completion_result}')
 
-                balance = completion_result.content
-                usage = completion_result.tokens
+                balance = completion_result.text
+                usage = completion_result.usage
 
                 logger.info(f'GPT response balance / usage: {balance} : {usage}')
-
-                # # Fire the cache task
-                # self._fire_cache_gpt_response(
-                #     key=key,
-                #     balance=balance,
-                #     usage=usage)
 
                 logger.info(f'Breaking from GPT loop')
                 break
 
-            except ChatGptException as ex:
-                # Retryable errors
-                if ex.retry:
-                    logger.info(f'GPT retryable error: {ex.message}')
-                # Non-retryable errors
-                else:
-                    logger.info(f'GPT non-retryable error: {ex.message}')
-                    balance = 'N/A'
-                    break
+            except Exception as ex:
+                logger.warning(f'Error parsing balance with GPT: {ex}')
 
         balance = (balance if balance != 'N/A'
                    else DEFAULT_BALANCE)

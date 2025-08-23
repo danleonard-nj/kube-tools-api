@@ -34,7 +34,6 @@ class GPTModel:
     GPT_5 = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-5"
     GPT_5_MINI = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-5-mini"
     GPT_5_NANO = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-5-nano"
-    GPT_5_CHAT = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-5-chat"
 
 
 def get_content(parsed):

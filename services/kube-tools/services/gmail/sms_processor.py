@@ -47,7 +47,7 @@ class SmsRuleProcessor(BaseRuleProcessor):
         message_id: str
     ) -> None:
         """Send SMS notification for the message."""
-        message_body = await self._message_formatter.format_sms_message(rule, message)
+        message_body = await self._message_formatter.generate_sms_message(rule, message)
 
         logger.info(f'Sending SMS notification for message: {message_id}')
         await self._twilio_gateway.send_sms(

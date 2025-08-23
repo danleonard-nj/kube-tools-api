@@ -78,6 +78,7 @@ from services.google_auth_service import GoogleAuthService
 from services.google_drive_service import GoogleDriveService
 from services.location_history_service import LocationHistoryService
 from services.mongo_backup_service import MongoBackupService
+from services.openai_usage_service import OpenAiUsageService
 from services.podcast_service import PodcastService
 from services.redis_service import RedisService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
@@ -265,6 +266,7 @@ def register_services(
     descriptors.add_singleton(AndroidService)
     descriptors.add_singleton(TruthSocialPushService)
     descriptors.add_singleton(PlaidSyncService)
+    descriptors.add_singleton(OpenAiUsageService)
 
 
 class ContainerProvider(ProviderBase):

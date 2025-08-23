@@ -19,7 +19,7 @@ class MessageFormatter:
     def __init__(self, gpt_client: GPTClient):
         self._gpt_client = gpt_client
 
-    async def format_sms_message(
+    async def generate_sms_message(
         self,
         rule: GmailEmailRuleModel,
         message: GmailEmail,
@@ -104,12 +104,17 @@ class MessageFormatter:
         else:
             prompt = f"{DEFAULT_PROMPT_TEMPLATE}: {body_text}"
 
-        # Get summary from ChatGPT
-        result = await self._gpt_client.generate_completion(
+        # # Get summary from ChatGPT
+        # result = await self._gpt_client.generate_completion(
+        #     prompt=prompt,
+        #     # TODO: Move to configuration
+        #     model=GPTModel.GPT_4O_MINI
+        # )
+
+        result = await self._gpt_client.generate_response(
             prompt=prompt,
-            # TODO: Move to configuration
-            model=GPTModel.GPT_4O_MINI
+            model=GPTModel.GPT_5
         )
 
-        logger.info(f'ChatGPT email summary usage tokens: {result.tokens}')
-        return result.content.strip()
+        logger.info(f'ChatGPT email summary usage tokens: {result.usage}')
+        return result.text
