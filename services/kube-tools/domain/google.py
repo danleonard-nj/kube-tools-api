@@ -546,7 +546,7 @@ def parse_gmail_body_text(
         content = strip_special_chars(
             clean_unicode(
                 unicodedata.normalize(
-                    'NFKD', body.get_text())))
+                    'NFKD', body.get_text(separator=' ', strip=True))))
 
         results.append(content)
 

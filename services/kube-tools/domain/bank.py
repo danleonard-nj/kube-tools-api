@@ -15,7 +15,7 @@ from utilities.utils import DateTimeUtil, parse, parse_timestamp
 logger = get_logger(__name__)
 
 
-PROMPT_PREFIX = 'Get the current available bank balance (if present) from this string'
+PROMPT_PREFIX = 'Get the current available bank balance or credit card balance (if present) from this email text'
 PROMPT_SUFFIX = 'Respond with only the balance or "N/A"'
 
 CAPITAL_ONE_SAVOR = 'savor'
