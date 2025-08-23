@@ -171,8 +171,7 @@ class GPTClient:
         temperature: float = 1.0,
         use_cache: bool = False,
         cache_ttl: int = 3600,
-        max_output_tokens: Optional[int] = None,
-        response_format: Optional[dict] = None
+        max_output_tokens: Optional[int] = None
     ) -> ResponseResultModel:
         if use_cache and self._cache_client:
             cached = await self._get_cached_response(prompt, model)
@@ -206,7 +205,6 @@ class GPTClient:
                 tools=tools,
                 temperature=temperature,
                 max_output_tokens=max_output_tokens
-                # response_format=response_format
             )
 
             result = ResponseResultModel(
@@ -230,8 +228,7 @@ class GPTClient:
         system_prompt: str = None,
         model: str = "gpt-4o",
         temperature: float = 1.0,
-        custom_tools: list = None,
-        response_format: Optional[dict] = None
+        custom_tools: list = None
     ) -> str:
         """
         Send an image and prompt (with optional system prompt and tools) to GPT and return the response content as string.
@@ -257,7 +254,6 @@ class GPTClient:
             system_prompt=system_prompt,
             temperature=temperature,
             custom_tools=custom_tools
-            # response_format=response_format
         )
 
     async def _get_cached_response(self, prompt: str, model: str):
