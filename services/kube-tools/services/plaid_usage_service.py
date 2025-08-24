@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, List, Dict, Optional, Tuple
 from framework.logger import get_logger
 from framework.configuration import Configuration
 from httpx import AsyncClient
@@ -29,34 +29,18 @@ PLAID_OAUTH_URL = "https://production.plaid.com/oauth/token"
 PLAID_MCP_SSE = "https://api.dashboard.plaid.com/mcp/sse"
 
 
-logger = get_logger(__name__)
+PRICING = {
+    "auth-request": 0.30,
+    "balance-request": 0.05,
+    "transactions": 0.05,
+    "transactions-add": 0.05,
+    "transactions-remove": 0.05,
+    "transactions-active": 0.05,
+    "transactions-refresh": 0.05,
+    "identity-request": 1.00
+}
 
-
-# class PlaidUsageConfigModel(BaseModel):
-#     client_id: str
-#     secret: SecretStr
-#     openai_api_key: SecretStr
-
-
-class PlaidUsageService:
-    def __init__(
-        self,
-        config: PlaidConfig,
-        open_ai_config: OpenAIConfig,
-        http_client: AsyncClient,
-        openai_client: OpenAI,
-        sib_client: SendInBlueClient
-    ):
-        self._config = config
-        self._http_client = http_client
-        self._openai_client = openai_client
-        self._sib_client = sib_client
-
-        self._client_id = config.client_id
-        self._client_secret = config.client_secret
-
-    # Simple CSS styles for diagnostic email
-    EMAIL_STYLES = """
+EMAIL_STYLES = """
         body {
             font-family: Arial, sans-serif;
             line-height: 1.4;
@@ -109,7 +93,38 @@ class PlaidUsageService:
             font-size: 12px;
             overflow-x: auto;
         }
+        
+        .warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
     """
+
+logger = get_logger(__name__)
+
+
+class PlaidUsageService:
+    def __init__(
+        self,
+        config: PlaidConfig,
+        open_ai_config: OpenAIConfig,
+        http_client: AsyncClient,
+        openai_client: OpenAI,
+        sib_client: SendInBlueClient
+    ):
+        self._config = config
+        self._http_client = http_client
+        self._openai_client = openai_client
+        self._sib_client = sib_client
+
+        self._client_id = config.client_id
+        self._client_secret = config.client_secret
+
+    # Simple CSS styles for diagnostic email
 
     def _get_prompt(
         self,
@@ -156,19 +171,19 @@ class PlaidUsageService:
         self,
         days_back: int
     ):
-        to_date = date.today()
-        from_date = to_date - timedelta(days=days_back)
+        to_date_dt = date.today()
+        from_date_dt = to_date_dt - timedelta(days=days_back)
 
         dashboard_token = await self._get_oauth_token()
         logger.info(f"Obtained Plaid dashboard token: {dashboard_token}")
 
         # Ask the model to explicitly call the MCP tools we need and return JSON only.
-        from_date = (date.today() - timedelta(days=days_back)).isoformat()
-        to_date = date.today().isoformat()
+        from_date = from_date_dt.isoformat()
+        to_date = to_date_dt.isoformat()
 
         prompt = self._get_prompt(from_date, to_date)
 
-        logger.info(f"Generated prompt for dates {from_date} to {to_date}: {prompt}")
+        logger.info(f"Generated prompt for dates {from_date} to {to_date}")
 
         model = "gpt-4.1-mini"
         logger.info(f"Requesting Plaid MCP tool with prompt using model {model}.")
@@ -185,12 +200,6 @@ class PlaidUsageService:
             input=prompt,
             temperature=0
         )
-
-        logger.info(f"Received response from OpenAI: {resp.output}")
-
-        raw_json = resp.model_dump(mode="json")
-        with open("mcp_debug.json", "w", encoding="utf-8") as f:
-            json.dump(raw_json, f, indent=2)
 
         usage_json = None
         for part in resp.output:
@@ -212,7 +221,11 @@ class PlaidUsageService:
                 'error': 'No usage data available. Please check your API key and Plaid team access.'
             }
 
-        html = self.generate_plaid_usage_email(usage_json, recipient_name='Dan')
+        html = self.generate_plaid_usage_email(
+            usage_json,
+            start_date=from_date_dt,
+            end_date=to_date_dt
+        )
         logger.info('Generated HTML email content for Plaid usage report.')
 
         await self._sib_client.send_email(
@@ -227,172 +240,258 @@ class PlaidUsageService:
             'html': html,
             'raw_usage': usage_json,
             'error': None
-
         }
 
-    def generate_plaid_usage_email(self, plaid_data, recipient_name="User"):
+    def _parse_date_safely(self, date_str: str) -> Optional[datetime]:
+        """Safely parse a date string to datetime object."""
+        if not date_str:
+            return None
+        try:
+            # Handle ISO format with or without time component
+            if 'T' in date_str:
+                return datetime.fromisoformat(date_str.split('T')[0])
+            return datetime.strptime(date_str[:10], '%Y-%m-%d')
+        except Exception as e:
+            logger.warning(f"Failed to parse date '{date_str}': {e}")
+            return None
+
+    def _generate_date_series(self, start_date: datetime, num_points: int) -> List[datetime]:
+        """Generate a series of dates starting from start_date."""
+        return [start_date + timedelta(days=i) for i in range(num_points)]
+
+    def _is_cumulative_metric(self, metric_name: str) -> bool:
+        """Determine if a metric is cumulative (resets monthly)."""
+        # Add metric names that are known to be cumulative
+        cumulative_metrics = {
+            'balance-request'
+        }
+        return metric_name in cumulative_metrics
+
+    def _convert_cumulative_to_daily(
+        self,
+        values: List[Any],
+        dates: List[datetime],
+        metric_name: str
+    ) -> Tuple[List[int], List[str]]:
+        """
+        Convert cumulative monthly values to daily increments.
+
+        Args:
+            values: List of values (cumulative or daily)
+            dates: List of corresponding dates
+            metric_name: Name of the metric
+
+        Returns:
+            Tuple of (daily_values, warnings)
+        """
+        if not values or not dates:
+            return [], []
+
+        if len(values) != len(dates):
+            logger.warning(f"Values and dates length mismatch: {len(values)} vs {len(dates)}")
+            # Truncate to shorter length
+            min_len = min(len(values), len(dates))
+            values = values[:min_len]
+            dates = dates[:min_len]
+
+        daily_values = []
+        warnings = []
+        prev_value = None
+        prev_date = None
+        current_month_start_value = None
+
+        for i, (val, dt) in enumerate(zip(values, dates)):
+            # Convert value to integer
+            try:
+                current_value = int(val) if val is not None else 0
+            except (ValueError, TypeError):
+                current_value = 0
+                warnings.append(f"Non-numeric value at index {i}: {val}")
+
+            if prev_date is None:
+                # First data point
+                daily_values.append(current_value)
+                current_month_start_value = 0  # Assume month starts at 0
+            else:
+                # Check if we've crossed a month boundary
+                month_changed = (dt.year != prev_date.year or dt.month != prev_date.month)
+
+                if month_changed:
+                    # New month - value should be the daily count for this day
+                    daily_values.append(current_value)
+                    current_month_start_value = 0
+                    logger.debug(f"Month boundary detected between {prev_date.date()} and {dt.date()}")
+                else:
+                    # Same month - calculate increment
+                    if current_value >= prev_value:
+                        # Normal case: cumulative increased
+                        increment = current_value - prev_value
+                        daily_values.append(increment)
+                    else:
+                        # Unexpected: value decreased within same month
+                        # This might indicate missing data or an error
+                        warnings.append(
+                            f"Unexpected decrease within month at {dt.date()}: "
+                            f"{prev_value} -> {current_value}"
+                        )
+                        # Use the current value as-is (might be a correction)
+                        daily_values.append(max(0, current_value))
+
+            prev_value = current_value
+            prev_date = dt
+
+        return daily_values, warnings
+
+    def calculate_summary_stats(self, series_data: Dict, metric_name: str, pricing: Dict) -> Dict:
+        """
+        Calculate summary statistics for a data series with proper date handling.
+
+        Args:
+            series_data: Dictionary containing series data from Plaid
+            metric_name: Name of the metric
+            pricing: Dictionary of pricing per request type
+
+        Returns:
+            Dictionary of calculated statistics
+        """
+        data = series_data.get('series', [])
+        start_date_str = series_data.get('start', '')
+        end_date_str = series_data.get('end', '')
+
+        # Parse start date
+        start_date = self._parse_date_safely(start_date_str)
+        if not start_date:
+            logger.warning(f"Could not parse start date for {metric_name}: {start_date_str}")
+            # Fallback to simple conversion without date awareness
+            computed_series = [int(v) if v else 0 for v in data]
+            warnings = ["Date parsing failed; treating as daily values"]
+        else:
+            # Generate date series
+            dates = self._generate_date_series(start_date, len(data))
+
+            # Check if this metric is cumulative
+            if self._is_cumulative_metric(metric_name):
+                computed_series, warnings = self._convert_cumulative_to_daily(
+                    data, dates, metric_name
+                )
+                logger.info(f"Converted cumulative data for {metric_name}: "
+                            f"{len(data)} cumulative -> {len(computed_series)} daily values")
+            else:
+                # Non-cumulative metric - just convert to integers
+                computed_series = []
+                warnings = []
+                for i, v in enumerate(data):
+                    try:
+                        computed_series.append(int(v) if v is not None else 0)
+                    except (ValueError, TypeError):
+                        computed_series.append(0)
+                        warnings.append(f"Non-numeric value at index {i}: {v}")
+
+        # Calculate statistics
+        total_requests = sum(computed_series)
+        cost_per_request = pricing.get(metric_name, 0.0)
+        total_cost = total_requests * cost_per_request
+
+        if computed_series:
+            avg = round(sum(computed_series) / len(computed_series), 2)
+            mx = max(computed_series)
+            mn = min(computed_series)
+        else:
+            avg = mx = mn = 0
+
+        return {
+            'total': total_requests,
+            'average': avg,
+            'max': mx,
+            'min': mn,
+            'observations': len(computed_series),
+            'cost_per_request': cost_per_request,
+            'total_cost': total_cost,
+            'computed_series': computed_series,
+            'start_date': start_date,
+            'warnings': warnings
+        }
+
+    def generate_plaid_usage_email(
+        self,
+        plaid_data: Dict,
+        start_date: datetime = None,
+        end_date: datetime = None
+    ) -> str:
         """
         Generate a nice HTML email with Plaid usage statistics and graphs.
 
         Args:
-            plaid_data (dict): The Plaid usage data in JSON format
-            recipient_name (str): Name of the email recipient
+            plaid_data: The Plaid usage data in JSON format
+            recipient_name: Name of the email recipient
 
         Returns:
-            str: HTML email content
+            HTML email content
         """
-
         # Pricing per request in USD
-        pricing = {
-            "auth-request": 0.30,
-            "balance-request": 0.05,
-            "transactions": 0.05,
-            "transactions-add": 0.05,
-            "transactions-remove": 0.05,
-            "transactions-active": 0.05,
-            "transactions-refresh": 0.05,
-            "identity-request": 1.00
-        }
-
-        def calculate_summary_stats(series_data, metric_name, pricing):
-            """Calculate summary statistics for a data series"""
-            data = series_data.get('series', [])
-            # If the metric is a monthly cumulative counter (Plaid returns
-            # cumulative counts that reset at the beginning of each month for
-            # some metrics like `balance-request`), convert to per-day
-            # increments before computing totals.
-
-            def _cumulative_to_increments(arr):
-                if not arr:
-                    return []
-                increments = []
-                prev = None
-                for v in arr:
-                    try:
-                        v_num = int(v)
-                    except Exception:
-                        # non-numeric values -> treat as zero
-                        v_num = 0
-                    if prev is None:
-                        increments.append(v_num)
-                    else:
-                        if v_num >= prev:
-                            increments.append(v_num - prev)
-                        else:
-                            # reset detected (likely new month) -> treat
-                            # current value as the day's count
-                            increments.append(v_num)
-                    prev = v_num
-                return increments
-
-            # Use incremental values for balance-request which Plaid reports
-            # as cumulative-per-month (resets to a small number on month start).
-            if metric_name == 'balance-request':
-                computed_series = _cumulative_to_increments(data)
-            else:
-                # try to coerce to ints for other metrics as well
-                computed_series = []
-                for v in data:
-                    try:
-                        computed_series.append(int(v))
-                    except Exception:
-                        computed_series.append(0)
-            total_requests = sum(computed_series)
-            cost_per_request = pricing.get(metric_name, 0.0)
-            total_cost = total_requests * cost_per_request
-
-            avg = round((sum(computed_series) / len(computed_series)), 2) if computed_series else 0
-            mx = max(computed_series) if computed_series else 0
-            mn = min(computed_series) if computed_series else 0
-
-            return {
-                'total': total_requests,
-                'average': avg,
-                'max': mx,
-                'min': mn,
-                'observations': len(computed_series),
-                'cost_per_request': cost_per_request,
-                'total_cost': total_cost,
-                'computed_series': computed_series,
-            }
 
         # Parse data and calculate statistics
-        series = plaid_data['series']
+        series = plaid_data.get('series', [])
         summary_data = []
+        all_warnings = []
 
         for metric in series:
-            metric_name = metric['metricName']
+            metric_name = metric.get('metricName', 'unknown')
 
-            # Calculate stats
-            stats = calculate_summary_stats(metric, metric_name, pricing)
+            # Calculate stats with improved logic
+            stats = self.calculate_summary_stats(metric, metric_name, PRICING)
             stats['name'] = metric_name.replace('-', ' ').title()
-            stats['period'] = f"{metric['start'][:10]} to {metric['end'][:10]}" if 'end' in metric else f"From {metric['start'][:10]}"
+            stats['metric_name'] = metric_name
+
+            # Format period
+            start_str = metric.get('start', '')[:10] if 'start' in metric else 'Unknown'
+            end_str = metric.get('end', '')[:10] if 'end' in metric else 'Unknown'
+            stats['period'] = f"{start_str} to {end_str}"
+
             summary_data.append(stats)
+
+            # Collect warnings
+            if stats.get('warnings'):
+                all_warnings.extend([f"{metric_name}: {w}" for w in stats['warnings']])
 
         # Generate simple diagnostic HTML email
         current_date = datetime.now().strftime('%B %d, %Y')
 
-        def _create_chart_base64(series_values, start_date_str=None, title=None):
-            """Render a simple line chart and return a base64 PNG data URI string.
-
-            series_values: list[int]
-            start_date_str: ISO date (YYYY-MM-DD) for first point, optional
-            title: chart title
-            Returns: str or None
-            """
-            if not series_values:
-                return None
-
-            # Try to build x axis dates from start_date_str
-            x_vals = None
-            if start_date_str:
-                try:
-                    start_dt = datetime.fromisoformat(start_date_str[:10])
-                    x_vals = [start_dt + timedelta(days=i) for i in range(len(series_values))]
-                except Exception:
-                    x_vals = list(range(len(series_values)))
-            else:
-                x_vals = list(range(len(series_values)))
-
-            plt.switch_backend('Agg')
-            fig, ax = plt.subplots(figsize=(6, 2.5))
-            try:
-                ax.plot(x_vals, series_values, marker='o', linewidth=1)
-                if isinstance(x_vals[0], datetime):
-                    ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-                    ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
-                    fig.autofmt_xdate(rotation=45)
-                ax.set_ylabel('Requests')
-                if title:
-                    ax.set_title(title, fontsize=10)
-                ax.grid(alpha=0.25)
-
-                buf = BytesIO()
-                fig.tight_layout()
-                fig.savefig(buf, format='png', dpi=100)
-                buf.seek(0)
-                img_b64 = base64.b64encode(buf.read()).decode('ascii')
-                return f"data:image/png;base64,{img_b64}"
-            finally:
-                plt.close(fig)
+        start_date_str = start_date.strftime('%B %d, %Y') if start_date else 'Unknown'
+        end_date_str = end_date.strftime('%B %d, %Y') if end_date else 'Unknown'
 
         html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Plaid Usage Diagnostic Report</title>
-    <style>
-{self.EMAIL_STYLES}
-    </style>
-</head>
-<body>
-    <h1>Plaid Usage Diagnostic Report</h1>
-    <p><strong>Generated:</strong> {current_date}</p>
-    <p><strong>Recipient:</strong> {recipient_name}</p>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Plaid Usage Report</title>
+            <style>
+        {EMAIL_STYLES}
+            </style>
+        </head>
+        <body>
+            <h1>Plaid Usage Report</h1>
+            <p><strong>Generated:</strong> {current_date}</p>
+            <p><strong>Start Date:</strong> {start_date_str}</p>
+            <p><strong>End Date:</strong> {end_date_str}</p>
+        """
 
-    <h2>Summary Table</h2>
-    <table>
+        # Add warnings section if there are any
+        if all_warnings:
+            html_content += """
+        <div class="warning">
+        <strong>Data Processing Warnings:</strong>
+        <ul>"""
+            for warning in all_warnings:
+                html_content += f"<li>{warning}</li>"
+                html_content += """
+            </ul>
+        </div>"""
+
+        html_content += """
+        <h2>Summary Table</h2>
+        <table>
         <tr>
             <th>Metric</th>
             <th>Total Requests</th>
@@ -411,29 +510,91 @@ class PlaidUsageService:
         for stat in summary_data:
             total_requests += stat['total']
             total_cost += stat['total_cost']
+
+            # Highlight cumulative metrics
+            is_cumulative = self._is_cumulative_metric(stat['metric_name'])
+            row_style = ' style="background-color: #f0f8ff;"' if is_cumulative else ''
+
             html_content += f"""
-        <tr>
-            <td>{stat['name']}</td>
-            <td>{stat['total']:,}</td>
-            <td>{stat['average']}</td>
-            <td>{stat['max']}</td>
-            <td>{stat['min']}</td>
-            <td>{stat['observations']}</td>
-            <td>${stat['cost_per_request']:.2f}</td>
-            <td>${stat['total_cost']:.2f}</td>
-        </tr>"""
+            <tr{row_style}>
+                <td>{stat['name']}{' *' if is_cumulative else ''}</td>
+                <td>{stat['total']:,}</td>
+                <td>{stat['average']:.1f}</td>
+                <td>{stat['max']:,}</td>
+                <td>{stat['min']:,}</td>
+                <td>{stat['observations']}</td>
+                <td>${stat['cost_per_request']:.2f}</td>
+                <td>${stat['total_cost']:.2f}</td>
+            </tr>"""
 
         html_content += f"""
-    </table>
+        </table>
+        <p style="font-size: 0.9em; color: #666;">
+            * Cumulative metrics have been converted from monthly cumulative to daily values
+        </p>
 
-    <h2>Totals</h2>
-    <table>
-        <tr><td><strong>Total API Requests</strong></td><td>{total_requests:,}</td></tr>
-        <tr><td><strong>Total Estimated Cost</strong></td><td>${total_cost:.2f}</td></tr>
-        <tr><td><strong>Average Daily Cost</strong></td><td>${(total_cost / max(1, summary_data[0]['observations']) if summary_data else 0):.2f}</td></tr>
-    </table>
+        <h2>Balance Requests by Day</h2>"""
+
+        # Find balance request data for daily breakdown
+        balance_data = None
+        for stat in summary_data:
+            if stat['metric_name'] == 'balance-request':
+                balance_data = stat
+                break
+
+        if balance_data and balance_data.get('computed_series') and balance_data.get('start_date'):
+            html_content += """
+        <table>
+            <tr>
+                <th>Date</th>
+                <th>Balance Requests</th>
+                <th>Daily Cost</th>
+            </tr>"""
+
+            # Generate daily breakdown
+            start_date_obj = balance_data['start_date']
+            computed_series = balance_data['computed_series']
+            cost_per_request = balance_data['cost_per_request']
+
+            for i, daily_count in enumerate(computed_series):
+                current_date = start_date_obj + timedelta(days=i)
+                daily_cost = daily_count * cost_per_request
+                date_str = current_date.strftime('%Y-%m-%d (%a)')
+
+                # Highlight weekends or high usage days
+                row_style = ''
+                if current_date.weekday() >= 5:  # Saturday = 5, Sunday = 6
+                    row_style = ' style="background-color: #f9f9f9;"'
+                elif daily_count > balance_data['average'] * 1.5:  # High usage days
+                    row_style = ' style="background-color: #fff3cd;"'
+
+                html_content += f"""
+                <tr{row_style}>
+                    <td>{date_str}</td>
+                    <td>{daily_count:,}</td>
+                    <td>${daily_cost:.2f}</td>
+                </tr>"""
+
+            html_content += """
+        </table>
+        <p style="font-size: 0.9em; color: #666;">
+            Weekend days are highlighted in light gray. High usage days (>1.5x average) are highlighted in yellow.
+        </p>"""
+        else:
+            html_content += """
+            <p style="color: #dc3545;">No balance request data available for daily breakdown.</p>"""
+
+        html_content += f"""
+        <h2>Totals</h2>
+        <table>
+            <tr><td><strong>Total API Requests</strong></td><td>{total_requests:,}</td></tr>
+            <tr><td><strong>Total Estimated Cost</strong></td><td>${total_cost:.2f}</td></tr>
+            <tr><td><strong>Average Daily Cost</strong></td><td>${(total_cost / max(1, summary_data[0]['observations']) if summary_data else 0):.2f}</td></tr>
+        </table>
 """
-        with open(f"plaid_usage_report_{current_date}.html", "w", encoding="utf-8") as file:
-            file.write(html_content)
+
+        html_content += """
+</body>
+</html>"""
 
         return html_content
