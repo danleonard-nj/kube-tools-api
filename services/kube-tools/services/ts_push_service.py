@@ -165,7 +165,7 @@ class TruthSocialPushService:
             logger.info(f"Summarizing {len(posts_to_summarize)} posts using model {model}...")
             # Create tasks for concurrent summarization
             summarization_tasks = [
-                self.summarize_post(post.summary) for post in posts_to_summarize
+                self.summarize_post(post.summary, model) for post in posts_to_summarize
             ]
 
             # Execute all summarization tasks concurrently
