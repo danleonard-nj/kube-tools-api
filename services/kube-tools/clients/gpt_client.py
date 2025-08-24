@@ -1,7 +1,7 @@
 from enum import Enum, StrEnum
 import hashlib
 import openai
-from openai import OpenAI
+from openai import AsyncOpenAI
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from typing import Any, List, Dict, Literal, Optional, Union
@@ -94,7 +94,7 @@ class GPTClient:
         self,
         config: OpenAIConfig,
         cache_client: CacheClientAsync,
-        openai_client: OpenAI
+        openai_client: AsyncOpenAI
     ):
         """
         Initialize the GPT client
@@ -106,7 +106,6 @@ class GPTClient:
         self._api_key = config.api_key
         self._cache_client = cache_client
         self._client = openai_client
-        # self._client = openai.AsyncOpenAI(api_key=self._api_key)
 
         self.count = 0
 

@@ -16,7 +16,10 @@ logger = get_logger(__name__)
 class MessageFormatter:
     """Handles formatting of email messages for SMS notifications."""
 
-    def __init__(self, gpt_client: GPTClient):
+    def __init__(
+        self,
+        gpt_client: GPTClient
+    ):
         self._gpt_client = gpt_client
 
     async def generate_sms_message(

@@ -87,7 +87,7 @@ from services.conversation_service import ConversationService
 from services.torrent_service import TorrentService
 from services.ts_push_service import TruthSocialConfig, TruthSocialPushService
 from services.usage_service import UsageService
-from openai import OpenAI
+from openai import AsyncOpenAI
 from services.weather_service import WeatherService
 
 
@@ -138,7 +138,7 @@ def configure_openai_client(
     container: ServiceCollection
 ):
     openai_config = container.resolve(OpenAIConfig)
-    client = OpenAI(api_key=openai_config.api_key)
+    client = AsyncOpenAI(api_key=openai_config.api_key)
     return client
 
 
@@ -158,7 +158,7 @@ def register_factories(
         factory=configure_mongo_client)
 
     descriptors.add_singleton(
-        dependency_type=OpenAI,
+        dependency_type=AsyncOpenAI,
         factory=configure_openai_client)
 
 
