@@ -3,6 +3,7 @@ from quart import jsonify, request
 from framework.rest.blueprints.meta import MetaBlueprint
 from services.banking.plaid_sync_service import PlaidSyncService
 from domain.auth import AuthPolicy
+from services.plaid_usage_service import PlaidUsageService
 
 plaid_bp = MetaBlueprint('plaid_bp', __name__)
 
@@ -41,3 +42,12 @@ async def get_plaid_transactions(container):
         return jsonify({"error": "account_id is required"}), 400
     txs = await service.get_transactions(account_id=account_id, start_date=start_dt, end_date=end_dt)
     return jsonify([t.model_dump() for t in txs])
+
+
+@plaid_bp.configure('/api/plaid/usage', methods=['GET'], auth_scheme=AuthPolicy.Default)
+async def get_plaid_usage(container):
+    service: PlaidUsageService = container.resolve(PlaidUsageService)
+    usage_data = await service.get_usage_data(days_back=30)
+    if usage_data is None:
+        return jsonify({"error": "Failed to retrieve usage data"}), 500
+    return jsonify(usage_data), 200

@@ -1,6 +1,7 @@
 from enum import Enum, StrEnum
 import hashlib
 import openai
+from openai import OpenAI
 from framework.clients.cache_client import CacheClientAsync
 from framework.configuration import Configuration
 from typing import Any, List, Dict, Literal, Optional, Union
@@ -89,8 +90,12 @@ class GptResponseToolType(StrEnum):
 class GPTClient:
     """Client for handling OpenAI GPT API interactions with caching support"""
 
-    def __init__(self, config: OpenAIConfig,
-                 cache_client: CacheClientAsync = None):
+    def __init__(
+        self,
+        config: OpenAIConfig,
+        cache_client: CacheClientAsync,
+        openai_client: OpenAI
+    ):
         """
         Initialize the GPT client
 
@@ -100,7 +105,8 @@ class GPTClient:
         """
         self._api_key = config.api_key
         self._cache_client = cache_client
-        self._client = openai.AsyncOpenAI(api_key=self._api_key)
+        self._client = openai_client
+        # self._client = openai.AsyncOpenAI(api_key=self._api_key)
 
         self.count = 0
 
@@ -169,7 +175,7 @@ class GPTClient:
         use_all_tools: bool = False,
         custom_tools: Optional[List[Dict[Literal['type'], GptResponseToolType]]] = None,
         temperature: float = 1.0,
-        use_cache: bool = False,
+        use_cache: bool = True,
         cache_ttl: int = 3600,
         max_output_tokens: Optional[int] = None
     ) -> ResponseResultModel:
@@ -181,6 +187,7 @@ class GPTClient:
 
         tools = custom_tools or []
 
+        # TODO: Remove this?
         if use_all_tools:
             tools = [
                 {"type": GptResponseToolType.WEB_SEARCH_PREVIEW},
@@ -196,7 +203,7 @@ class GPTClient:
                 {"type": GptResponseToolType.BROWSER}
             ]
 
-        logger.info(f"Calling responses.create with model {model} and tools={tools}")
+        logger.info(f"Calling responses.create with model={model} and tools={tools}")
         try:
             response = await self._client.responses.create(
                 model=model,

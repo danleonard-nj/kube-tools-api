@@ -22,6 +22,7 @@ from domain.gpt import GPTModel
 from models.bank_config import BankingConfig
 from services.bank_service import BankService
 from utilities.utils import fire_task
+from framework.clients.feature_client import FeatureClientAsync
 
 
 logger = get_logger(__name__)
@@ -34,13 +35,15 @@ class GmailBankSyncService:
         cache_client: CacheClientAsync,
         gpt_client: GPTClient,
         sib_client: SendInBlueClient,
-        banking_config: BankingConfig
+        banking_config: BankingConfig,
+        feature_client: FeatureClientAsync
     ):
         self._bank_service = bank_service
         self._cache_client = cache_client
 
         self._gpt_client = gpt_client
         self._sib_client = sib_client
+        self._feature_client = feature_client
 
         # TODO: This probably doesn't belong in this config or in this service?
         self._model = GPTModel.GPT_5
@@ -234,9 +237,14 @@ class GmailBankSyncService:
             f"If no bank key matches, respond with 'none'."
         )
 
+        model = await self._feature_client.is_enabled('gpt-model-gre-bank-key-determination')
+
+        if not model:
+            model = GPTModel.GPT_5_MINI
+
         try:
             completion_result = await self._gpt_client.generate_response(
-                model=GPTModel.GPT_5_MINI,
+                model=model,
                 prompt=prompt
             )
 

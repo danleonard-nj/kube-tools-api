@@ -79,6 +79,7 @@ from services.google_drive_service import GoogleDriveService
 from services.location_history_service import LocationHistoryService
 from services.mongo_backup_service import MongoBackupService
 from services.openai_usage_service import OpenAiUsageService
+from services.plaid_usage_service import PlaidUsageService
 from services.podcast_service import PodcastService
 from services.redis_service import RedisService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
@@ -86,6 +87,7 @@ from services.conversation_service import ConversationService
 from services.torrent_service import TorrentService
 from services.ts_push_service import TruthSocialConfig, TruthSocialPushService
 from services.usage_service import UsageService
+from openai import OpenAI
 from services.weather_service import WeatherService
 
 
@@ -132,6 +134,14 @@ def configure_mongo_client(
     return client
 
 
+def configure_openai_client(
+    container: ServiceCollection
+):
+    openai_config = container.resolve(OpenAIConfig)
+    client = OpenAI(api_key=openai_config.api_key)
+    return client
+
+
 def register_factories(
     descriptors: ServiceCollection
 ):
@@ -146,6 +156,10 @@ def register_factories(
     descriptors.add_singleton(
         dependency_type=AsyncIOMotorClient,
         factory=configure_mongo_client)
+
+    descriptors.add_singleton(
+        dependency_type=OpenAI,
+        factory=configure_openai_client)
 
 
 def register_configs(descriptors):
@@ -267,6 +281,7 @@ def register_services(
     descriptors.add_singleton(TruthSocialPushService)
     descriptors.add_singleton(PlaidSyncService)
     descriptors.add_singleton(OpenAiUsageService)
+    descriptors.add_singleton(PlaidUsageService)
 
 
 class ContainerProvider(ProviderBase):
@@ -275,11 +290,11 @@ class ContainerProvider(ProviderBase):
         descriptors = ServiceCollection()
 
         descriptors.add_singleton(Configuration)
+        register_configs(descriptors=descriptors)
         register_factories(descriptors=descriptors)
         register_repositories(descriptors=descriptors)
         register_clients(descriptors=descriptors)
         register_services(descriptors=descriptors)
         register_gmail_services(descriptors=descriptors)
-        register_configs(descriptors=descriptors)
 
         return descriptors
