@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 import time
+import zoneinfo
 
 from bs4 import BeautifulSoup
 import feedparser
@@ -196,7 +197,8 @@ class TruthSocialPushService:
                 html_content = generate_truth_social_email(results)
 
                 # compute time of day in Eastern for email subject
-                now_et = datetime.now(timezone.utc).astimezone().replace(tzinfo=None)
+                eastern = zoneinfo.ZoneInfo("America/New_York")
+                now_et = datetime.now(tz=eastern)
                 hour = now_et.hour
                 time_of_day = 'morning' if hour < 12 else 'afternoon' if hour < 18 else 'evening'
 
