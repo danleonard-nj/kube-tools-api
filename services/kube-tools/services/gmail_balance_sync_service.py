@@ -135,7 +135,8 @@ class GmailBankSyncService:
                 logger.info(f'Determined bank key {determined_bank_key} does not match provided bank key {bank_key}, using determined bank key')
                 await self._send_bank_key_mismatch_notification(
                     expected_key=bank_key,
-                    determined_key=determined_bank_key
+                    determined_key=determined_bank_key,
+                    email_body_segments=email_body_segments
                 )
 
             # Store the balance record
@@ -156,7 +157,8 @@ class GmailBankSyncService:
     async def _send_bank_key_mismatch_notification(
         self,
         expected_key,
-        determined_key
+        determined_key,
+        email_body_segments
     ):
         html = f"""
         <html>
@@ -166,6 +168,9 @@ class GmailBankSyncService:
                 <p>The legacy bank key and GPT-generated bank keys did not match.</p>
                 <p>Expected bank key: <b>{expected_key}</b></p>
                 <p>Determined bank key: <b>{determined_key}</b></p>
+                <br>
+                <p>Email HTML:</p>
+                <pre>{html.escape('\n'.join(email_body_segments))}</pre>
             </body>
         </html>
         """
