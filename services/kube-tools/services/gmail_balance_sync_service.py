@@ -170,7 +170,7 @@ class GmailBankSyncService:
                 <p>Determined bank key: <b>{determined_key}</b></p>
                 <br>
                 <p>Email HTML:</p>
-                <pre>{html.escape('\n'.join(email_body_segments))}</pre>
+                <pre style="white-space: pre-wrap; word-break: break-word;">{'<br>'.join(email_body_segments)}</pre>
             </body>
         </html>
         """
