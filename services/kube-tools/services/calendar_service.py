@@ -15,6 +15,7 @@ from models.calendar_models import (Attendee, CalendarConfig,
                                     GoogleCalendarEvent, ReminderOverride,
                                     Reminders)
 from services.google_auth_service import GoogleAuthService
+from framework.clients.feature_client import FeatureClientAsync
 from utilities.utils import strip_json_backticks
 
 logger = get_logger(__name__)
@@ -82,13 +83,20 @@ class CalendarService:
         auth_service: GoogleAuthService,
         repository: GooleCalendarEventRepository,
         gpt_client: GPTClient,
-        config: CalendarConfig
+        config: CalendarConfig,
+        feature_client: FeatureClientAsync
     ):
         self._auth_service = auth_service
         self._repository = repository
         self._gpt_client = gpt_client
+        self._feature_client = feature_client
 
         self._config = config
+
+    async def _get_calendar_event_gpt_model(
+        self
+    ):
+        return await self._feature_client.is_enabled('gpt-model-calendar-event-service')
 
     async def create_calendar_event(
         self,
@@ -271,12 +279,14 @@ class CalendarService:
         - If neither, returns an error.
         """
         locality = self._config.preferences.get('home', 'New Jersey')
+        model = (await self._get_calendar_event_gpt_model()) or GPTModel.GPT_4_1_MINI
+
+        logger.info(f'Using configured model: {model}')
         if image_bytes:
             # Use image+text logic
             system_prompt = get_calendar_system_prompt(locality)
             user_prompt = get_calendar_user_prompt(locality, text or prompt, has_image=True)
 
-            model = GPTModel.GPT_5_MINI
             result = await self._gpt_client.generate_response_with_image_and_tools(
                 image_bytes=image_bytes,
                 prompt=user_prompt,
@@ -300,7 +310,6 @@ class CalendarService:
             system_prompt = get_calendar_system_prompt(locality)
             user_prompt = get_calendar_user_prompt(locality, prompt)
 
-            model = GPTModel.GPT_5_MINI
             result = await self._gpt_client.generate_response(
                 prompt=user_prompt,
                 system_prompt=system_prompt,
