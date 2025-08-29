@@ -55,7 +55,6 @@ TRANSACTION_DEFAULT_LOOKBACK_DAYS = 3
 # Unsupported bank keys for balance captures
 BALANCE_BANK_KEY_EXCLUSIONS_SHOW_ALL_ACCOUNTS = [
     BankKey.CapitalOne,
-    BankKey.Ally,
     BankKey.Synchrony,
     # BankKey.WellsFargoActiveCash,
     # BankKey.WellsFargoChecking,
@@ -68,7 +67,6 @@ BALANCE_BANK_KEY_EXCLUSIONS_SHOW_ALL_ACCOUNTS = [
 # Unsupported bank keys for balance captures
 BALANCE_BANK_KEY_EXCLUSIONS_SHOW_REDUCED_ACCOUNTS = [
     BankKey.CapitalOne,
-    BankKey.Ally,
     BankKey.Synchrony,
     # BankKey.WellsFargoActiveCash,
     # BankKey.WellsFargoChecking,
