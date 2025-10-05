@@ -1,5 +1,6 @@
 from enum import Enum, StrEnum
 import hashlib
+import json
 import openai
 from openai import AsyncOpenAI
 from framework.clients.cache_client import CacheClientAsync
@@ -262,12 +263,19 @@ class GPTClient:
             custom_tools=custom_tools
         )
 
-    async def _get_cached_response(self, prompt: str, model: str):
+    async def _get_cached_response(self, prompt: Union[str, List, Dict], model: str):
         """Get cached response for a prompt if available"""
         if not self._cache_client:
             return None
 
-        prompt_hash = hashlib.sha256(prompt.encode('utf-8')).hexdigest()
+        # Handle both string prompts and list/dict prompts for caching
+        if isinstance(prompt, str):
+            prompt_hash = hashlib.sha256(prompt.encode('utf-8')).hexdigest()
+        else:
+            # For complex prompt structures (lists, dicts), serialize to JSON first
+            prompt_str = json.dumps(prompt, sort_keys=True)
+            prompt_hash = hashlib.sha256(prompt_str.encode('utf-8')).hexdigest()
+
         cache_key = f"gpt_response:{model}:{prompt_hash}"
 
         cached = await self._cache_client.get_json(cache_key)
@@ -275,12 +283,19 @@ class GPTClient:
             return cached['content']
         return None
 
-    async def _cache_response(self, prompt: str, data: dict, model: str, ttl: int):
+    async def _cache_response(self, prompt: Union[str, List, Dict], data: dict, model: str, ttl: int):
         """Cache a response for future use"""
         if not self._cache_client:
             return
 
-        prompt_hash = hashlib.sha256(prompt.encode('utf-8')).hexdigest()
+        # Handle both string prompts and list/dict prompts for caching
+        if isinstance(prompt, str):
+            prompt_hash = hashlib.sha256(prompt.encode('utf-8')).hexdigest()
+        else:
+            # For complex prompt structures (lists, dicts), serialize to JSON first
+            prompt_str = json.dumps(prompt, sort_keys=True)
+            prompt_hash = hashlib.sha256(prompt_str.encode('utf-8')).hexdigest()
+
         cache_key = f"gpt_response:{model}:{prompt_hash}"
 
         await self._cache_client.set_json(
