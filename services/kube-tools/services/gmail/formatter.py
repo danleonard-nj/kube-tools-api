@@ -9,8 +9,11 @@ from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from framework.validators import none_or_whitespace
 from domain.gpt import GPTModel
+from framework.clients.feature_client import FeatureClientAsync
 
 logger = get_logger(__name__)
+
+GPT_MODEL_FEATURE_FLAG = 'gpt-model-gmail-rule-engine'
 
 
 class MessageFormatter:
@@ -18,14 +21,24 @@ class MessageFormatter:
 
     def __init__(
         self,
-        gpt_client: GPTClient
+        gpt_client: GPTClient,
+        feature_client: FeatureClientAsync
     ):
+        ArgumentNullException.if_none(gpt_client, 'gpt_client')
+        ArgumentNullException.if_none(feature_client, 'feature_client')
+
         self._gpt_client = gpt_client
+        self._feature_client = feature_client
+
+    async def _get_configured_gpt_model(self) -> str:
+        """Retrieve the configured GPT model from feature flags."""
+        return await self._feature_client.is_enabled(
+            feature_key=GPT_MODEL_FEATURE_FLAG)
 
     async def generate_sms_message(
         self,
         rule: GmailEmailRuleModel,
-        message: GmailEmail,
+        message: GmailEmail
     ) -> str:
         """Format email message for SMS notification."""
         ArgumentNullException.if_none(rule, 'rule')
@@ -49,6 +62,9 @@ class MessageFormatter:
         message: GmailEmail
     ) -> str:
         """Format email message for balance sync notifications."""
+        ArgumentNullException.if_none(rule, 'rule')
+        ArgumentNullException.if_none(message, 'message')
+
         return self._build_basic_message(rule, message)
 
     def _build_basic_message(
@@ -58,6 +74,9 @@ class MessageFormatter:
         summary: Optional[str] = None
     ) -> str:
         """Build the SMS message text."""
+        ArgumentNullException.if_none(rule, 'rule')
+        ArgumentNullException.if_none(message, 'message')
+
         snippet = clean_unicode(html.unescape(message.snippet)).strip()
 
         parts = [
@@ -86,6 +105,10 @@ class MessageFormatter:
         summary: str
     ) -> str:
         """Build message with ChatGPT summary."""
+        ArgumentNullException.if_none(rule, 'rule')
+        ArgumentNullException.if_none(message, 'message')
+        ArgumentNullException.if_none(summary, 'summary')
+
         return self._build_basic_message(rule, message, summary)
 
     async def _get_chat_gpt_summary(
@@ -94,6 +117,8 @@ class MessageFormatter:
         prompt_template: Optional[str] = None
     ) -> str:
         """Get email summary using ChatGPT."""
+        ArgumentNullException.if_none(message, 'message')
+
         logger.info('Generating ChatGPT summary for email')
 
         # Parse email body
@@ -101,22 +126,18 @@ class MessageFormatter:
         body_text = ' '.join(body_segments)
 
         # Build prompt
-        if not none_or_whitespace(prompt_template):
-            logger.info(f'Using custom prompt template: {prompt_template}')
-            prompt = f"{prompt_template}: {body_text}"
-        else:
-            prompt = f"{DEFAULT_PROMPT_TEMPLATE}: {body_text}"
+        prompt = (
+            f"{prompt_template}: {body_text}" if not none_or_whitespace(prompt_template)
+            else f"{DEFAULT_PROMPT_TEMPLATE}: {body_text}"
+        )
 
-        # # Get summary from ChatGPT
-        # result = await self._gpt_client.generate_completion(
-        #     prompt=prompt,
-        #     # TODO: Move to configuration
-        #     model=GPTModel.GPT_4O_MINI
-        # )
+        model = await self._get_configured_gpt_model() or GPTModel.GPT_4_1
+        logger.info(f'Using GPT model: {model}')
 
+        logger.info('Sending prompt to ChatGPT')
         result = await self._gpt_client.generate_response(
             prompt=prompt,
-            model=GPTModel.GPT_5
+            model=model
         )
 
         logger.info(f'ChatGPT email summary usage tokens: {result.usage}')
