@@ -134,8 +134,9 @@ class MessageFormatter:
         model = await self._get_configured_gpt_model() or GPTModel.GPT_4_1
         logger.info(f'Using GPT model: {model}')
 
-        logger.info('Sending prompt to ChatGPT')
+        prompt += '\n\nKeep the summary under 4 SMS segments in length'
         result = await self._gpt_client.generate_response(
+            system_prompt='You are a helpful assistant that summarizes emails for SMS notifications, keep the summary under 4 SMS segments in length',
             prompt=prompt,
             model=model
         )

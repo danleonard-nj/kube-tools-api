@@ -298,20 +298,29 @@ class PlaidUsageService:
                 warnings.append(f"Non-numeric value at index {i}: {val}")
 
             if prev_date is None:
-                # First data point
-                daily_values.append(current_value)
-                current_month_start_value = 0  # Assume month starts at 0
+                # First data point - we don't know what came before
+                # If it's not the 1st of the month, we can't determine the daily value
+                # So we'll mark it as 0 and add a warning
+                if dt.day == 1:
+                    # First day of month - the cumulative value IS the daily value
+                    daily_values.append(current_value)
+                else:
+                    # Mid-month start - we don't have previous data to calculate increment
+                    daily_values.append(0)
+                    warnings.append(f"First data point on {dt.date()} (day {dt.day}) - cannot calculate daily value without previous day's data")
+                current_month_start_value = 0
             else:
                 # Check if we've crossed a month boundary
                 month_changed = (dt.year != prev_date.year or dt.month != prev_date.month)
 
                 if month_changed:
-                    # New month - value should be the daily count for this day
+                    # New month - the value is cumulative for day 1 of the new month
+                    # So the daily count is just the current value
                     daily_values.append(current_value)
                     current_month_start_value = 0
-                    logger.debug(f"Month boundary detected between {prev_date.date()} and {dt.date()}")
+                    logger.debug(f"Month boundary detected between {prev_date.date()} and {dt.date()}: value={current_value}")
                 else:
-                    # Same month - calculate increment
+                    # Same month - calculate increment from previous cumulative value
                     if current_value >= prev_value:
                         # Normal case: cumulative increased
                         increment = current_value - prev_value
@@ -360,11 +369,14 @@ class PlaidUsageService:
 
             # Check if this metric is cumulative
             if self._is_cumulative_metric(metric_name):
+                logger.info(f"{metric_name}: Detected as cumulative metric, converting to daily values")
+                logger.debug(f"{metric_name}: Raw data (first 10): {data[:10]}")
                 computed_series, warnings = self._convert_cumulative_to_daily(
                     data, dates, metric_name
                 )
                 logger.info(f"Converted cumulative data for {metric_name}: "
                             f"{len(data)} cumulative -> {len(computed_series)} daily values")
+                logger.debug(f"{metric_name}: Computed daily values (first 10): {computed_series[:10]}")
             else:
                 # Non-cumulative metric - just convert to integers
                 computed_series = []
