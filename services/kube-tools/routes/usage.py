@@ -34,6 +34,6 @@ async def post_usage_openai(container):
         OpenAiUsageService)
 
     return await service.send_report(
-        days_back=14,
+        days_back=3,
         recipients='dcl525@gmail.com'
     )

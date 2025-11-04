@@ -29,7 +29,7 @@ class OpenAiUsageService:
         sib_client: SendInBlueClient,
         http_client: httpx.AsyncClient
     ):
-        self._api_key = config.api_key
+        self._api_key = config.admin_key
         self._http_client = http_client
         self._sib_client = sib_client
 
@@ -72,32 +72,67 @@ class OpenAiUsageService:
         start_date: datetime,
         end_date: datetime = None
     ) -> List[Dict[str, Any]]:
+        """Fetch usage data from the new OpenAI usage endpoint with pagination support."""
         end_date = end_date or date.today()
 
         headers = {
             'Authorization': f'Bearer {self._api_key}'
         }
 
-        records = []
+        # Convert start_date to Unix timestamp
+        start_timestamp = int(start_date.timestamp())
 
-        d = start_date
-        while d <= end_date:
-            logger.info(f'Fetching data for {d.isoformat()}')
+        params = {
+            'start_time': start_timestamp,
+            'bucket_width': '1d',  # Daily buckets
+            'group_by': 'model'     # Group by model
+        }
+
+        all_buckets = []
+        next_page = None
+
+        logger.info(f'Fetching usage data from {start_date.isoformat()} (timestamp: {start_timestamp})')
+
+        # Pagination loop - fetch all pages
+        while True:
+            if next_page:
+                params['page'] = next_page
+                logger.info(f'Fetching next page: {next_page}')
+
             resp = await self._get_with_retry(
-                "https://api.openai.com/v1/usage",
+                "https://api.openai.com/v1/organization/usage/completions",
                 headers=headers,
-                params={"date": d.isoformat()}
+                params=params
             )
             usage_response = resp.json()
-            for entry in usage_response.get("data", []):
-                records.append(entry)
-            d += timedelta(days=1)
-            await asyncio.sleep(3)
 
-        return records
+            # Add buckets from this page
+            buckets = usage_response.get("data", [])
+            all_buckets.extend(buckets)
+            logger.info(f'Fetched {len(buckets)} buckets from this page (total so far: {len(all_buckets)})')
+
+            # Check if there are more pages
+            has_more = usage_response.get("has_more", False)
+            next_page = usage_response.get("next_page")
+
+            if not has_more or not next_page:
+                logger.info('No more pages to fetch')
+                break
+
+            # Small delay between page requests to be respectful
+            await asyncio.sleep(1)
+
+        logger.info(f'Completed fetching all pages. Total buckets: {len(all_buckets)}')
+        return all_buckets
 
     def _aggregate_usage_data(self, usage_data: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Aggregate usage data by model and date for better reporting."""
+        """Aggregate usage data by model and date for better reporting.
+
+        New format: usage_data is a list of buckets, each containing:
+        - start_time, end_time (Unix timestamps)
+        - start_time_iso, end_time_iso (ISO strings)
+        - results: list of usage results per model
+        """
         daily_summary = defaultdict(lambda: {
             'total_requests': 0,
             'total_context_tokens': 0,
@@ -124,37 +159,48 @@ class OpenAiUsageService:
             'unique_models': set()
         }
 
-        for entry in usage_data:
-            # Convert timestamp to date
-            timestamp = entry.get('aggregation_timestamp', 0)
-            entry_date = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d')
+        # Process each bucket (day)
+        for bucket in usage_data:
+            # Extract date from ISO timestamp for daily grouping
+            start_time_iso = bucket.get('start_time_iso', '')
+            if start_time_iso:
+                entry_date = datetime.fromisoformat(start_time_iso.replace('+00:00', '')).strftime('%Y-%m-%d')
+            else:
+                # Fallback to Unix timestamp
+                timestamp = bucket.get('start_time', 0)
+                entry_date = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d')
 
-            model = entry.get('snapshot_id', 'Unknown Model')
-            requests = entry.get('n_requests', 0)
-            context_tokens = entry.get('n_context_tokens_total', 0)
-            generated_tokens = entry.get('n_generated_tokens_total', 0)
+            # Process each result (model) within the bucket
+            for result in bucket.get('results', []):
+                model = result.get('model', 'Unknown Model')
+                requests = result.get('num_model_requests', 0)
 
-            # Daily aggregation
-            daily_summary[entry_date]['total_requests'] += requests
-            daily_summary[entry_date]['total_context_tokens'] += context_tokens
-            daily_summary[entry_date]['total_generated_tokens'] += generated_tokens
+                # Input tokens (use input_tokens which is the total)
+                input_tokens = result.get('input_tokens', 0)
+                # Output tokens
+                output_tokens = result.get('output_tokens', 0)
 
-            daily_summary[entry_date]['models'][model]['requests'] += requests
-            daily_summary[entry_date]['models'][model]['context_tokens'] += context_tokens
-            daily_summary[entry_date]['models'][model]['generated_tokens'] += generated_tokens
+                # Daily aggregation
+                daily_summary[entry_date]['total_requests'] += requests
+                daily_summary[entry_date]['total_context_tokens'] += input_tokens
+                daily_summary[entry_date]['total_generated_tokens'] += output_tokens
 
-            # Model aggregation
-            model_summary[model]['requests'] += requests
-            model_summary[model]['context_tokens'] += context_tokens
-            model_summary[model]['generated_tokens'] += generated_tokens
-            model_summary[model]['total_tokens'] += context_tokens + generated_tokens
+                daily_summary[entry_date]['models'][model]['requests'] += requests
+                daily_summary[entry_date]['models'][model]['context_tokens'] += input_tokens
+                daily_summary[entry_date]['models'][model]['generated_tokens'] += output_tokens
 
-            # Total aggregation
-            total_summary['total_requests'] += requests
-            total_summary['total_context_tokens'] += context_tokens
-            total_summary['total_generated_tokens'] += generated_tokens
-            total_summary['total_tokens'] += context_tokens + generated_tokens
-            total_summary['unique_models'].add(model)
+                # Model aggregation
+                model_summary[model]['requests'] += requests
+                model_summary[model]['context_tokens'] += input_tokens
+                model_summary[model]['generated_tokens'] += output_tokens
+                model_summary[model]['total_tokens'] += input_tokens + output_tokens
+
+                # Total aggregation
+                total_summary['total_requests'] += requests
+                total_summary['total_context_tokens'] += input_tokens
+                total_summary['total_generated_tokens'] += output_tokens
+                total_summary['total_tokens'] += input_tokens + output_tokens
+                total_summary['unique_models'].add(model)
 
         return {
             'daily': dict(daily_summary),
@@ -639,7 +685,12 @@ class OpenAiUsageService:
 
         if not usage_data:
             logger.info("No usage data available for the specified period.")
-            return
+            return {
+                'status': 'no_data',
+                'message': 'No usage data available for the specified period.',
+                'start_date': start_date.isoformat(),
+                'end_date': end_date.isoformat()
+            }
 
         # Aggregate the data
         aggregated_data = self._aggregate_usage_data(usage_data)
@@ -663,4 +714,8 @@ class OpenAiUsageService:
 
         logger.info(f"OpenAI usage report sent to {len(recipients)} recipients")
 
-        return aggregated_data
+        return {
+            'status': 'success',
+            'message': f'Report sent to {len(recipients)} recipients',
+            'data': aggregated_data
+        }
