@@ -73,7 +73,7 @@ class OpenAiUsageService:
         end_date: datetime = None
     ) -> List[Dict[str, Any]]:
         """Fetch usage data from the new OpenAI usage endpoint with pagination support."""
-        end_date = end_date or date.today()
+        end_date = end_date or datetime.now()
 
         headers = {
             'Authorization': f'Bearer {self._api_key}'
@@ -676,7 +676,7 @@ class OpenAiUsageService:
         recipients: List[str] = None
     ):
         """Generate and send a comprehensive OpenAI usage report."""
-        end_date = datetime.now().date()
+        end_date = datetime.now()
         start_date = end_date - timedelta(days=days_back)
 
         logger.info(f"Generating OpenAI usage report for {start_date} to {end_date}")
