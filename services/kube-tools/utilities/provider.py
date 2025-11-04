@@ -36,6 +36,7 @@ from data.mongo_export_repository import MongoExportRepository
 from data.plaid_repository import PlaidAccountRepository, PlaidAdminItemRepository, PlaidSyncRepository, PlaidTransactionRepository
 from data.podcast_repository import PodcastRepository
 from data.sms_inbound_repository import InboundSMSRepository
+from data.ts_repository import TruthSocialRepository
 from data.weather_repository import WeatherRepository
 from domain.auth import AdRole, AuthPolicy
 from framework.auth.azure import AzureAd
@@ -248,6 +249,7 @@ def register_repositories(
     descriptors.add_singleton(PlaidAccountRepository)
     descriptors.add_singleton(PlaidTransactionRepository)
     descriptors.add_singleton(PlaidSyncRepository)
+    descriptors.add_singleton(TruthSocialRepository)
 
 
 def register_services(

@@ -3,6 +3,10 @@ from zoneinfo import ZoneInfo
 import html
 from typing import Any
 
+from framework.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def get_styles() -> str:
     return """
@@ -202,72 +206,40 @@ def get_styles() -> str:
 
 
 def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int = 10) -> str:
-    """
-    Generate HTML email from Truth Social posts JSON data.
-    Uses table-based layout for better email client compatibility.
-    """
+    """Generate HTML email from Truth Social posts with AI summaries."""
+    logger.info(f"Generating email for {len(posts_data)} posts (max: {max_posts})")
 
     def format_timestamp_to_eastern(timestamp: int) -> str:
-        """Convert Unix timestamp to readable Eastern Time format."""
+        """Convert Unix timestamp to Eastern Time format."""
         try:
-            # Convert Unix timestamp to UTC datetime
             dt_utc = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-            # Convert to Eastern Time
             dt_et = dt_utc.astimezone(ZoneInfo("America/New_York"))
-
-            # Check if it's today
             now_et = datetime.now(ZoneInfo("America/New_York"))
-            if dt_et.date() == now_et.date():
-                day_str = "Today"
-            else:
-                day_str = dt_et.strftime("%A")  # Full weekday name
 
+            day_str = "Today" if dt_et.date() == now_et.date() else dt_et.strftime("%A")
             return f"{day_str}, {dt_et.strftime('%B %d, %Y • %I:%M %p ET')}"
         except Exception as e:
+            logger.error(f"Failed to format timestamp {timestamp}: {e}")
             return f"Invalid timestamp: {timestamp}"
 
     def format_date_fallback(date_string: str) -> str:
-        """Fallback for old date string format."""
+        """Fallback for legacy date string format."""
         try:
-            # parse incoming timestamp with timezone offset
             dt = datetime.strptime(date_string, "%a, %d %b %Y %H:%M:%S %z")
-            # convert to America/New_York (handles EST/EDT)
-            dt = dt.astimezone(ZoneInfo("America/New_York"))
-            now = datetime.now(ZoneInfo("America/New_York"))
-            if dt.date() == now.date():
-                day_str = "Today"
-            else:
-                day_str = dt.strftime("%A")  # Full weekday name
-            return f"{day_str}, {dt.strftime('%B %d, %Y • %I:%M %p ET')}"
-        except Exception:
+            dt_et = dt.astimezone(ZoneInfo("America/New_York"))
+            now_et = datetime.now(ZoneInfo("America/New_York"))
+
+            day_str = "Today" if dt_et.date() == now_et.date() else dt_et.strftime("%A")
+            return f"{day_str}, {dt_et.strftime('%B %d, %Y • %I:%M %p ET')}"
+        except Exception as e:
+            logger.warning(f"Failed to parse date string '{date_string}': {e}")
             return date_string
 
-    def escape_html_content(text: str) -> str:
-        """Escape HTML characters in post content."""
-        return html.escape(text)
-
-    posts_to_include = posts_data[:max_posts]
-    post_cards_html = ""
-
-    for post in posts_to_include:
-        # Try to use the new timestamp format first, fallback to old format
-        if 'published_timestamp' in post:
-            formatted_date = format_timestamp_to_eastern(post['published_timestamp'])
-        else:
-            # Fallback to old date string format
-            published = post.get('published', '')
-            formatted_date = format_date_fallback(published)
-
-        link = post.get('original_link', post.get('link', '#'))
-        ai_summary = post.get('ai_summary', 'No AI analysis available')
-
-        escaped_ai_summary = escape_html_content(ai_summary)
-        formatted_ai_summary = escaped_ai_summary.replace('\n', '<br>')
-
-        def get_ai_summary_section(formatted_ai_summary: str) -> str:
-            if 'No summary available' in formatted_ai_summary or 'No AI analysis available' in formatted_ai_summary:
-                return ''
-            return f"""
+    def get_ai_summary_section(formatted_ai_summary: str) -> str:
+        """Generate AI summary section if summary is available."""
+        if 'No summary available' in formatted_ai_summary or 'No AI analysis available' in formatted_ai_summary:
+            return ''
+        return f"""
             <div class="ai-summary-section">
                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 12px;">
                     <tr>
@@ -285,6 +257,27 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
             </div>
             """
 
+    posts_to_include = posts_data[:max_posts]
+    logger.info(f"Generating HTML for {len(posts_to_include)} posts")
+    post_cards_html = ""
+
+    for idx, post in enumerate(posts_to_include, 1):
+        # Use new timestamp format, fallback to legacy format
+        if 'published_timestamp' in post:
+            formatted_date = format_timestamp_to_eastern(post['published_timestamp'])
+        else:
+            published = post.get('published', '')
+            formatted_date = format_date_fallback(published)
+            logger.debug(f"Post {idx}: Using legacy date format")
+
+        link = post.get('original_link', post.get('link', '#'))
+        ai_summary = post.get('ai_summary', 'No AI analysis available')
+        content = post.get('summary', 'No content available')
+
+        # Escape and format AI summary
+        escaped_ai_summary = html.escape(ai_summary)
+        formatted_ai_summary = escaped_ai_summary.replace('\n', '<br>')
+
         post_card_html = f"""
             <div class="post-card">
                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 16px;">
@@ -299,7 +292,7 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
                 </table>
                 <div class="post-content">
                     <div class="post-text">
-                        {post.get('summary', 'No content available')}
+                        {content}
                     </div>
                 </div>
                 {get_ai_summary_section(formatted_ai_summary)}
@@ -312,6 +305,7 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
 
         post_cards_html += post_card_html
 
+    post_plural = "posts" if len(posts_to_include) > 1 else "post"
     html_template = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -324,7 +318,7 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
     <div class="container">
         <div class="header">
             <h1>Truth Social Updates</h1>
-            <p>Latest posts and AI analysis • {len(posts_to_include)} posts</p>
+            <p>Latest posts and AI analysis • {len(posts_to_include)} {post_plural}</p>
         </div>
         <div class="content">
             {post_cards_html}
@@ -342,4 +336,5 @@ def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int
 </body>
 </html>"""
 
+    logger.info("Email HTML generated successfully")
     return html_template

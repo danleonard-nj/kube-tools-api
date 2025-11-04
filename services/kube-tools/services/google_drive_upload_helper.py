@@ -1,13 +1,14 @@
 import asyncio
 from framework.logger.providers import get_logger
 from framework.validators.nulls import none_or_whitespace
+from clients.google_drive_client import GoogleDriveClient
 from domain.drive import PermissionRole, PermissionType
 
 logger = get_logger(__name__)
 
 
 class GoogleDriveUploadHelper:
-    def __init__(self, google_drive_client):
+    def __init__(self, google_drive_client: GoogleDriveClient):
         self._google_drive_client = google_drive_client
 
     async def upload_file(

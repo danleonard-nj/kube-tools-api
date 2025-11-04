@@ -34,6 +34,7 @@ class MongoDatabase:
     MongoExport = 'MongoExport'
     ChatGPT = 'ChatGPT'
     Google = 'Google'
+    TruthSocial = 'TruthSocial'
 
 
 class MongoCollection:
@@ -50,6 +51,7 @@ class MongoCollection:
     History = 'History'
     EmailServiceLog = 'EmailServiceLog'
     EmailRule = 'EmailRule'
+    TruthSocialPosts = 'Posts'
 
 
 class MongoExportPurgeResult(Serializable):
