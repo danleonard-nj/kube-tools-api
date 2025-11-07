@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 import os
 import time
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
@@ -416,3 +417,87 @@ class TruthSocialPushService:
 
         logger.info(f"Backfill completed: {stats}")
         return stats
+
+    async def get_saved_posts(
+        self,
+        limit: int = 10,
+        start_timestamp: Optional[int] = None,
+        end_timestamp: Optional[int] = None
+    ) -> dict:
+        """
+        Get saved Truth Social posts from database.
+
+        Args:
+            limit: Maximum number of posts to return
+            start_timestamp: Start of timestamp range (Unix timestamp)
+            end_timestamp: End of timestamp range (Unix timestamp)
+
+        Returns:
+            Dictionary with success status, count, and list of posts
+        """
+        logger.info(
+            f"Getting saved posts with limit={limit}, "
+            f"start_timestamp={start_timestamp}, end_timestamp={end_timestamp}"
+        )
+
+        # If both timestamps provided, get posts in range
+        if start_timestamp and end_timestamp:
+            posts = await self._ts_repository.get_posts_by_timestamp_range(
+                start_timestamp=start_timestamp,
+                end_timestamp=end_timestamp,
+                limit=limit
+            )
+        else:
+            # Otherwise get latest posts
+            posts = await self._ts_repository.get_latest_posts(limit=limit)
+
+        # Convert MongoDB _id and datetime objects to JSON-serializable formats
+        for post in posts:
+            if '_id' in post:
+                post['_id'] = str(post['_id'])
+            if 'created_at' in post and post['created_at']:
+                post['created_at'] = post['created_at'].isoformat()
+            if 'updated_at' in post and post['updated_at']:
+                post['updated_at'] = post['updated_at'].isoformat()
+
+        logger.info(f"Retrieved {len(posts)} posts")
+
+        return {
+            'success': True,
+            'count': len(posts),
+            'posts': posts
+        }
+
+    async def get_post_by_id(self, post_id: str) -> dict:
+        """
+        Get a specific Truth Social post by ID.
+
+        Args:
+            post_id: The Truth Social post ID
+
+        Returns:
+            Dictionary with success status and post data
+        """
+        logger.info(f"Getting post by ID: {post_id}")
+
+        post = await self._ts_repository.get_post_by_id(post_id)
+
+        if not post:
+            logger.warning(f"Post not found: {post_id}")
+            return {
+                'success': False,
+                'error': 'Post not found'
+            }
+
+        # Convert MongoDB _id and datetime objects
+        if '_id' in post:
+            post['_id'] = str(post['_id'])
+        if 'created_at' in post and post['created_at']:
+            post['created_at'] = post['created_at'].isoformat()
+        if 'updated_at' in post and post['updated_at']:
+            post['updated_at'] = post['updated_at'].isoformat()
+
+        return {
+            'success': True,
+            'post': post
+        }
