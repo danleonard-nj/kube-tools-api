@@ -1,4 +1,5 @@
 from typing import Optional
+from bson import ObjectId
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from framework.logger import get_logger
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -47,7 +48,7 @@ class TruthSocialRepository(MongoRepositoryAsync):
     async def get_post_by_document_id(self, _id: str) -> Optional[dict]:
         """Get a post by _id."""
         logger.info(f"Getting post by document ID: {_id}")
-        post = await self.collection.find_one({'_id': _id})
+        post = await self.collection.find_one({'_id': ObjectId(_id)})
         return post
 
     async def post_exists(self, post_id: str) -> bool:

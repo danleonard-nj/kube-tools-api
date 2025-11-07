@@ -468,13 +468,13 @@ class TruthSocialPushService:
             'posts': posts
         }
 
-    async def get_post_by_id(self, post_id: str) -> dict:
-        logger.info(f"Getting post by ID: {post_id}")
+    async def get_post_by_id(self, document_id: str) -> dict:
+        logger.info(f"Getting post by document ID: {document_id}")
 
-        post = await self._ts_repository.get_post_by_document_id(post_id)
+        post = await self._ts_repository.get_post_by_document_id(document_id)
 
         if not post:
-            logger.warning(f"Post not found: {post_id}")
+            logger.warning(f"Post not found: {document_id}")
             return {
                 'success': False,
                 'error': 'Post not found'
