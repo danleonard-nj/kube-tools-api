@@ -10,6 +10,7 @@ class BankKey(enum.StrEnum):
     CapitalOneVenture = 'capital-one-venture'
     CapitalOneSavor = 'capital-one-savorone'
     Discover = 'discover'
+    DiscoverIt = 'discover-it'
     Ally = 'ally'
     AllySavingsAccount = 'ally-savings-account'
     Synchrony = 'synchrony'

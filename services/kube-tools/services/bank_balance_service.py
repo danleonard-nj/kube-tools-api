@@ -265,7 +265,7 @@ class BalanceSyncService:
         logger.info(f'Delta: {delta} seconds')
 
         # Skip the sync if the threshold has not been exceeded
-        if delta < config.sync_threshold_seconds:
+        if 0 < delta < config.sync_threshold_seconds:
             logger.info(f'Skipping sync for {config.bank_key} due to threshold')
             return latest_balance
 

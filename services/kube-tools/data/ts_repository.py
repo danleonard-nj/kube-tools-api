@@ -44,6 +44,12 @@ class TruthSocialRepository(MongoRepositoryAsync):
         post = await self.collection.find_one({'post_id': post_id})
         return post
 
+    async def get_post_by_document_id(self, _id: str) -> Optional[dict]:
+        """Get a post by _id."""
+        logger.info(f"Getting post by document ID: {_id}")
+        post = await self.collection.find_one({'_id': _id})
+        return post
+
     async def post_exists(self, post_id: str) -> bool:
         """Check if a post already exists in the database."""
         count = await self.collection.count_documents({'post_id': post_id}, limit=1)
