@@ -124,3 +124,7 @@ class BankService:
             tokens=tokens,
             message_bk=message_bk,
             sync_type=sync_type)
+
+    async def delete_balance(self, balance_id: str):
+        """Delete a balance by balance_id."""
+        return await self._balance_service.delete_balance(balance_id=balance_id)

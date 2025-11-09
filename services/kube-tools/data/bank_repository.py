@@ -1,3 +1,4 @@
+from bson import ObjectId
 from domain.queries import (GetBalanceByBankKeyQuery, GetBalanceHistoryQuery,
                             GetTransactionsByTransactionBksQuery,
                             GetTransactionsQuery)
@@ -46,6 +47,11 @@ class BankBalanceRepository(MongoRepositoryAsync):
             .sort(query.get_sort())
             .to_list(length=None)
         )
+
+    async def delete_balance(self, balance_id: str):
+        """Delete a balance by balance_id."""
+        result = await self.collection.delete_one({'balance_id': balance_id})
+        return result
 
 
 class BankTransactionsRepository(MongoRepositoryAsync):

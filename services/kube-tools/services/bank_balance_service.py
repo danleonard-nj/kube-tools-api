@@ -191,6 +191,21 @@ class BalanceSyncService:
 
         return balance
 
+    async def delete_balance(self, balance_id: str):
+        """Delete a balance by balance_id."""
+        ArgumentNullException.if_none_or_whitespace(balance_id, 'balance_id')
+
+        logger.info(f'Deleting balance: {balance_id}')
+
+        result = await self._balance_repository.delete_balance(balance_id=balance_id)
+
+        if result.deleted_count == 0:
+            logger.warning(f'Balance not found: {balance_id}')
+            raise BalanceSyncServiceError(f'Balance not found: {balance_id}')
+
+        logger.info(f'Deleted balance: {balance_id}')
+        return {'deleted_count': result.deleted_count}
+
     async def run_sync(self) -> list:
         """
         Entry point for running a full sync of all balances.

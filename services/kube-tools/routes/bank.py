@@ -79,6 +79,13 @@ async def get_bank_balances(container):
     return await service.get_balances()
 
 
+@bank_bp.configure('/api/bank/balances/<balance_id>', methods=['DELETE'], auth_scheme=AuthPolicy.Default)
+async def delete_bank_balance(container, balance_id):
+    service: BankService = container.resolve(BankService)
+
+    return await service.delete_balance(balance_id=balance_id)
+
+
 @bank_bp.configure('/api/bank/sync', methods=['POST'], auth_scheme=AuthPolicy.Default)
 async def post_sync(container):
     service: BankService = container.resolve(BankService)
