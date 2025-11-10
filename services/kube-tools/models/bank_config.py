@@ -13,6 +13,7 @@ class PlaidAccountConfig(BaseModel):
     access_token: str
     account_id: str
     sync_threshold_minutes: int
+    account_type: Optional[str] = 'checking'
 
 
 class CoinbaseAccountConfig(BaseModel):

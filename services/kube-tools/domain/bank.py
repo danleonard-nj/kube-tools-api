@@ -357,6 +357,7 @@ class PlaidAccount(BaseModel):
     access_token: str
     account_id: str
     sync_threshold_minutes: int = 60
+    account_type: Optional[str] = 'checking'
 
     @property
     def sync_threshold_seconds(
@@ -370,7 +371,8 @@ class PlaidAccount(BaseModel):
             bank_key=config.bank_key,
             access_token=config.access_token,
             account_id=config.account_id,
-            sync_threshold_minutes=config.sync_threshold_minutes)
+            sync_threshold_minutes=config.sync_threshold_minutes,
+            account_type=config.account_type)
 
 
 class ChatGptBalanceCompletion(Serializable):

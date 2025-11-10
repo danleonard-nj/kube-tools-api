@@ -78,7 +78,7 @@ class BalanceSyncService:
 
     async def get_balances(
         self
-    ) -> list[BankBalance]:
+    ) -> list[GetBalancesResponse]:
 
         logger.info('Getting bank balances')
 
@@ -216,6 +216,8 @@ class BalanceSyncService:
         """
         Sync all Plaid and Coinbase accounts, either asynchronously or sequentially.
         Returns a list of updated balances.
+
+        Deprecated by plaid-sync service
         """
         logger.info(f'Starting sync_balances (run_async={run_async})')
         # Check which syncs are enabled
@@ -287,12 +289,14 @@ class BalanceSyncService:
         balance = await self._fetch_plaid_account_balance(
             account=config)
 
-        logger.info(f'Captured balance from plaid: {config.bank_key}: {balance.available_balance}')
+        amount = balance.current_balance if config.account_type == 'credit' else balance.available_balance
+
+        logger.info(f'Captured balance from plaid: {config.bank_key}: account type: {config.account_type}: amount: {amount}')
 
         # Store the captured balance
         result = await self.capture_account_balance(
             bank_key=config.bank_key,
-            balance=balance.available_balance,
+            balance=amount,
             sync_type=str(SyncType.Plaid))
 
         return result

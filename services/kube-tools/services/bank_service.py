@@ -74,7 +74,8 @@ class BankService:
         self
     ) -> list[BankBalance]:
 
-        return await self._balance_service.get_balances()
+        balances = await self._balance_service.get_balances()
+        return balances
 
     async def get_balance(
         self,
