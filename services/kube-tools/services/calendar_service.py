@@ -64,7 +64,7 @@ def get_calendar_user_prompt(locality: str, text: str = None, has_image: bool = 
         """
     The recurrence IS NOT required, BUT if the user specifies it, it SHOULD BE included in the form of an an RRULE PARAMETER.
     IF you are UNSURE of how to create an RRULE parameter, DO A WEB SEARCH to LEARN the syntax
-
+        
     Instructions:
     - Fill in the JSON calendar object accordingly.
     - Ensure you use a useful title for the event
@@ -250,7 +250,7 @@ class CalendarService:
         logger.info(f'Event created: {created_event.get("id")}, summary: {created_event.get("summary")})')
         return created_event
 
-    def _populate_event_defaults(self, event):
+    def _populate_event_defaults(self, event: GoogleCalendarEvent) -> GoogleCalendarEvent:
         """
         Helper to set attendees and reminders on a GoogleCalendarEvent.
         """
@@ -258,7 +258,8 @@ class CalendarService:
             Attendee(
                 email=self._config.preferences.get('email'),
                 displayName=self._config.preferences.get('name'),
-                optional=False
+                optional=False,
+                responseStatus='accepted'
             )
         ]
         event.reminders = Reminders(
@@ -269,6 +270,9 @@ class CalendarService:
                 ReminderOverride(method='popup', minutes=60 * 24),
             ]
         )
+
+        event.colorId = "7"  # Set default color ID
+
         return event
 
     async def create_event_from_input(self, prompt: Optional[str] = None, image_bytes: Optional[bytes] = None, text: Optional[str] = None) -> dict:
