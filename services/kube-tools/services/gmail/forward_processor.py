@@ -1,8 +1,10 @@
 from typing import Optional
 
+from clients.gmail_client import GmailClient
 from domain.google import GmailEmail, GmailEmailRuleModel, GoogleEmailLabel
 from framework.logger import get_logger
 from models.gmail_models import EmailTagManager, TagModification
+from services.gmail.formatter import MessageFormatter
 from services.gmail.processor import BaseRuleProcessor
 
 logger = get_logger(__name__)
@@ -11,7 +13,7 @@ logger = get_logger(__name__)
 class ForwardRuleProcessor(BaseRuleProcessor):
     """Processes email forwarding rules."""
 
-    def __init__(self, gmail_client, message_formatter):
+    def __init__(self, gmail_client: GmailClient, message_formatter: MessageFormatter):
         super().__init__(gmail_client, message_formatter)
         self._current_rule: Optional[GmailEmailRuleModel] = None
 
