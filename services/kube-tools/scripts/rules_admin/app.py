@@ -32,43 +32,11 @@ from flask import (Flask, flash, jsonify, redirect, render_template, request,
 from msal import ConfidentialClientApplication
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
-from google.auth.transport.requests import Request
-
+from openai import OpenAI
 from components.rule_manager import RuleManager
-
-from pydantic import BaseModel, ValidationError
-
 from components.utils import load_action_types, load_config
-from models.app_config import AppConfig
 
 # Pydantic config model
-
-
-# def load_config():
-#     try:
-#         if not os.path.exists('config.json'):
-#             raise FileNotFoundError("Application config.json file not found.")
-
-#         with open('config.json', 'r') as file:
-#             return AppConfig.model_validate_json(file.read())
-#     except ValidationError as e:
-#         print('Config validation error:', e)
-#         exit(1)
-
-
-# def load_action_types():
-#     with open('./components/action_types.json', 'r') as f:
-#         return json.load(f)
-
-config = load_config()
-ACTION_TYPES = load_action_types()
-
-rule_manager = RuleManager(
-    mongo_uri=config.MONGO_URI,
-    database_name=config.DATABASE_NAME,
-    collection_name=config.COLLECTION_NAME
-)
-
 
 # Configure logging
 logging.basicConfig(
@@ -77,9 +45,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+
+environment = 'production' if os.getenv('KUBERNETES_SERVICE_HOST') else 'local'
+
+logger.info(f'Loading configuration for environment: {environment}')
+
+config = load_config(env=environment)
+ACTION_TYPES = load_action_types()
+
+
+rule_manager = RuleManager(
+    mongo_uri=config.MONGO_URI,
+    database_name=config.DATABASE_NAME,
+    collection_name=config.COLLECTION_NAME
+)
+
+
+
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 
+# OpenAI client initialization
+openai_client = OpenAI(api_key=config.OPENAI_API_KEY)
 
 # Azure AD Config
 AZURE_AD_CLIENT_ID = config.AZURE_AD_CLIENT_ID
@@ -457,6 +445,71 @@ def google_disconnect():
         logger.info('Google credentials removed from session')
         flash('Disconnected from Google successfully', 'success')
     return '', 204
+
+
+@app.route('/api/validate-gmail-query', methods=['POST'])
+@login_required
+def validate_gmail_query():
+    logger.info('Gmail query validation requested')
+    try:
+        data = request.get_json()
+        query = data.get('query', '').strip()
+
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Query cannot be empty'
+            }), 400
+
+        # Call GPT-4o-mini to validate and improve the query
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a Gmail query syntax expert. Your job is to validate and improve Gmail search queries. If the query is valid, respond with exactly 'VALID'. If it has issues, respond with a brief explanation followed by the corrected query in backticks like: `corrected-query`. Only provide valid Gmail query syntax without regex patterns."
+                },
+                {
+                    "role": "user",
+                    "content": f"Validate and/or improve this Gmail query syntax: {query}"
+                }
+            ],
+            temperature=0.3,
+            max_tokens=200
+        )
+
+        ai_response = response.choices[0].message.content.strip()
+        logger.info(f'Query validation result: {ai_response}')
+
+        # Check if the query is valid
+        is_valid = ai_response.upper() == 'VALID'
+
+        if is_valid:
+            return jsonify({
+                'success': True,
+                'is_valid': True,
+                'original_query': query
+            })
+        else:
+            # Extract the corrected query from backticks
+            import re
+            match = re.search(r'`([^`]+)`', ai_response)
+            corrected_query = match.group(1) if match else query
+
+            return jsonify({
+                'success': True,
+                'is_valid': False,
+                'original_query': query,
+                'suggested_query': corrected_query,
+                'explanation': ai_response
+            })
+
+    except Exception as e:
+        logger.exception(f'Error validating Gmail query: {str(e)}')
+        return jsonify({
+            'success': False,
+            'error': f'Validation error: {str(e)}'
+        }), 500
 
 
 @app.route('/google/email/<email_id>')

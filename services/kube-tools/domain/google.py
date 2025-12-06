@@ -45,6 +45,7 @@ class GmailRuleAction:
     SMS = 'sms'
     Event = 'send-http'
     BankSync = 'bank-sync'
+    Forward = 'email-forward'
     Undefined = 'none'
 
 
@@ -236,6 +237,11 @@ class GmailEmailRuleDataModel(BaseModel, Serializable):
     post_forward_email: Optional[bool] = None
     post_forward_email_to: Optional[str] = None
     post_forward_email_cc: Optional[str] = None
+
+    # Email forward rule fields
+    forward_to_email: Optional[str] = None
+    forward_cc_email: Optional[str] = None
+    forward_keep_unread: Optional[bool] = None
 
 
 class GmailEmailRuleModel(BaseModel, Serializable):

@@ -12,6 +12,7 @@ from framework.logger import get_logger
 from models.gmail_models import GmailConfig
 from services.gmail.archive_processor import ArchiveRuleProcessor
 from services.gmail.bank_processor import BankSyncRuleProcessor
+from services.gmail.forward_processor import ForwardRuleProcessor
 from services.gmail.sms_processor import SmsRuleProcessor
 from services.gmail_balance_sync_service import GmailBankSyncService
 from services.gmail_rule_service import GmailRuleService
@@ -33,7 +34,8 @@ class GmailService:
         twilio_gateway: TwilioGatewayClient,
         archive_processor: ArchiveRuleProcessor,
         sms_processor: SmsRuleProcessor,
-        bank_sync_processor: BankSyncRuleProcessor
+        bank_sync_processor: BankSyncRuleProcessor,
+        forward_processor: ForwardRuleProcessor
     ):
         self._gmail_client = gmail_client
         self._rule_service = rule_service
@@ -47,7 +49,8 @@ class GmailService:
         self._rule_processors = {
             GmailRuleAction.Archive: archive_processor,
             GmailRuleAction.SMS: sms_processor,
-            GmailRuleAction.BankSync: bank_sync_processor
+            GmailRuleAction.BankSync: bank_sync_processor,
+            GmailRuleAction.Forward: forward_processor
         }
 
     async def run_mail_service(self) -> Dict[str, int]:

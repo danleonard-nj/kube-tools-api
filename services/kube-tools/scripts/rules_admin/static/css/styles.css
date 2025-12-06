@@ -1083,4 +1083,82 @@ body.dark-mode .attachment-name {
   max-width: 150px;
 }
 
+/* Gmail Query Validation Button */
+.query-validate-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 5px rgba(40, 167, 69, 0.3);
+}
+
+.query-validate-btn:hover {
+  background: linear-gradient(135deg, #218838, #1aa179);
+  box-shadow: 0 4px 10px rgba(40, 167, 69, 0.5);
+  transform: translateY(-50%) scale(1.1);
+}
+
+.query-validate-btn:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.query-validate-btn i {
+  font-size: 1.1rem;
+}
+
+.query-validate-btn:disabled {
+  background: linear-gradient(135deg, #6c757d, #5a6268);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.spinner-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+#queryValidationResult .alert {
+  font-size: 0.9rem;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dark mode support for validation button */
+body.dark-mode .query-validate-btn {
+  background: linear-gradient(135deg, #28a745, #20c997);
+}
+
+body.dark-mode .query-validate-btn:hover {
+  background: linear-gradient(135deg, #218838, #1aa179);
+}
+
 /* Enhanced sidebar styles */

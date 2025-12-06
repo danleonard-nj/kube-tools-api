@@ -34,6 +34,14 @@ class EmailTagManager:
             to_remove=[GoogleEmailLabel.Unread, GoogleEmailLabel.Inbox]
         )
 
+    @staticmethod
+    def get_unread_forward_tags() -> TagModification:
+        """Tags for marking emails as processed."""
+        return TagModification(
+            to_add=[GoogleEmailLabel.Starred],
+            to_remove=[]
+        )
+
 
 class GmailConfig(BaseModel):
     base_url: Optional[HttpUrl] = 'https://www.googleapis.com/gmail'

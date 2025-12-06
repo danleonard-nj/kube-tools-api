@@ -205,7 +205,7 @@ def get_styles() -> str:
 """
 
 
-def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int = 10) -> str:
+def generate_truth_social_email(posts_data: list[dict[str, Any]], max_posts: int = 1000) -> str:
     """Generate HTML email from Truth Social posts with AI summaries."""
     logger.info(f"Generating email for {len(posts_data)} posts (max: {max_posts})")
 

@@ -70,6 +70,7 @@ from services.event_service import EventService
 from services.gmail.archive_processor import ArchiveRuleProcessor
 from services.gmail.bank_processor import BankSyncRuleProcessor
 from services.gmail.formatter import MessageFormatter
+from services.gmail.forward_processor import ForwardRuleProcessor
 from models.gmail_models import GmailConfig
 from services.gmail.sms_processor import SmsRuleProcessor
 from services.gmail_balance_sync_service import GmailBankSyncService
@@ -190,10 +191,11 @@ def register_configs(descriptors):
 def register_gmail_services(
     descriptors: ServiceCollection
 ):
-    descriptors.add_singleton(GmailService)
-    descriptors.add_singleton(ArchiveRuleProcessor)
-    descriptors.add_singleton(SmsRuleProcessor)
-    descriptors.add_singleton(BankSyncRuleProcessor)
+    descriptors.add_transient(GmailService)
+    descriptors.add_transient(ArchiveRuleProcessor)
+    descriptors.add_transient(SmsRuleProcessor)
+    descriptors.add_transient(BankSyncRuleProcessor)
+    descriptors.add_transient(ForwardRuleProcessor)  # Changed to transient to avoid shared state issues
     descriptors.add_singleton(MessageFormatter)
 
 

@@ -2,13 +2,20 @@
 import json
 import os
 from models.app_config import AppConfig
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 
-def load_config() -> AppConfig | None:
-    if not os.path.exists('config.json'):
-        raise FileNotFoundError('config.json file not found')
+def load_config(env: str) -> AppConfig | None:
 
-    with open('config.json', 'r') as file:
+    filepath = 'config.dev.json' if env == 'local' else 'config.json'
+    logger.info(f'Loading configuration from {filepath}')
+
+    if not os.path.exists(filepath):
+        raise FileNotFoundError(f'{filepath} file not found')
+
+    with open(filepath, 'r') as file:
         return AppConfig.model_validate_json(file.read())
 
 

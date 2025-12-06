@@ -15,3 +15,4 @@ class AppConfig(BaseModel):
     GOOGLE_CLIENT_SECRETS_FILE: str
     GOOGLE_SCOPES: str
     GOOGLE_REDIRECT_URI: str
+    OPENAI_API_KEY: str

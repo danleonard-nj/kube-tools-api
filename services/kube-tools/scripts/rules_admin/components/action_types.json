@@ -50,57 +50,5 @@
                 "label": "Keep Unread Status"
             }
         }
-    },
-    "email-forward": {
-        "name": "Email Forward",
-        "fields": {
-            "email_to": {
-                "type": "email",
-                "label": "Forward To Email"
-            },
-            "email_subject_prefix": {
-                "type": "text",
-                "label": "Subject Prefix"
-            },
-            "email_include_original": {
-                "type": "boolean",
-                "label": "Include Original Message"
-            }
-        }
-    },
-    "webhook": {
-        "name": "Webhook",
-        "fields": {
-            "webhook_url": {
-                "type": "url",
-                "label": "Webhook URL"
-            },
-            "webhook_method": {
-                "type": "select",
-                "label": "HTTP Method",
-                "options": [
-                    "POST",
-                    "PUT",
-                    "PATCH"
-                ]
-            },
-            "webhook_headers": {
-                "type": "json",
-                "label": "Custom Headers (JSON)"
-            }
-        }
-    },
-    "mark-read": {
-        "name": "Mark as Read",
-        "fields": {
-            "mark_read_apply_label": {
-                "type": "text",
-                "label": "Apply Label (Optional)"
-            },
-            "mark_read_star": {
-                "type": "boolean",
-                "label": "Add Star"
-            }
-        }
     }
 }

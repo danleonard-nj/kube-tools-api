@@ -57,9 +57,17 @@
                 </div>
                 <div class="mb-3">
                     <label for="query" class="form-label">Search Query *</label>
-                    <input type="text" class="form-control" id="query" name="query" 
-                           value="{{ rule.query if rule else '' }}" required>
-                    <div class="form-text">Gmail search query (e.g., "from:example.com OR subject:alert")</div>
+                    <div class="position-relative">
+                        <input type="text" class="form-control pe-5" id="query" name="query" 
+                               value="{{ rule.query if rule else '' }}" required>
+                        <button type="button" class="btn btn-sm query-validate-btn" id="validateQueryBtn" 
+                                onclick="validateGmailQuery()" title="Generate or validate Gmail search query with AI">
+                            <i class="bi bi-stars"></i>
+                        </button>
+                    </div>
+                    <div class="form-text">Gmail search query (e.g., "from:example.com OR subject:alert") 
+                        <br>You can use natural language to describe the rule and have AI generate the query for you.</div>
+                    <div id="queryValidationResult" class="mt-2" style="display: none;"></div>
                 </div>
             </div>
 
@@ -149,6 +157,86 @@ function updateActionFields() {
             selectedFields.style.display = 'block';
         }
     }
+}
+
+// Gmail query validation function
+function validateGmailQuery() {
+    const queryInput = document.getElementById('query');
+    const validateBtn = document.getElementById('validateQueryBtn');
+    const resultDiv = document.getElementById('queryValidationResult');
+    const query = queryInput.value.trim();
+    
+    if (!query) {
+        showValidationResult('error', 'Please enter a query to validate');
+        return;
+    }
+    
+    // Show loading state
+    validateBtn.disabled = true;
+    validateBtn.innerHTML = '<i class="bi bi-hourglass-split spinner-icon"></i>';
+    resultDiv.style.display = 'none';
+    
+    // Call validation API
+    fetch('/api/validate-gmail-query', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ query: query })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            if (data.is_valid) {
+                showValidationResult('success', 'Query is valid! ✓');
+            } else {
+                // Use the corrected query and explanation from the API
+                const displayMessage = data.explanation || `Suggested correction: ${data.suggested_query}`;
+                showValidationResult('suggestion', displayMessage, data.suggested_query);
+            }
+        } else {
+            showValidationResult('error', data.error || 'Validation failed');
+        }
+    })
+    .catch(error => {
+        console.error('Validation error:', error);
+        showValidationResult('error', 'Failed to validate query. Please try again.');
+    })
+    .finally(() => {
+        validateBtn.disabled = false;
+        validateBtn.innerHTML = '<i class="bi bi-stars"></i>';
+    });
+}
+
+function showValidationResult(type, message, suggestedQuery = null) {
+    const resultDiv = document.getElementById('queryValidationResult');
+    let html = '';
+    
+    if (type === 'success') {
+        html = `<div class="alert alert-success py-2 px-3 mb-0">
+            <i class="bi bi-check-circle-fill me-2"></i>${message}
+        </div>`;
+    } else if (type === 'error') {
+        html = `<div class="alert alert-danger py-2 px-3 mb-0">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>${message}
+        </div>`;
+    } else if (type === 'suggestion' && suggestedQuery) {
+        // Escape the query for onclick handler
+        const escapedQuery = suggestedQuery.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        html = `<div class="alert alert-warning py-2 px-3 mb-0">
+            <i class="bi bi-lightbulb-fill me-2"></i>${message}
+            <button type="button" class="btn btn-sm btn-outline-dark ms-2" onclick="applySuggestedQuery('${escapedQuery}')">Apply Suggestion</button>
+        </div>`;
+    }
+    
+    resultDiv.innerHTML = html;
+    resultDiv.style.display = 'block';
+}
+
+function applySuggestedQuery(query) {
+    const queryInput = document.getElementById('query');
+    queryInput.value = query;
+    showValidationResult('success', 'Suggestion applied! ✓');
 }
 
 // Initialize on page load
