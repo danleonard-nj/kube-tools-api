@@ -91,6 +91,7 @@ from services.ts_push_service import TruthSocialConfig, TruthSocialPushService
 from services.usage_service import UsageService
 from openai import AsyncOpenAI
 from services.weather_service import WeatherService
+from services.transcription_service import TranscriptionService
 
 
 def configure_azure_ad(container):
@@ -280,6 +281,7 @@ def register_services(
     descriptors.add_singleton(RedisService)
     descriptors.add_singleton(GoogleDriveService)
     descriptors.add_singleton(ConversationService)
+    descriptors.add_singleton(TranscriptionService)
     descriptors.add_singleton(CoinbaseService)
     descriptors.add_singleton(AndroidService)
     descriptors.add_singleton(TruthSocialPushService)

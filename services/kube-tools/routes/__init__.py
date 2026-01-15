@@ -15,3 +15,4 @@ from routes.conversation import conversation_bp
 from routes.android import android_bp
 from routes.plaid import plaid_bp
 from routes.ts import ts_bp
+from routes.transcription import transcription_bp

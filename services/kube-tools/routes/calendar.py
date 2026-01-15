@@ -32,11 +32,11 @@ async def get_calendar_events(container):
     return result
 
 
-@calendar_bp.configure('/api/calendar/sync', methods=['POST'], auth_scheme=AuthPolicy.Default)
-async def sync_calendar_events(container):
-    service: CalendarService = container.resolve(CalendarService)
+# @calendar_bp.configure('/api/calendar/sync', methods=['POST'], auth_scheme=AuthPolicy.Default)
+# async def sync_calendar_events(container):
+#     service: CalendarService = container.resolve(CalendarService)
 
-    return await service.sync_calendar_events()
+#     return await service.sync_calendar_events()
 
 
 class CalendarEventRequest(BaseModel):
