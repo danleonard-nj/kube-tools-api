@@ -7,7 +7,7 @@ google-api-python-client
 google-auth-httplib2 
 google-auth-oauthlib
 lxml
-myfitnesspal
+# myfitnesspal
 aiogoogle
 uvicorn
 azure-storage-blob
@@ -15,14 +15,14 @@ deprecated
 openai
 twilio
 beautifulsoup4
-yfinance
+# yfinance
 phonenumbers
 tenacity
 openai>=1.0.0
 pytest
 feedparser
 readability-lxml
-robin_stocks
+# robin_stocks
 markdown
 sib_api_v3_sdk
 coinbase-advanced-py
@@ -30,6 +30,9 @@ pydantic[email]
 python-multipart
 aiofiles
 matplotlib
+pydub
+numpy
+pytz
 # azure-identity
 # azure-mgmt-resource
 # azure-mgmt-compute

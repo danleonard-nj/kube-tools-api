@@ -24,6 +24,10 @@ logger = get_logger(__name__)
 
 app = Quart(__name__)
 
+# Set maximum content length to 50MB for audio file uploads
+# OpenAI limit is 25MB, so 50MB gives us headroom
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB in bytes
+
 configure_serializer(app)
 
 app.register_blueprint(podcasts_bp)

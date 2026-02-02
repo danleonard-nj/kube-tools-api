@@ -20,15 +20,18 @@ async def transcribe_audio(container):
     - Content-Type: multipart/form-data
     - Form field 'audio': audio file (supports various formats: mp3, wav, m4a, etc.)
     - Optional form field 'language': language code (e.g., 'en', 'es', 'fr')
+    - Optional form field 'diarize': 'true' or 'false' to enable/disable diarization (default: false)
 
     Returns:
-    - JSON response: { "text": "transcribed text here" }
+    - JSON response (when diarize=false): { "text": "transcribed text here" }
+    - JSON response (when diarize=true): { "text": "full transcript", "segments": [{"start": 0.0, "end": 3.5, "text": "..."}] }
 
     Example usage with curl:
     curl -X POST "http://localhost:5000/api/transcribe" \
          -H "Authorization: Bearer <token>" \
          -F "audio=@recording.mp3" \
-         -F "language=en"
+         -F "language=en" \
+         -F "diarize=true"
     """
     try:
         # Resolve the transcription service from DI container
@@ -57,7 +60,11 @@ async def transcribe_audio(container):
         # Get optional language parameter
         language = form_data.get('language')
 
-        logger.info(f"Received audio file: {audio_file.filename}, language: {language or 'auto-detect'}")
+        # Get optional diarize parameter (default to false)
+        diarize_str = form_data.get('diarize', 'false').lower()
+        diarize = diarize_str in ('true', '1', 'yes')
+
+        logger.info(f"Received audio file: {audio_file.filename}, language: {language or 'auto-detect'}, diarize: {diarize}")
 
         # Read the audio file data into memory
         audio_data = audio_file.read()
@@ -65,15 +72,21 @@ async def transcribe_audio(container):
         file_size = len(audio_data)
 
         # Perform transcription
-        transcribed_text = await transcription_service.transcribe_audio(
+        result = await transcription_service.transcribe_audio(
             audio_file=audio_stream,
             filename=audio_file.filename,
             language=language,
-            file_size=file_size
+            file_size=file_size,
+            diarize=diarize
         )
 
-        # Return the transcribed text in the expected JSON format
-        return {'text': transcribed_text}, 200
+        # Service returns either a string (non-diarized) or dict (diarized)
+        if isinstance(result, dict):
+            # Diarized response with segments
+            return result, 200
+        else:
+            # Simple text response
+            return {'text': result}, 200
 
     except TranscriptionServiceError as e:
         file_info = f"File: {audio_file.filename if 'audio_file' in locals() else 'unknown'}, Size: {file_size if 'file_size' in locals() else 'unknown'} bytes, Language: {language if 'language' in locals() else 'auto-detect'}"
