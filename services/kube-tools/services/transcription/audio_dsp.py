@@ -31,71 +31,126 @@ def get_audio_mime_type(filename: str) -> str:
     return mime_types.get(extension, 'audio/mpeg')  # Default to mpeg if unknown
 
 
-def generate_comfort_noise(num_samples: int, amplitude_db: float = -60) -> np.ndarray:
+def generate_comfort_noise(
+    num_samples: int,
+    sample_rate: int,
+    amplitude_db: float = -60,
+    highpass_cutoff_hz: float = 5000,
+    jitter_period_samples: int = 1024
+) -> np.ndarray:
     """
-    Generate white comfort noise - fast vectorized implementation.
+    Generate high-pass filtered comfort noise with temporal jitter.
 
-    At very low levels (-60dB), spectral color doesn't matter, so we use
-    simple white noise instead of pink noise for performance.
+    This noise keeps the ASR encoder active but is NOT decodable as speech:
+    - High-pass filtered above 5 kHz (well above speech formants ~100-3000 Hz)
+    - Time-varying amplitude with random jitter to prevent pattern recognition
+    - Very low level (-60 dB) to remain imperceptible
 
     Args:
         num_samples: Number of samples to generate
-        amplitude_db: Amplitude in dB relative to full scale (default -60 dB)
+        sample_rate: Audio sample rate in Hz (needed for filtering)
+        amplitude_db: Base amplitude in dB relative to full scale (default -60 dB)
+        highpass_cutoff_hz: High-pass cutoff frequency (default 5000 Hz)
+        jitter_period_samples: Period for amplitude jitter (default 1024 samples)
 
     Returns:
-        numpy array of white noise samples (float32, range -1 to 1)
+        numpy array of filtered, jittered noise samples (float32, range -1 to 1)
     """
-    # Vectorized white noise generation (much faster than pink noise)
+    # Generate white noise
     noise = np.random.randn(num_samples).astype(np.float32)
 
     # Normalize to [-1, 1] range
-    noise = noise / np.abs(noise).max()
+    max_abs = np.abs(noise).max()
+    if max_abs > 0:
+        noise = noise / max_abs
 
-    # Apply amplitude adjustment
+    # --- High-pass filter: two-pole IIR (cascaded first-order stages) ---
+    # Two poles give -12 dB/octave rolloff (vs -6 dB/octave for single pole),
+    # keeping significantly more energy out of the speech formant range
+    # (100-3000 Hz) so the noise cannot be decoded as phonemes.
+    # RC = 1 / (2 * pi * fc)
+    # alpha = dt / (RC + dt) where dt = 1 / sample_rate
+    omega_c = 2.0 * np.pi * highpass_cutoff_hz
+    dt = 1.0 / sample_rate
+    rc = 1.0 / omega_c
+    alpha = dt / (rc + dt)
+
+    # Pass 1: y[n] = alpha * (y[n-1] + x[n] - x[n-1])
+    filtered = np.zeros_like(noise)
+    prev_x = 0.0
+    prev_y = 0.0
+    for i in range(num_samples):
+        filtered[i] = alpha * (prev_y + noise[i] - prev_x)
+        prev_x = noise[i]
+        prev_y = filtered[i]
+
+    # Pass 2: run the same filter again on the output of pass 1
+    filtered2 = np.zeros_like(filtered)
+    prev_x = 0.0
+    prev_y = 0.0
+    for i in range(num_samples):
+        filtered2[i] = alpha * (prev_y + filtered[i] - prev_x)
+        prev_x = filtered[i]
+        prev_y = filtered2[i]
+
+    noise = filtered2
+
+    # Normalize again after filtering
+    max_abs = np.abs(noise).max()
+    if max_abs > 0:
+        noise = noise / max_abs
+
+    # --- Temporal amplitude jitter (prevents steady-state pattern detection) ---
+    # Create random amplitude envelope that varies smoothly
+    num_jitter_blocks = max(1, num_samples // jitter_period_samples + 1)
+    # Random multipliers in range [0.5, 1.5] for ±3dB variation
+    jitter_envelope = 0.5 + np.random.rand(num_jitter_blocks).astype(np.float32)
+    # Repeat each value for jitter_period_samples and trim to exact length
+    jitter_repeated = np.repeat(jitter_envelope, jitter_period_samples)[:num_samples]
+    noise = noise * jitter_repeated
+
+    # Apply base amplitude adjustment
     amplitude = 10 ** (amplitude_db / 20)
     noise = noise * amplitude
 
     return noise
 
 
-def detect_long_silences(
+def _compute_windowed_dbfs(
     samples: np.ndarray,
     sample_rate: int,
-    silence_thresh_dbfs: float = -45,
-    min_silence_ms: int = 1500,
     window_ms: int = 100
 ) -> np.ndarray:
     """
-    Detect long silence regions using fast O(N) pure-numpy operations.
+    Compute per-sample dBFS using windowed RMS (O(N) cumulative-sum method).
 
-    Uses cumulative-sum windowed RMS (no scipy, no convolve), converts to
-    dBFS with epsilon, then applies run-length filtering to keep only
-    silence runs >= min_silence_ms.
+    Always normalizes to absolute full-scale: integer samples are divided by
+    their dtype max, float samples by 32768 (pydub int16 origin).
 
     Args:
-        samples: Audio samples as numpy array (mono, any numeric dtype)
+        samples: Mono audio samples (any numeric dtype)
         sample_rate: Sample rate in Hz
-        silence_thresh_dbfs: dBFS threshold for silence (default -45)
-        min_silence_ms: Minimum silence duration to detect (default 1500ms)
-        window_ms: Window size for RMS computation (default 100ms)
+        window_ms: RMS window size in ms (default 100)
 
     Returns:
-        Boolean mask of same length as samples indicating silent regions
+        numpy array of dBFS values per sample
     """
     n = len(samples)
-    if n == 0:
-        return np.zeros(0, dtype=bool)
 
-    # Normalize to float32 in [-1, 1]
+    # --- Normalise to float32 in [-1, 1] relative to FULL SCALE ---
+    # pydub always produces int16 (-32768..32767).  When the caller does
+    #   samples_mono = samples_2d.mean(axis=1).astype(np.float32)
+    # the values are still in the int16 *range* but typed as float32.
+    # We must divide by 32768 (not by max_abs) so that dBFS values are
+    # absolute, independent of how loud the recording happens to be.
     if np.issubdtype(samples.dtype, np.integer):
-        # Scale by the dtype's max (works for int16, int32, etc.)
         samples = samples.astype(np.float32) / float(np.iinfo(samples.dtype).max)
     else:
-        if samples.dtype != np.float32:
-            samples = samples.astype(np.float32)
+        samples = samples.astype(np.float32)
+        # Detect pydub-origin floats still in int16 range
         max_abs = np.abs(samples).max()
         if max_abs > 1.0:
-            samples = samples / max_abs
+            samples = samples / 32768.0
 
     # Guard window_size >= 1
     window_size = max(1, int(window_ms * sample_rate / 1000))
@@ -107,44 +162,206 @@ def detect_long_silences(
     np.cumsum(squared, out=cumsum[1:])
 
     half_w = window_size // 2
-    # Build left/right index arrays (clipped to valid range)
     idx = np.arange(n)
     left = np.clip(idx - half_w, 0, n)
-    right = np.clip(idx - half_w + window_size, 0, n)
+    right = np.clip(idx + half_w + 1, 0, n)   # symmetric window
     counts = (right - left).astype(np.float64)
-    counts[counts == 0] = 1.0  # prevent division by zero
+    counts[counts == 0] = 1.0
 
     mean_sq = (cumsum[right] - cumsum[left]) / counts
     rms = np.sqrt(mean_sq)
 
     # --- Convert to dBFS safely ---
     epsilon = 1e-10
-    dbfs = 20.0 * np.log10(rms + epsilon)
+    return 20.0 * np.log10(rms + epsilon)
 
-    # Boolean mask: True where below silence threshold
-    silence_mask = dbfs < silence_thresh_dbfs
 
-    # --- Run-length filtering: keep only runs >= min_samples ---
+def detect_long_silences(
+    samples: np.ndarray,
+    sample_rate: int,
+    silence_thresh_dbfs: float = -42,
+    min_silence_ms: int = 1500,
+    window_ms: int = 100,
+    true_silence_dbfs: float = -55,
+    adaptive_fallback: bool = True,
+    adaptive_coarse_gap_db: float = 18.0,
+    adaptive_fine_gap_db: float = 10.0
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Detect long silence regions with two-tier gating for selective noise injection.
+
+    Returns TWO masks:
+    1. coarse_silence: Silence regions for initial detection
+    2. true_silence: Low-energy regions for noise injection (subset of coarse)
+
+    **Adaptive thresholding (default enabled):**
+    Fixed absolute thresholds (-42/-55 dBFS) only work for audio recorded at
+    "standard" gain levels. They fail on:
+    - Browser/WebRTC recordings (AGC keeps "silence" at -25 to -35 dBFS)
+    - Quiet phone recordings (speech at -40 dBFS, silence at -60 dBFS)
+    - Loud recordings (speech at -10 dBFS, everything below -42 is "silence")
+
+    The function automatically validates fixed thresholds against the audio's
+    dynamic range and switches to adaptive mode when:
+    - Dynamic range < 10 dB (can't distinguish speech from silence)
+    - Fixed coarse threshold < 12 dB below speech peak (would catch speech)
+    - Fixed coarse threshold > median dBFS (would mark >50% as silence)
+    - Fixed thresholds mark >60% of audio as silence (sanity check)
+
+    Adaptive mode computes thresholds relative to the audio's own levels:
+        speech_level  = 90th percentile of per-frame dBFS
+        floor_level   = 10th percentile of per-frame dBFS
+        coarse_thresh = floor + adaptive_coarse_gap_db (default +18 dB)
+        fine_thresh   = floor + adaptive_fine_gap_db (default +10 dB)
+
+    Both are clamped to stay at least 12 dB below speech level for safety.
+
+    This works regardless of recording level because it keys off the
+    *contrast* between speech and silence, not absolute energy.
+
+    Args:
+        samples: Audio samples as numpy array (mono, any numeric dtype)
+        sample_rate: Sample rate in Hz
+        silence_thresh_dbfs: Fixed coarse threshold (default -42)
+        min_silence_ms: Minimum silence duration to detect (default 1500ms)
+        window_ms: Window size for RMS computation (default 100ms)
+        true_silence_dbfs: Fixed fine threshold for injection (default -55)
+        adaptive_fallback: If True, validate and override fixed thresholds (default True)
+        adaptive_coarse_gap_db: dB above floor for adaptive coarse gate (default 18)
+        adaptive_fine_gap_db: dB above floor for adaptive fine gate (default 10)
+
+    Returns:
+        Tuple of (coarse_silence_mask, true_silence_mask)
+    """
+    n = len(samples)
+    if n == 0:
+        return np.zeros(0, dtype=bool), np.zeros(0, dtype=bool)
+
+    dbfs = _compute_windowed_dbfs(samples, sample_rate, window_ms)
+
+    # Compute dynamic range for adaptive thresholding
+    p10 = float(np.percentile(dbfs, 10))
+    p50 = float(np.percentile(dbfs, 50))
+    p90 = float(np.percentile(dbfs, 90))
+    dynamic_range = p90 - p10
+
+    logger.info(f"Audio dBFS distribution: p10={p10:.1f}, p50={p50:.1f}, p90={p90:.1f}, "
+                f"range={dynamic_range:.1f}dB "
+                f"(fixed coarse={silence_thresh_dbfs}, fixed fine={true_silence_dbfs})")
+
     min_samples = max(1, int(min_silence_ms * sample_rate / 1000))
 
-    # Find transitions: prepend/append False sentinels
-    padded = np.empty(n + 2, dtype=bool)
-    padded[0] = False
-    padded[1:-1] = silence_mask
-    padded[-1] = False
+    def _apply_gates(coarse_thresh: float, fine_thresh: float) -> Tuple[np.ndarray, np.ndarray]:
+        """Apply two-tier gating with run-length filtering."""
+        coarse_mask = dbfs < coarse_thresh
+        fine_mask = dbfs < fine_thresh
 
-    diff = np.diff(padded.astype(np.int8))
-    # starts: where diff == 1  (transition False->True)
-    # ends:   where diff == -1 (transition True->False)
-    starts = np.flatnonzero(diff == 1)
-    ends = np.flatnonzero(diff == -1)
+        # Run-length filter: keep only silence runs >= min_samples
+        padded = np.empty(n + 2, dtype=bool)
+        padded[0] = False
+        padded[1:-1] = coarse_mask
+        padded[-1] = False
 
-    filtered_mask = np.zeros(n, dtype=bool)
-    for s, e in zip(starts, ends):
-        if (e - s) >= min_samples:
-            filtered_mask[s:e] = True
+        diff = np.diff(padded.astype(np.int8))
+        starts = np.flatnonzero(diff == 1)
+        ends = np.flatnonzero(diff == -1)
 
-    return filtered_mask
+        filtered_coarse = np.zeros(n, dtype=bool)
+        for s, e in zip(starts, ends):
+            if (e - s) >= min_samples:
+                filtered_coarse[s:e] = True
+
+        # Fine mask is intersection: in a long silence region AND below fine threshold
+        filtered_fine = filtered_coarse & fine_mask
+        return filtered_coarse, filtered_fine
+
+    # --- Validate if fixed thresholds make sense for this audio ---
+    # Fixed thresholds work when:
+    # 1. Audio has sufficient dynamic range (>= 10 dB)
+    # 2. Fixed coarse threshold is reasonably below speech level (>= 12 dB gap)
+    # 3. Fixed coarse threshold doesn't catch more than 50% of audio
+    #
+    # Otherwise, the fixed thresholds are mismatched to the recording level.
+    use_adaptive = False
+
+    if adaptive_fallback:
+        if dynamic_range < 10.0:
+            logger.info(f"Adaptive mode: insufficient dynamic range ({dynamic_range:.1f}dB < 10dB)")
+            use_adaptive = True
+        elif (silence_thresh_dbfs - p90) > -12.0:
+            # Coarse threshold is less than 12 dB below speech level
+            gap = p90 - silence_thresh_dbfs
+            logger.info(f"Adaptive mode: fixed coarse threshold too close to speech "
+                        f"(only {gap:.1f}dB below p90={p90:.1f}dB, need >= 12dB)")
+            use_adaptive = True
+        elif p50 < silence_thresh_dbfs:
+            # Median is below coarse threshold = more than half the audio is "silence"
+            logger.info(f"Adaptive mode: fixed coarse threshold too high "
+                        f"(p50={p50:.1f}dB < coarse={silence_thresh_dbfs}dB, would mark >50% as silence)")
+            use_adaptive = True
+
+    if not use_adaptive:
+        # Fixed thresholds look reasonable, try them
+        filtered_coarse_mask, final_fine_mask = _apply_gates(silence_thresh_dbfs, true_silence_dbfs)
+
+        # Sanity check: if we detected more than 60% of audio as silence, something is wrong
+        coarse_count = int(np.sum(filtered_coarse_mask))
+        if coarse_count > 0:
+            silence_fraction = coarse_count / n
+            if silence_fraction > 0.60:
+                logger.warning(f"Fixed thresholds marked {silence_fraction*100:.0f}% of audio as silence "
+                               f"(suspiciously high), switching to adaptive")
+                use_adaptive = True
+            else:
+                logger.info(f"Fixed thresholds: {silence_fraction*100:.0f}% of audio marked as silence (reasonable)")
+                return filtered_coarse_mask, final_fine_mask
+        else:
+            # No silence detected with fixed thresholds
+            logger.info("Fixed thresholds detected no silence, trying adaptive")
+            use_adaptive = True
+
+    # --- Adaptive thresholding ---
+    # This happens with browser audio (WebRTC AGC, comfort noise, noise gates)
+    # or recordings at unusual gain levels where "silence" doesn't match
+    # our fixed -42/-55 dBFS expectations.
+    #
+    # Strategy: use the audio's own floor level as reference.
+    # p10 approximates the noise floor, p90 approximates speech level.
+    if dynamic_range < 6.0:
+        # Less than 6 dB dynamic range = probably constant noise or silence,
+        # nothing meaningful to gate
+        logger.warning(f"Adaptive mode: dynamic range only {dynamic_range:.1f}dB, "
+                       f"insufficient to distinguish speech from silence")
+        return np.zeros(n, dtype=bool), np.zeros(n, dtype=bool)
+
+    adaptive_coarse = p10 + adaptive_coarse_gap_db
+    adaptive_fine = p10 + adaptive_fine_gap_db
+
+    # Safety: adaptive coarse must stay below speech level to avoid
+    # injecting noise over speech
+    speech_guard = p90 - 12.0  # at least 12 dB below speech peak
+    if adaptive_coarse > speech_guard:
+        logger.info(f"Adaptive coarse {adaptive_coarse:.1f}dB clamped to {speech_guard:.1f}dB "
+                    f"(12dB below speech peak)")
+        adaptive_coarse = speech_guard
+
+    adaptive_fine = min(adaptive_fine, adaptive_coarse - 3.0)  # at least 3 dB separation
+
+    logger.info(f"Adaptive thresholds: floor={p10:.1f}dB, speech={p90:.1f}dB, "
+                f"dynamic_range={dynamic_range:.1f}dB → "
+                f"coarse={adaptive_coarse:.1f}dB, fine={adaptive_fine:.1f}dB")
+
+    filtered_coarse_mask, final_fine_mask = _apply_gates(adaptive_coarse, adaptive_fine)
+
+    adaptive_coarse_ms = int(np.sum(filtered_coarse_mask)) * 1000.0 / sample_rate
+    adaptive_fine_ms = int(np.sum(final_fine_mask)) * 1000.0 / sample_rate
+    adaptive_silence_fraction = int(np.sum(filtered_coarse_mask)) / n if n > 0 else 0
+
+    logger.info(f"Adaptive detection: {adaptive_coarse_ms:.0f}ms coarse silence "
+                f"({adaptive_silence_fraction*100:.0f}% of audio), "
+                f"{adaptive_fine_ms:.0f}ms fine silence")
+
+    return filtered_coarse_mask, final_fine_mask
 
 
 def estimate_encoded_size_mb(audio_segment: AudioSegment, format: str = 'flac') -> float:
@@ -177,133 +394,329 @@ def estimate_encoded_size_mb(audio_segment: AudioSegment, format: str = 'flac') 
         return (sample_rate * channels * 2 * duration_sec) / (1024 * 1024)
 
 
-def is_single_shot_safe(audio_segment: AudioSegment, max_size_mb: float = 22.0) -> Tuple[bool, str]:
+def is_single_shot_safe(audio_segment: AudioSegment, max_size_mb: float = 22.0, source_format: str = '') -> Tuple[bool, str]:
     """
     Determine if audio can be safely transcribed in a single shot.
 
-    Performs an actual FLAC export to BytesIO and checks the real byte length.
+    Performs an actual export to BytesIO and checks the real byte length.
     The estimate function is used as a fast pre-check, but the real export is
     the final gate.  Default 22 MB leaves headroom for multipart container
     wrapping and metadata below the 25 MB API limit.
 
+    WebM files (typically Opus codec from browsers) use WAV export for better
+    compatibility, as FLAC export from Opus can fail or produce corrupt files.
+
     Args:
         audio_segment: Audio to check
         max_size_mb: Maximum safe size in MB (default 22.0 to leave margin below 25MB)
+        source_format: Original file extension (used to detect WebM/Opus files)
 
     Returns:
         Tuple of (is_safe, format_to_use)
         - is_safe: True if single-shot is safe
-        - format_to_use: 'flac'
+        - format_to_use: 'flac' or 'wav'
     """
+    # WebM files (Opus codec) should use WAV for reliable export
+    # FLAC export from Opus often produces 0-byte or corrupt files
+    export_format = 'wav' if source_format.lower() == 'webm' else 'flac'
+
     # Fast estimate pre-check — skip expensive export when clearly safe/unsafe
-    estimated_mb = estimate_encoded_size_mb(audio_segment, 'flac')
+    estimated_mb = estimate_encoded_size_mb(audio_segment, export_format)
     if estimated_mb > max_size_mb * 1.5:
-        logger.info(f"Estimated FLAC size {estimated_mb:.1f}MB far exceeds {max_size_mb}MB, skipping export check")
-        return False, 'flac'
+        logger.info(f"Estimated {export_format.upper()} size {estimated_mb:.1f}MB far exceeds {max_size_mb}MB, skipping export check")
+        return False, export_format
 
-    # Real-size gate: actually export FLAC and measure
+    # Real-size gate: actually export and measure
     buf = io.BytesIO()
-    audio_segment.export(buf, format='flac')
-    actual_bytes = buf.tell()
-    actual_mb = actual_bytes / (1024 * 1024)
+    try:
+        audio_segment.export(buf, format=export_format)
+        buf.seek(0)  # Rewind after export to measure from start
+        actual_bytes = len(buf.getvalue())  # Use getvalue() to get actual size
+        actual_mb = actual_bytes / (1024 * 1024)
 
-    logger.info(f"Actual FLAC size: {actual_mb:.2f}MB (estimate was {estimated_mb:.1f}MB, limit {max_size_mb}MB)")
+        # Sanity check: if export produced a suspiciously small file, it likely failed
+        if actual_mb < 0.001 and len(audio_segment) > 100:  # Less than 1KB for audio > 100ms is suspicious
+            logger.warning(f"{export_format.upper()} export produced only {actual_bytes} bytes for {len(audio_segment)}ms audio, trying WAV fallback")
+            if export_format == 'flac':
+                # Retry with WAV
+                buf = io.BytesIO()
+                audio_segment.export(buf, format='wav')
+                buf.seek(0)  # Rewind after export
+                actual_bytes = len(buf.getvalue())  # Use getvalue() to get actual size
+                actual_mb = actual_bytes / (1024 * 1024)
+                export_format = 'wav'
+                logger.info(f"WAV fallback produced {actual_mb:.2f}MB")
+    except Exception as e:
+        logger.error(f"Failed to export as {export_format.upper()}: {e}, trying WAV fallback")
+        buf = io.BytesIO()
+        audio_segment.export(buf, format='wav')
+        buf.seek(0)  # Rewind after export
+        actual_bytes = len(buf.getvalue())  # Use getvalue() to get actual size
+        actual_mb = actual_bytes / (1024 * 1024)
+        export_format = 'wav'
+
+    logger.info(f"Actual {export_format.upper()} size: {actual_mb:.2f}MB (estimate was {estimated_mb:.1f}MB, limit {max_size_mb}MB)")
 
     if actual_mb < max_size_mb:
-        return True, 'flac'
+        return True, export_format
 
-    logger.info(f"Actual FLAC size {actual_mb:.2f}MB >= {max_size_mb}MB, will use chunking")
-    return False, 'flac'
+    logger.info(f"Actual {export_format.upper()} size {actual_mb:.2f}MB >= {max_size_mb}MB, will use chunking")
+    return False, export_format
+
+
+def _shape_injection_mask(
+    coarse_mask: np.ndarray,
+    fine_mask: np.ndarray,
+    sample_rate: int,
+    grace_ms: int = 400,
+    tail_ms: int = 300
+) -> np.ndarray:
+    """
+    Apply temporal hysteresis to produce a shaped injection mask.
+
+    Shaping operates on the **coarse** mask (contiguous runs from
+    run-length filtering) to determine *where* grace/tail zones go,
+    then intersects the shaped zone with the **fine** mask to decide
+    *which samples* actually receive noise.
+
+    This two-step approach is critical because the fine mask is often
+    fragmented within a single silence region (momentary codec artifacts,
+    ambient micro-spikes, etc.).  Shaping the fine mask directly would
+    break one 3-second silence into dozens of sub-runs each < grace+tail,
+    resulting in zero injection.
+
+    Each coarse silence run is carved into three temporal zones:
+
+        speech
+         → [grace_ms] natural silence preserved   (no injection)
+         → [interior] stabilization noise active   (injection where fine=True)
+         → [tail_ms]  clean silence buffer         (no injection)
+         → speech
+
+    Preserves:
+    - Natural sentence-ending pauses (punctuation inference)
+    - Speaker handoff cues (diarization)
+    - Clean speech-onset transitions
+
+    Coarse runs shorter than (grace_ms + tail_ms) receive NO injection —
+    the silence is short enough that the encoder will survive.
+
+    Args:
+        coarse_mask: Boolean per-sample mask (contiguous runs, from coarse gate)
+        fine_mask: Boolean per-sample mask (may be fragmented, from fine gate)
+        sample_rate: Audio sample rate in Hz
+        grace_ms: Natural silence to preserve at start of each run (default 400)
+        tail_ms: Clean silence buffer at end of each run (default 300)
+
+    Returns:
+        Shaped boolean mask — injection targets within grace/tail boundaries
+    """
+    n = len(coarse_mask)
+    if n == 0:
+        return coarse_mask.copy()
+
+    grace_samples = max(1, int(grace_ms * sample_rate / 1000))
+    tail_samples = max(1, int(tail_ms * sample_rate / 1000))
+
+    # Find contiguous runs from the COARSE mask (guaranteed contiguous
+    # from run-length filtering in detect_long_silences)
+    padded = np.empty(n + 2, dtype=bool)
+    padded[0] = False
+    padded[1:-1] = coarse_mask
+    padded[-1] = False
+    diff = np.diff(padded.astype(np.int8))
+    starts = np.flatnonzero(diff == 1)
+    ends = np.flatnonzero(diff == -1)
+
+    # Build the eligible injection zone from coarse runs
+    eligible = np.zeros(n, dtype=bool)
+    shaped_runs = 0
+    skipped_short = 0
+
+    for s, e in zip(starts, ends):
+        run_len = e - s
+        min_injectable = grace_samples + tail_samples
+
+        if run_len <= min_injectable:
+            # Too short for grace + tail — encoder survives this, skip
+            skipped_short += 1
+            continue
+
+        # Carve out: [s .. s+grace) = natural silence
+        #            [s+grace .. e-tail) = eligible zone
+        #            [e-tail .. e) = clean buffer
+        inject_start = s + grace_samples
+        inject_end = e - tail_samples
+        eligible[inject_start:inject_end] = True
+        shaped_runs += 1
+
+    # Intersect eligible zone with fine mask for actual injection targets.
+    # This ensures we only inject where the audio is actually quiet enough,
+    # while the shaping (grace/tail) is based on stable coarse boundaries.
+    shaped = eligible & fine_mask
+
+    # If the fine mask is so fragmented that the intersection is empty
+    # but we have eligible coarse zones, inject into the eligible zone
+    # directly — the coarse gate already confirmed these are silence regions
+    # and the encoder needs stimulation.
+    if shaped_runs > 0 and int(np.sum(shaped)) == 0:
+        eligible_ms = int(np.sum(eligible)) * 1000.0 / sample_rate
+        logger.warning(f"Fine mask fragmentation eliminated all injection targets "
+                       f"({eligible_ms:.0f}ms eligible). Falling back to coarse-only injection.")
+        shaped = eligible
+
+    logger.info(f"Injection shaping: {len(starts)} coarse runs → "
+                f"{shaped_runs} with injection zones ({skipped_short} too short, "
+                f"grace={grace_ms}ms, tail={tail_ms}ms)")
+
+    return shaped
 
 
 def inject_comfort_noise(
     audio_segment: AudioSegment,
     noise_level_db: float = -60,
-    silence_thresh_dbfs: float = -45,
-    min_silence_ms: int = 1500
+    silence_thresh_dbfs: float = -42,
+    min_silence_ms: int = 1500,
+    true_silence_dbfs: float = -55,
+    grace_ms: int = 400,
+    tail_ms: int = 300
 ) -> AudioSegment:
     """
-    Inject low-level comfort noise into LONG silent portions to keep encoder alive.
+    Inject stabilization noise into sustained silence with temporal hysteresis.
 
-    Uses fast vectorized operations and only targets silences >= min_silence_ms.
-    White noise at -60dB is imperceptible and prevents premature transcription termination.
+    Rather than injecting noise immediately when silence is detected, each
+    silence region is carved into three temporal zones:
 
-    Handles any channel count: silence is detected on a mono mixdown (mean of
-    all channels), but noise is injected into every channel.  Arithmetic is done
-    in int32 and clipped back to int16.
+        speech
+         → [grace_ms]  natural silence preserved   (no injection)
+         → [interior]  stabilization noise active   (injection)
+         → [tail_ms]   clean silence buffer         (no injection)
+         → speech
+
+    This preserves natural pauses for punctuation inference and diarization
+    while still preventing encoder state collapse in sustained zero-energy
+    spans.
+
+    Detection uses two-tier RMS/energy gating with adaptive thresholds:
+    1. Coarse gate: Detects long silent regions (>= min_silence_ms)
+    2. Fine gate: Within those regions, identifies quiet spans for injection
+    3. Shaping: Applies grace period + tail buffer to each injection zone
+
+    Noise characteristics designed to minimize linguistic decodability:
+    - High-pass filtered above 5 kHz with 2-pole (-12 dB/oct) rolloff
+    - Temporally jittered amplitude (prevents pattern recognition)
+    - Very low level (-60 dB, imperceptible)
+
+    Handles any channel count: silence detection uses mono mixdown, noise is
+    injected into all channels. Arithmetic is done in int32 and clipped to int16.
 
     Args:
         audio_segment: The audio to process
-        noise_level_db: Comfort noise amplitude in dB (default -60, very quiet)
-        silence_thresh_dbfs: dBFS threshold to detect silence (default -45)
-        min_silence_ms: Minimum silence duration to inject noise (default 1500ms)
+        noise_level_db: Noise amplitude in dB (default -60, very quiet)
+        silence_thresh_dbfs: Coarse threshold for silence detection (default -42)
+        min_silence_ms: Minimum silence duration to consider (default 1500ms)
+        true_silence_dbfs: Threshold for noise injection (default -55)
+        grace_ms: Natural silence to preserve before injection (default 400)
+        tail_ms: Clean silence buffer after injection (default 300)
 
     Returns:
-        Modified AudioSegment with comfort noise injected in long silent regions
+        Modified AudioSegment with temporally-shaped stabilization noise
     """
     sample_rate = audio_segment.frame_rate
     channels = audio_segment.channels
 
-    logger.info(f"Checking for long silences (>={min_silence_ms}ms, thresh={silence_thresh_dbfs}dBFS)")
+    logger.info(f"Comfort noise injection: coarse={silence_thresh_dbfs}dBFS, "
+                f"fine={true_silence_dbfs}dBFS, min_duration={min_silence_ms}ms, "
+                f"grace={grace_ms}ms, tail={tail_ms}ms")
 
     # Convert to numpy array (int16)
     raw_samples = np.array(audio_segment.get_array_of_samples(), dtype=np.int16)
-
-    # Total number of per-channel frames
     num_frames = len(raw_samples) // channels
-
-    # Reshape to (num_frames, channels) — works for 1, 2, or any channel count
     samples_2d = raw_samples.reshape((num_frames, channels))
 
-    # Mono mixdown for silence detection (mean across channels)
+    # Mono mixdown for silence detection
     samples_mono = samples_2d.mean(axis=1).astype(np.float32)
 
-    # Detect long silences using fast vectorized function
-    silence_mask = detect_long_silences(
+    # Two-tier gating with adaptive thresholds
+    coarse_silence_mask, fine_silence_mask = detect_long_silences(
         samples_mono,
         sample_rate,
         silence_thresh_dbfs=silence_thresh_dbfs,
-        min_silence_ms=min_silence_ms
+        min_silence_ms=min_silence_ms,
+        true_silence_dbfs=true_silence_dbfs
     )
 
-    silent_sample_count = int(np.sum(silence_mask))
-    silent_duration_ms = silent_sample_count * 1000.0 / sample_rate
+    coarse_count = int(np.sum(coarse_silence_mask))
+    fine_count = int(np.sum(fine_silence_mask))
+    coarse_duration_ms = coarse_count * 1000.0 / sample_rate
+    fine_duration_ms = fine_count * 1000.0 / sample_rate
 
-    # Count distinct silence runs for logging
-    if silent_sample_count > 0:
-        padded = np.empty(len(silence_mask) + 2, dtype=bool)
-        padded[0] = False
-        padded[1:-1] = silence_mask
-        padded[-1] = False
-        transitions = np.diff(padded.astype(np.int8))
-        num_runs = int(np.sum(transitions == 1))
-    else:
-        num_runs = 0
+    logger.info(f"Detected {coarse_duration_ms:.0f}ms coarse silence, "
+                f"{fine_duration_ms:.0f}ms fine silence")
 
-    logger.info(f"Detected {num_runs} silence run(s) totalling {silent_duration_ms:.0f}ms "
-                f"({silent_sample_count} samples)")
+    if fine_count == 0:
+        logger.warning("No silence detected even with adaptive fallback — "
+                       "audio may have insufficient dynamic range for noise injection")
+        return audio_segment
 
-    if silent_sample_count > 0:
-        # Generate comfort noise for the mono length
-        comfort_noise = generate_comfort_noise(num_frames, noise_level_db)
+    # Apply temporal hysteresis: grace period + tail buffer
+    # Shape against COARSE mask (contiguous runs), intersect with fine mask
+    # for injection targets.  Shaping the fine mask directly fails because
+    # it fragments into tiny sub-runs that all fall below grace+tail.
+    injection_mask = _shape_injection_mask(
+        coarse_silence_mask,
+        fine_silence_mask,
+        sample_rate,
+        grace_ms=grace_ms,
+        tail_ms=tail_ms
+    )
 
-        # Scale to int16 range
-        comfort_noise_int16 = (comfort_noise * 32768).astype(np.int16)
+    injection_count = int(np.sum(injection_mask))
+    injection_duration_ms = injection_count * 1000.0 / sample_rate
 
-        # Work in int32 to prevent overflow during addition
-        samples_32 = samples_2d.astype(np.int32)
+    if injection_count == 0:
+        logger.info(f"All {fine_count * 1000.0 / sample_rate:.0f}ms of silence "
+                    f"falls within grace/tail margins — no injection needed "
+                    f"(silence runs too short to threaten encoder stability)")
+        return audio_segment
 
-        # Inject noise into ALL channels at silent positions
-        for ch in range(channels):
-            samples_32[silence_mask, ch] += comfort_noise_int16[silence_mask].astype(np.int32)
+    # Count injection runs for logging
+    padded = np.empty(len(injection_mask) + 2, dtype=bool)
+    padded[0] = False
+    padded[1:-1] = injection_mask
+    padded[-1] = False
+    transitions = np.diff(padded.astype(np.int8))
+    num_injection_runs = int(np.sum(transitions == 1))
 
-        # Clip back to int16 range and flatten
-        samples_out = np.clip(samples_32, -32768, 32767).astype(np.int16).flatten()
+    logger.info(f"Will inject noise into {num_injection_runs} region(s), "
+                f"{injection_duration_ms:.0f}ms total "
+                f"(from {fine_duration_ms:.0f}ms fine silence, "
+                f"after {grace_ms}ms grace + {tail_ms}ms tail shaping)")
 
-        logger.info(f"Injected comfort noise into {num_runs} run(s), {silent_duration_ms:.0f}ms total")
-    else:
-        samples_out = raw_samples
-        logger.info("No long silence detected, skipping noise injection")
+    # Generate high-pass filtered, jittered comfort noise
+    comfort_noise = generate_comfort_noise(
+        num_frames,
+        sample_rate,
+        amplitude_db=noise_level_db,
+        highpass_cutoff_hz=5000,
+        jitter_period_samples=1024
+    )
+
+    # Scale to int16 range
+    comfort_noise_int16 = (comfort_noise * 32768).astype(np.int16)
+
+    # Work in int32 to prevent overflow during addition
+    samples_32 = samples_2d.astype(np.int32)
+
+    # Inject noise at shaped injection positions into ALL channels
+    for ch in range(channels):
+        samples_32[injection_mask, ch] += comfort_noise_int16[injection_mask].astype(np.int32)
+
+    # Clip back to int16 range and flatten
+    samples_out = np.clip(samples_32, -32768, 32767).astype(np.int16).flatten()
+
+    logger.info(f"Injected stabilization noise into {num_injection_runs} region(s), "
+                f"{injection_duration_ms:.0f}ms total")
 
     # Convert back to AudioSegment
     modified_audio = AudioSegment(

@@ -1,5 +1,6 @@
 """Pure-function extraction of OpenAI transcription API responses."""
 
+import re
 from typing import List, Dict, Tuple
 
 from framework.logger import get_logger
@@ -7,6 +8,35 @@ from services.transcription.models import AudioChunk, WordToken
 from services.transcription.segmentation import infer_word_tokens_from_segments
 
 logger = get_logger(__name__)
+
+# Regex to detect 4+ repeated consonants (music/noise artifacts)
+NON_LEXICAL_RE = re.compile(r'([bcdfghjklmnpqrstvwxyz])\1{3,}', re.I)
+
+
+def is_non_lexical_noise(segment_text: str) -> bool:
+    """
+    Detect non-lexical artifacts from music encoding (e.g., "Brrrrrrrrrrr", "ssssssss").
+
+    Rule (tight, safe):
+    - Drop any segment that is:
+      - >= 4 repeated consonants
+      - AND contains no vowels
+      - AND is at least 6 characters
+
+    This will remove garbage like "Brrrrrrrrrr" without touching real words.
+
+    Args:
+        segment_text: Text from a transcription segment
+
+    Returns:
+        True if segment appears to be non-lexical noise, False otherwise
+    """
+    t = segment_text.strip().lower()
+    if len(t) < 6:
+        return False
+    if any(v in t for v in "aeiou"):
+        return False
+    return bool(NON_LEXICAL_RE.search(t))
 
 
 def parse_transcription_response(
@@ -66,6 +96,17 @@ def parse_transcription_response(
                 segments.append(seg_dict)
     else:
         chunk_text = str(response)
+
+    # Filter out non-lexical noise artifacts (music encoding, etc.)
+    if segments:
+        original_count = len(segments)
+        segments = [
+            s for s in segments
+            if not is_non_lexical_noise(s.get('text', ''))
+        ]
+        filtered_count = original_count - len(segments)
+        if filtered_count > 0:
+            logger.info(f"Chunk {chunk.chunk_index}: Filtered {filtered_count} non-lexical noise segment(s)")
 
     # Infer word-level timing from segments
     words: List[WordToken] = []

@@ -127,8 +127,20 @@ class TranscriptionService:
             logger.info(f"Read {len(audio_data)} bytes")
 
             # Parse audio with pydub
+            # Extract file extension for explicit format specification (critical for WebM)
+            file_extension = filename.lower().split('.')[-1] if '.' in filename else ''
+
             try:
-                audio_segment = AudioSegment.from_file(io.BytesIO(audio_data))
+                # Explicitly specify format for WebM files to ensure proper Opus decoding
+                if file_extension == 'webm':
+                    audio_segment = AudioSegment.from_file(
+                        io.BytesIO(audio_data),
+                        format='webm',
+                        codec='opus'  # WebM from browsers typically uses Opus codec
+                    )
+                else:
+                    audio_segment = AudioSegment.from_file(io.BytesIO(audio_data))
+
                 logger.info(f"Audio loaded: {len(audio_segment)}ms, "
                             f"{audio_segment.frame_rate}Hz, "
                             f"{audio_segment.channels}ch, "
@@ -141,8 +153,8 @@ class TranscriptionService:
             # Path A: Single-shot with comfort noise (preferred, faster, more accurate)
             # Path B: Duration-based chunking (fallback for large files)
 
-            # Determine which path to use
-            safe_for_single_shot, export_format = is_single_shot_safe(audio_segment)
+            # Determine which path to use (file_extension already extracted above)
+            safe_for_single_shot, export_format = is_single_shot_safe(audio_segment, source_format=file_extension)
 
             if safe_for_single_shot:
                 # PATH A: Single-shot transcription with comfort noise
@@ -152,8 +164,11 @@ class TranscriptionService:
                 audio_segment = inject_comfort_noise(
                     audio_segment,
                     noise_level_db=-60,
-                    silence_thresh_dbfs=-45,
-                    min_silence_ms=1500
+                    silence_thresh_dbfs=-42,
+                    min_silence_ms=1500,
+                    true_silence_dbfs=-55,
+                    grace_ms=400,
+                    tail_ms=300
                 )
 
                 logger.info(f"Transcribing full audio (duration: {len(audio_segment)}ms, format: {export_format})")
@@ -190,12 +205,15 @@ class TranscriptionService:
                 all_texts: List[str] = []
                 all_words: List[WordToken] = []
 
+                # Use the same export format determined earlier (WAV for WebM, FLAC otherwise)
+                chunk_export_format = export_format
+
                 for chunk in chunks:
                     logger.info(f"Transcribing chunk {chunk.chunk_index + 1}/{len(chunks)} "
                                 f"(duration: {len(chunk.audio_segment)}ms)")
 
                     chunk_text, chunk_segments, chunk_words = await self._transcribe_chunk(
-                        chunk, filename, model, language, temperature, 'flac'
+                        chunk, filename, model, language, temperature, chunk_export_format
                     )
 
                     # --- Deterministic time-based overlap trimming ---
@@ -330,8 +348,28 @@ class TranscriptionService:
         try:
             # Export chunk to specified format (prefer FLAC for size)
             chunk_buffer = io.BytesIO()
-            chunk.audio_segment.export(chunk_buffer, format=export_format)
+
+            # Build export parameters - explicit codec ensures proper encoding
+            export_params = ["-ar", "16000", "-ac", "1"]  # 16kHz mono
+            if export_format == 'wav':
+                # Force PCM encoding for WAV to avoid codec issues
+                export_params.extend(["-acodec", "pcm_s16le"])  # 16-bit PCM little-endian
+
+            chunk.audio_segment.export(
+                chunk_buffer,
+                format=export_format,
+                parameters=export_params
+            )
             chunk_buffer.seek(0)
+
+            # Get bytes to ensure buffer is properly read
+            audio_bytes = chunk_buffer.getvalue()
+
+            # Validate that we have actual audio data
+            if len(audio_bytes) < 1000:  # Less than 1KB is suspicious
+                logger.warning(f"Export produced only {len(audio_bytes)} bytes for {len(chunk.audio_segment)}ms audio")
+
+            logger.debug(f"Exported {len(audio_bytes)} bytes of {export_format.upper()} audio for chunk {chunk.chunk_index}")
 
             chunk_filename = f"{filename}_chunk_{chunk.chunk_index}.{export_format}"
 
@@ -343,12 +381,17 @@ class TranscriptionService:
             # Use json for regular transcription (gpt-4o-transcribe)
             response_format = "diarized_json" if model == "gpt-4o-transcribe-diarize" else "json"
 
+            # Use the audio bytes directly to avoid any cursor issues
             kwargs = {
-                "file": (chunk_filename, chunk_buffer, mime_type),
+                "file": (chunk_filename, audio_bytes, mime_type),
                 "model": model,
                 "temperature": temperature,
                 "response_format": response_format
             }
+
+            # Add chunking_strategy for diarization models (required parameter)
+            if model == "gpt-4o-transcribe-diarize":
+                kwargs["chunking_strategy"] = "auto"
 
             if language:
                 kwargs["language"] = language
