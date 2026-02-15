@@ -1,6 +1,8 @@
 """DSP helpers: silence detection, comfort-noise injection, MIME types, size checks."""
 
 import io
+import threading
+import time
 from typing import Tuple
 
 import numpy as np
@@ -9,6 +11,116 @@ from pydub import AudioSegment
 from framework.logger import get_logger
 
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Optional Numba acceleration for IIR high-pass filter
+# Falls back to pure-Python loops when numba is not installed.
+# ---------------------------------------------------------------------------
+try:
+    from numba import njit as _njit
+    _HAS_NUMBA = True
+except ImportError:
+    _HAS_NUMBA = False
+
+
+def _hp_2pole_iir_py(noise, alpha):
+    """Two-pole IIR high-pass filter (pure-Python fallback)."""
+    n = len(noise)
+    filtered = np.empty(n, dtype=np.float32)
+    prev_x = np.float32(0.0)
+    prev_y = np.float32(0.0)
+    for i in range(n):
+        filtered[i] = alpha * (prev_y + noise[i] - prev_x)
+        prev_x = noise[i]
+        prev_y = filtered[i]
+    out = np.empty(n, dtype=np.float32)
+    prev_x = np.float32(0.0)
+    prev_y = np.float32(0.0)
+    for i in range(n):
+        out[i] = alpha * (prev_y + filtered[i] - prev_x)
+        prev_x = filtered[i]
+        prev_y = out[i]
+    return out
+
+
+if _HAS_NUMBA:
+    _hp_2pole_iir = _njit(cache=True, fastmath=True)(_hp_2pole_iir_py)
+    # Warmup: trigger JIT compilation on a tiny input so the first real
+    # request doesn't pay the ~1-2 s compile cost.
+    _hp_2pole_iir(np.zeros(16, dtype=np.float32), np.float32(0.5))
+    logger.info("Numba JIT compiled _hp_2pole_iir (IIR high-pass filter)")
+else:
+    _hp_2pole_iir = _hp_2pole_iir_py
+    logger.info("Numba not available \u2014 using pure-Python IIR high-pass filter")
+
+# ---------------------------------------------------------------------------
+# Cached high-pass filtered noise buffer
+# ---------------------------------------------------------------------------
+_NOISE_CACHE_SECONDS = 90
+_noise_cache: dict = {}
+_noise_cache_lock = threading.Lock()
+
+
+def _get_cached_filtered_noise(
+    sample_rate: int,
+    cutoff_hz: float,
+) -> np.ndarray:
+    """Return a long pre-filtered noise buffer, creating it on first call.
+
+    The buffer is ~90 s of white noise high-pass filtered at *cutoff_hz*.
+    Callers slice random windows out of it and apply per-run jitter and
+    amplitude scaling, so the result is never a recognisable repeating
+    pattern.  Memory cost: ~17 MB per unique (sample_rate, cutoff_hz) pair.
+    """
+    key = (sample_rate, cutoff_hz)
+    cached = _noise_cache.get(key)
+    if cached is not None:
+        return cached
+
+    with _noise_cache_lock:
+        # Double-check after acquiring lock
+        cached = _noise_cache.get(key)
+        if cached is not None:
+            return cached
+
+        num_samples = int(_NOISE_CACHE_SECONDS * sample_rate)
+        noise = np.random.randn(num_samples).astype(np.float32)
+        max_abs = np.abs(noise).max()
+        if max_abs > 0:
+            noise /= max_abs
+
+        omega_c = 2.0 * np.pi * cutoff_hz
+        dt = 1.0 / sample_rate
+        rc = 1.0 / omega_c
+        alpha = np.float32(dt / (rc + dt))
+
+        noise = _hp_2pole_iir(noise, alpha)
+
+        max_abs = np.abs(noise).max()
+        if max_abs > 0:
+            noise /= max_abs
+
+        _noise_cache[key] = noise
+        logger.info(
+            f"Created noise cache: {_NOISE_CACHE_SECONDS}s at {sample_rate}Hz, "
+            f"cutoff={cutoff_hz}Hz, {noise.nbytes / 1024:.0f}KB"
+        )
+        return noise
+
+
+def _find_mask_runs(mask: np.ndarray):
+    """Return list of (start, end) index pairs for contiguous True runs."""
+    n = len(mask)
+    if n == 0:
+        return []
+    padded = np.empty(n + 2, dtype=bool)
+    padded[0] = False
+    padded[1:-1] = mask
+    padded[-1] = False
+    diff = np.diff(padded.astype(np.int8))
+    starts = np.flatnonzero(diff == 1)
+    ends = np.flatnonzero(diff == -1)
+    return list(zip(starts.tolist(), ends.tolist()))
 
 
 def get_audio_mime_type(filename: str) -> str:
@@ -68,32 +180,13 @@ def generate_comfort_noise(
     # Two poles give -12 dB/octave rolloff (vs -6 dB/octave for single pole),
     # keeping significantly more energy out of the speech formant range
     # (100-3000 Hz) so the noise cannot be decoded as phonemes.
-    # RC = 1 / (2 * pi * fc)
-    # alpha = dt / (RC + dt) where dt = 1 / sample_rate
     omega_c = 2.0 * np.pi * highpass_cutoff_hz
     dt = 1.0 / sample_rate
     rc = 1.0 / omega_c
-    alpha = dt / (rc + dt)
+    alpha = np.float32(dt / (rc + dt))
 
-    # Pass 1: y[n] = alpha * (y[n-1] + x[n] - x[n-1])
-    filtered = np.zeros_like(noise)
-    prev_x = 0.0
-    prev_y = 0.0
-    for i in range(num_samples):
-        filtered[i] = alpha * (prev_y + noise[i] - prev_x)
-        prev_x = noise[i]
-        prev_y = filtered[i]
-
-    # Pass 2: run the same filter again on the output of pass 1
-    filtered2 = np.zeros_like(filtered)
-    prev_x = 0.0
-    prev_y = 0.0
-    for i in range(num_samples):
-        filtered2[i] = alpha * (prev_y + filtered[i] - prev_x)
-        prev_x = filtered[i]
-        prev_y = filtered2[i]
-
-    noise = filtered2
+    # Numba-accelerated when available, pure-Python fallback otherwise
+    noise = _hp_2pole_iir(noise, alpha)
 
     # Normalize again after filtering
     max_abs = np.abs(noise).max()
@@ -240,9 +333,8 @@ def detect_long_silences(
     dbfs = _compute_windowed_dbfs(samples, sample_rate, window_ms)
 
     # Compute dynamic range for adaptive thresholding
-    p10 = float(np.percentile(dbfs, 10))
-    p50 = float(np.percentile(dbfs, 50))
-    p90 = float(np.percentile(dbfs, 90))
+    _p10, _p50, _p90 = np.percentile(dbfs, [10, 50, 90])
+    p10, p50, p90 = float(_p10), float(_p50), float(_p90)
     dynamic_range = p90 - p10
 
     logger.info(f"Audio dBFS distribution: p10={p10:.1f}, p50={p50:.1f}, p90={p90:.1f}, "
@@ -430,8 +522,7 @@ def is_single_shot_safe(audio_segment: AudioSegment, max_size_mb: float = 22.0, 
     buf = io.BytesIO()
     try:
         audio_segment.export(buf, format=export_format)
-        buf.seek(0)  # Rewind after export to measure from start
-        actual_bytes = len(buf.getvalue())  # Use getvalue() to get actual size
+        actual_bytes = buf.tell()  # Size without copying buffer contents
         actual_mb = actual_bytes / (1024 * 1024)
 
         # Sanity check: if export produced a suspiciously small file, it likely failed
@@ -441,8 +532,7 @@ def is_single_shot_safe(audio_segment: AudioSegment, max_size_mb: float = 22.0, 
                 # Retry with WAV
                 buf = io.BytesIO()
                 audio_segment.export(buf, format='wav')
-                buf.seek(0)  # Rewind after export
-                actual_bytes = len(buf.getvalue())  # Use getvalue() to get actual size
+                actual_bytes = buf.tell()
                 actual_mb = actual_bytes / (1024 * 1024)
                 export_format = 'wav'
                 logger.info(f"WAV fallback produced {actual_mb:.2f}MB")
@@ -450,8 +540,7 @@ def is_single_shot_safe(audio_segment: AudioSegment, max_size_mb: float = 22.0, 
         logger.error(f"Failed to export as {export_format.upper()}: {e}, trying WAV fallback")
         buf = io.BytesIO()
         audio_segment.export(buf, format='wav')
-        buf.seek(0)  # Rewind after export
-        actual_bytes = len(buf.getvalue())  # Use getvalue() to get actual size
+        actual_bytes = buf.tell()
         actual_mb = actual_bytes / (1024 * 1024)
         export_format = 'wav'
 
@@ -468,8 +557,8 @@ def _shape_injection_mask(
     coarse_mask: np.ndarray,
     fine_mask: np.ndarray,
     sample_rate: int,
-    grace_ms: int = 400,
-    tail_ms: int = 300
+    grace_ms: int = 150,
+    tail_ms: int = 100
 ) -> np.ndarray:
     """
     Apply temporal hysteresis to produce a shaped injection mask.
@@ -622,6 +711,7 @@ def inject_comfort_noise(
     Returns:
         Modified AudioSegment with temporally-shaped stabilization noise
     """
+    t0 = time.perf_counter()
     sample_rate = audio_segment.frame_rate
     channels = audio_segment.channels
 
@@ -630,14 +720,19 @@ def inject_comfort_noise(
                 f"grace={grace_ms}ms, tail={tail_ms}ms")
 
     # Convert to numpy array (int16)
+    t_convert = time.perf_counter()
     raw_samples = np.array(audio_segment.get_array_of_samples(), dtype=np.int16)
     num_frames = len(raw_samples) // channels
     samples_2d = raw_samples.reshape((num_frames, channels))
+    logger.info(f"[timing] stage=inject_comfort_noise.to_numpy duration_ms={int((time.perf_counter() - t_convert) * 1000)} frames={num_frames} ch={channels}")
 
     # Mono mixdown for silence detection
+    t_mix = time.perf_counter()
     samples_mono = samples_2d.mean(axis=1).astype(np.float32)
+    logger.info(f"[timing] stage=inject_comfort_noise.mixdown duration_ms={int((time.perf_counter() - t_mix) * 1000)}")
 
     # Two-tier gating with adaptive thresholds
+    t_detect = time.perf_counter()
     coarse_silence_mask, fine_silence_mask = detect_long_silences(
         samples_mono,
         sample_rate,
@@ -645,6 +740,7 @@ def inject_comfort_noise(
         min_silence_ms=min_silence_ms,
         true_silence_dbfs=true_silence_dbfs
     )
+    logger.info(f"[timing] stage=inject_comfort_noise.detect_silence duration_ms={int((time.perf_counter() - t_detect) * 1000)}")
 
     coarse_count = int(np.sum(coarse_silence_mask))
     fine_count = int(np.sum(fine_silence_mask))
@@ -663,6 +759,7 @@ def inject_comfort_noise(
     # Shape against COARSE mask (contiguous runs), intersect with fine mask
     # for injection targets.  Shaping the fine mask directly fails because
     # it fragments into tiny sub-runs that all fall below grace+tail.
+    t_shape = time.perf_counter()
     injection_mask = _shape_injection_mask(
         coarse_silence_mask,
         fine_silence_mask,
@@ -670,6 +767,7 @@ def inject_comfort_noise(
         grace_ms=grace_ms,
         tail_ms=tail_ms
     )
+    logger.info(f"[timing] stage=inject_comfort_noise.shape_mask duration_ms={int((time.perf_counter() - t_shape) * 1000)}")
 
     injection_count = int(np.sum(injection_mask))
     injection_duration_ms = injection_count * 1000.0 / sample_rate
@@ -680,37 +778,61 @@ def inject_comfort_noise(
                     f"(silence runs too short to threaten encoder stability)")
         return audio_segment
 
-    # Count injection runs for logging
-    padded = np.empty(len(injection_mask) + 2, dtype=bool)
-    padded[0] = False
-    padded[1:-1] = injection_mask
-    padded[-1] = False
-    transitions = np.diff(padded.astype(np.int8))
-    num_injection_runs = int(np.sum(transitions == 1))
+    # Find contiguous injection runs (used for both logging and run-based injection)
+    injection_runs = _find_mask_runs(injection_mask)
+    num_injection_runs = len(injection_runs)
 
     logger.info(f"Will inject noise into {num_injection_runs} region(s), "
                 f"{injection_duration_ms:.0f}ms total "
                 f"(from {fine_duration_ms:.0f}ms fine silence, "
                 f"after {grace_ms}ms grace + {tail_ms}ms tail shaping)")
 
-    # Generate high-pass filtered, jittered comfort noise
-    comfort_noise = generate_comfort_noise(
-        num_frames,
-        sample_rate,
-        amplitude_db=noise_level_db,
-        highpass_cutoff_hz=5000,
-        jitter_period_samples=1024
-    )
-
-    # Scale to int16 range
-    comfort_noise_int16 = (comfort_noise * 32768).astype(np.int16)
+    # Get (or create) cached high-pass filtered noise buffer.
+    # The buffer is generated and filtered once per (sample_rate, cutoff_hz)
+    # pair; subsequent calls just slice into it.
+    t_gen = time.perf_counter()
+    cached_noise = _get_cached_filtered_noise(sample_rate, 5000)
+    cache_len = len(cached_noise)
+    amplitude = np.float32(10 ** (noise_level_db / 20))
+    logger.info(f"[timing] stage=inject_comfort_noise.generate_noise duration_ms={int((time.perf_counter() - t_gen) * 1000)}")
 
     # Work in int32 to prevent overflow during addition
     samples_32 = samples_2d.astype(np.int32)
 
-    # Inject noise at shaped injection positions into ALL channels
-    for ch in range(channels):
-        samples_32[injection_mask, ch] += comfort_noise_int16[injection_mask].astype(np.int32)
+    # Inject noise per-run: slice from cache, apply jitter + amplitude, add.
+    # Each run gets a random offset into the cache so the noise varies.
+    t_inject = time.perf_counter()
+    jitter_period = 1024
+    for run_start, run_end in injection_runs:
+        run_len = run_end - run_start
+
+        # Pick a random offset into the cached buffer for variety
+        if run_len <= cache_len:
+            max_offset = max(1, cache_len - run_len)
+            offset = np.random.randint(0, max_offset)
+            noise_slice = cached_noise[offset:offset + run_len].copy()
+        else:
+            # Very long run (>90 s): tile from cache with varying offsets
+            pieces = []
+            remaining = run_len
+            while remaining > 0:
+                chunk = min(remaining, cache_len)
+                off = np.random.randint(0, max(1, cache_len - chunk))
+                pieces.append(cached_noise[off:off + chunk])
+                remaining -= chunk
+            noise_slice = np.concatenate(pieces)
+
+        # Per-run jitter envelope (\u00b13 dB variation)
+        num_blocks = max(1, run_len // jitter_period + 1)
+        jitter = np.float32(0.5) + np.random.rand(num_blocks).astype(np.float32)
+        jitter_env = np.repeat(jitter, jitter_period)[:run_len]
+
+        # Scale: jitter * base amplitude \u2192 int32 for safe mixing
+        noise_int32 = (noise_slice * jitter_env * amplitude * np.float32(32768.0)).astype(np.int32)
+        for ch in range(channels):
+            samples_32[run_start:run_end, ch] += noise_int32
+
+    logger.info(f"[timing] stage=inject_comfort_noise.apply_injection duration_ms={int((time.perf_counter() - t_inject) * 1000)}")
 
     # Clip back to int16 range and flatten
     samples_out = np.clip(samples_32, -32768, 32767).astype(np.int16).flatten()
@@ -719,11 +841,18 @@ def inject_comfort_noise(
                 f"{injection_duration_ms:.0f}ms total")
 
     # Convert back to AudioSegment
+    t_segment = time.perf_counter()
     modified_audio = AudioSegment(
         samples_out.tobytes(),
         frame_rate=sample_rate,
         sample_width=audio_segment.sample_width,
         channels=channels
+    )
+    logger.info(f"[timing] stage=inject_comfort_noise.to_audiosegment duration_ms={int((time.perf_counter() - t_segment) * 1000)}")
+
+    logger.info(
+        f"[timing] stage=inject_comfort_noise.total duration_ms={int((time.perf_counter() - t0) * 1000)} "
+        f"audio_ms={len(audio_segment)} sr={sample_rate} ch={channels}"
     )
 
     return modified_audio
