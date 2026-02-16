@@ -24,6 +24,7 @@ feedparser
 readability-lxml
 # robin_stocks
 markdown
+scipy
 sib_api_v3_sdk
 coinbase-advanced-py
 pydantic[email]
@@ -31,7 +32,9 @@ python-multipart
 aiofiles
 matplotlib
 pydub
+numba  # optional: JIT-accelerates compressor attack/release smoothing loop in dsp/compressor.py
 numpy
+webrtcvad  # WebRTC VAD for speech/silence detection
 pytz
 # azure-identity
 # azure-mgmt-resource

@@ -9,10 +9,14 @@ RUN mkdir utilities
 RUN apt-get update -y
 # RUN apt-get update && apt-get dist-upgrade -y
 
-# Install ffmpeg for audio processing (required by pydub)
-RUN apt-get install -y ffmpeg
+RUN apt-get update && \
+    apt-get install -y \
+        build-essential \
+        gcc \
+        ffmpeg \
+        wget && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN apt-get install -y wget
 RUN wget https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu1804-x86_64-100.6.0.tgz
 RUN mkdir /app/utilities/mongotools 
 RUN tar -xf mongodb-database-tools-ubuntu1804-x86_64-100.6.0.tgz -C /app/utilities/mongotools --strip-components 1
@@ -23,6 +27,10 @@ ENV ARTIFACT_INDEX=https://${ARTIFACT_FEED}:${ARTIFACT_FEED_TOKEN}@pkgs.dev.azur
 
 COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt --extra-index-url=${ARTIFACT_INDEX}
+
+# Optional: numba JIT speeds up IIR filter in audio DSP.
+# The fallback pure-Python path works without it.
+RUN pip install numba || true
 
 RUN pip install uvloop
 RUN pip install uvicorn

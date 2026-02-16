@@ -18,11 +18,11 @@ from models.openai_config import OpenAIConfig
 from data.transcription_history_repository import TranscriptionHistoryRepository
 
 # --- Sub-module imports (pure functions / data classes) ---------------
-from services.transcription.models import AudioChunk, WordToken
-from services.transcription.audio_dsp import (
+from services.transcription.models import AudioChunk, ExcisionMap, PreprocessResult, WordToken
+from services.transcription.dsp import (
     get_audio_mime_type,
-    inject_comfort_noise,
     is_single_shot_safe,
+    preprocess_for_transcription,
 )
 from services.transcription.chunking import chunk_by_duration
 from services.transcription.overlap import (
@@ -36,6 +36,8 @@ from services.transcription.segmentation import (
     format_diarized_transcript,
 )
 from services.transcription.response_parsing import parse_transcription_response
+
+from utilities.timing import log_stage_timing
 
 logger = get_logger(__name__)
 
@@ -75,7 +77,8 @@ class TranscriptionService:
         file_size: Optional[int] = None,
         user_id: Optional[str] = None,
         save_to_history: bool = True,
-        diarize: bool = False
+        diarize: bool = False,
+        return_waveform_overlay: bool = False
     ) -> Union[str, Dict]:
         """
         Transcribe audio file using OpenAI's Whisper model with silence-aware chunking.
@@ -92,16 +95,19 @@ class TranscriptionService:
             user_id: Optional user identifier
             save_to_history: Whether to save the transcription to history (default: True)
             diarize: Whether to return diarized output with speaker labels (default: False)
+            return_waveform_overlay: Whether to include waveform overlay PNG as base64 (default: False)
 
         Returns:
-            If diarize=False: Plain text string
-            If diarize=True: Dict with 'text', 'segments', and 'diarized' keys
+            If diarize=False and return_waveform_overlay=False: Plain text string
+            If diarize=False and return_waveform_overlay=True: Dict with 'text' and 'waveform_overlay'
+            If diarize=True: Dict with 'text', 'segments', 'diarized' keys (and 'waveform_overlay' if requested)
                 segments include 'start', 'end', 'speaker', and 'text' fields
+                waveform_overlay is a base64-encoded PNG string showing DSP processing stages
 
         Raises:
             TranscriptionServiceError: If transcription fails
         """
-        start_time = time.time()
+        t0 = time.perf_counter()
 
         try:
             logger.info(f"Starting transcription for file: {filename} (diarize={diarize})")
@@ -114,7 +120,8 @@ class TranscriptionService:
                 )
 
             # Determine MIME type
-            mime_type = get_audio_mime_type(filename)
+            with log_stage_timing(logger, "transcribe_audio.get_mime", fields={"filename": filename}):
+                mime_type = get_audio_mime_type(filename)
             logger.info(f"Using MIME type: {mime_type}")
 
             # Use diarize model when diarization is requested
@@ -123,7 +130,8 @@ class TranscriptionService:
             # Load audio file
             logger.info("Loading audio file...")
             audio_file.seek(0)
-            audio_data = audio_file.read()
+            with log_stage_timing(logger, "transcribe_audio.read_bytes", fields={"filename": filename}):
+                audio_data = audio_file.read()
             logger.info(f"Read {len(audio_data)} bytes")
 
             # Parse audio with pydub
@@ -132,14 +140,19 @@ class TranscriptionService:
 
             try:
                 # Explicitly specify format for WebM files to ensure proper Opus decoding
-                if file_extension == 'webm':
-                    audio_segment = AudioSegment.from_file(
-                        io.BytesIO(audio_data),
-                        format='webm',
-                        codec='opus'  # WebM from browsers typically uses Opus codec
-                    )
-                else:
-                    audio_segment = AudioSegment.from_file(io.BytesIO(audio_data))
+                with log_stage_timing(
+                    logger,
+                    "transcribe_audio.decode_pydub",
+                    fields={"filename": filename, "ext": file_extension},
+                ):
+                    if file_extension == 'webm':
+                        audio_segment = AudioSegment.from_file(
+                            io.BytesIO(audio_data),
+                            format='webm',
+                            codec='opus'  # WebM from browsers typically uses Opus codec
+                        )
+                    else:
+                        audio_segment = AudioSegment.from_file(io.BytesIO(audio_data))
 
                 logger.info(f"Audio loaded: {len(audio_segment)}ms, "
                             f"{audio_segment.frame_rate}Hz, "
@@ -154,49 +167,79 @@ class TranscriptionService:
             # Path B: Duration-based chunking (fallback for large files)
 
             # Determine which path to use (file_extension already extracted above)
-            safe_for_single_shot, export_format = is_single_shot_safe(audio_segment, source_format=file_extension)
+            with log_stage_timing(
+                logger,
+                "transcribe_audio.single_shot_gate",
+                fields={
+                    "filename": filename,
+                    "audio_ms": len(audio_segment),
+                    "sr": audio_segment.frame_rate,
+                    "ch": audio_segment.channels,
+                },
+            ):
+                safe_for_single_shot, export_format = is_single_shot_safe(audio_segment, source_format=file_extension)
 
             if safe_for_single_shot:
-                # PATH A: Single-shot transcription with comfort noise
-                logger.info("Using Path A: Single-shot transcription with comfort noise")
+                # PATH A: Single-shot transcription with silence excision
+                logger.info("Using Path A: Single-shot transcription with silence excision")
 
-                # Inject comfort noise into long silences to keep encoder alive
-                audio_segment = inject_comfort_noise(
-                    audio_segment,
-                    noise_level_db=-60,
-                    silence_thresh_dbfs=-42,
-                    min_silence_ms=1500,
-                    true_silence_dbfs=-55,
-                    grace_ms=400,
-                    tail_ms=300
-                )
+                # Preprocess audio: excise silence regions so the encoder
+                # never sees long zero-energy spans.
+                with log_stage_timing(
+                    logger,
+                    "transcribe_audio.preprocess_audio",
+                    fields={"filename": filename, "audio_ms": len(audio_segment)},
+                ):
+                    preprocess_result: PreprocessResult = preprocess_for_transcription(
+                        audio_segment,
+                        debug_tag=filename,
+                        return_waveform_overlay=return_waveform_overlay,
+                    )
+                    processed_audio = preprocess_result.audio
+                    excision_map = preprocess_result.excision_map
+                    waveform_overlay = preprocess_result.waveform_overlay
 
-                logger.info(f"Transcribing full audio (duration: {len(audio_segment)}ms, format: {export_format})")
+                logger.info(f"Transcribing full audio (duration: {len(processed_audio)}ms, format: {export_format})")
 
-                # Create a single chunk for the entire audio
+                # Create a single chunk for the entire (excised) audio
                 full_audio_chunk = AudioChunk(
-                    audio_segment=audio_segment,
+                    audio_segment=processed_audio,
                     logical_start_ms=0,
-                    logical_end_ms=len(audio_segment),
+                    logical_end_ms=len(processed_audio),
                     actual_start_ms=0,
-                    actual_end_ms=len(audio_segment),
+                    actual_end_ms=len(processed_audio),
                     chunk_index=0
                 )
 
                 # Transcribe with specified format
-                result_text, all_segments, all_words = await self._transcribe_chunk(
-                    full_audio_chunk, filename, model, language, temperature, export_format
-                )
+                with log_stage_timing(
+                    logger,
+                    "transcribe_audio.transcribe_single_chunk",
+                    fields={"filename": filename, "export": export_format, "model": model},
+                ):
+                    result_text, all_segments, all_words = await self._transcribe_chunk(
+                        full_audio_chunk, filename, model, language, temperature, export_format
+                    )
             else:
                 # PATH B: Duration-based chunking fallback
                 logger.info("Using Path B: Duration-based chunking (file too large for single-shot)")
 
+                # Waveform overlay not supported for chunked transcription
+                waveform_overlay = None
+                # No excision in Path B — identity map
+                excision_map = ExcisionMap.identity(float(len(audio_segment)))
+
                 overlap_ms = 1_500
-                chunks = chunk_by_duration(
-                    audio_segment,
-                    chunk_duration_ms=60_000,
-                    overlap_ms=overlap_ms
-                )
+                with log_stage_timing(
+                    logger,
+                    "transcribe_audio.chunk_by_duration",
+                    fields={"filename": filename, "audio_ms": len(audio_segment), "overlap_ms": overlap_ms},
+                ):
+                    chunks = chunk_by_duration(
+                        audio_segment,
+                        chunk_duration_ms=60_000,
+                        overlap_ms=overlap_ms
+                    )
 
                 logger.info(f"Audio split into {len(chunks)} chunks")
 
@@ -212,9 +255,21 @@ class TranscriptionService:
                     logger.info(f"Transcribing chunk {chunk.chunk_index + 1}/{len(chunks)} "
                                 f"(duration: {len(chunk.audio_segment)}ms)")
 
-                    chunk_text, chunk_segments, chunk_words = await self._transcribe_chunk(
-                        chunk, filename, model, language, temperature, chunk_export_format
-                    )
+                    with log_stage_timing(
+                        logger,
+                        "transcribe_audio.transcribe_chunk",
+                        fields={
+                            "filename": filename,
+                            "chunk_index": chunk.chunk_index,
+                            "chunks": len(chunks),
+                            "chunk_ms": len(chunk.audio_segment),
+                            "export": chunk_export_format,
+                            "model": model,
+                        },
+                    ):
+                        chunk_text, chunk_segments, chunk_words = await self._transcribe_chunk(
+                            chunk, filename, model, language, temperature, chunk_export_format
+                        )
 
                     # --- Deterministic time-based overlap trimming ---
                     # The overlap region [actual_start, logical_start) belongs
@@ -223,14 +278,19 @@ class TranscriptionService:
                     if chunk.chunk_index > 0 and overlap_ms > 0:
                         overlap_end_sec = chunk.logical_start_ms / 1000.0
 
-                        if chunk_words:
-                            chunk_words = trim_word_tokens_in_overlap_window(
-                                chunk_words, overlap_end_sec
-                            )
-                        if chunk_segments:
-                            chunk_segments = trim_segments_in_overlap_window(
-                                chunk_segments, overlap_end_sec
-                            )
+                        with log_stage_timing(
+                            logger,
+                            "transcribe_audio.overlap_trim",
+                            fields={"chunk_index": chunk.chunk_index, "overlap_ms": overlap_ms},
+                        ):
+                            if chunk_words:
+                                chunk_words = trim_word_tokens_in_overlap_window(
+                                    chunk_words, overlap_end_sec
+                                )
+                            if chunk_segments:
+                                chunk_segments = trim_segments_in_overlap_window(
+                                    chunk_segments, overlap_end_sec
+                                )
 
                     # If trimming removed everything the model returned for
                     # this chunk, blank out chunk_text to avoid phantom
@@ -243,7 +303,12 @@ class TranscriptionService:
                     # segment boundary (covers edge cases where timing is
                     # unavailable or imprecise).
                     if all_texts:
-                        chunk_text = deduplicate_seam(all_texts[-1], chunk_text)
+                        with log_stage_timing(
+                            logger,
+                            "transcribe_audio.deduplicate_seam",
+                            fields={"chunk_index": chunk.chunk_index},
+                        ):
+                            chunk_text = deduplicate_seam(all_texts[-1], chunk_text)
 
                     all_texts.append(chunk_text)
 
@@ -261,21 +326,55 @@ class TranscriptionService:
                 # Combine results
                 result_text = ' '.join(all_texts).strip()
 
-            duration = time.time() - start_time
+            duration = time.perf_counter() - t0
 
             logger.info(f"Transcription completed: {len(result_text)} chars in {duration:.2f}s")
+            logger.info(
+                f"[timing] stage=transcribe_audio.total duration_ms={int(duration * 1000)} "
+                f"filename={filename} diarize={diarize} bytes={file_size or 'unknown'}"
+            )
+
+            # ── Remap timestamps from excised-audio time to original time ──
+            # After excision the audio sent to OpenAI is shorter; timestamps
+            # returned by the model are in excised-audio coordinates.  The
+            # excision_map translates them back to positions in the original
+            # recording so that diarization and segment timings are accurate.
+            if excision_map is not None and not excision_map.is_identity:
+                with log_stage_timing(
+                    logger,
+                    "transcribe_audio.remap_timestamps",
+                    fields={
+                        "words": len(all_words),
+                        "segments": len(all_segments),
+                    },
+                ):
+                    for word in all_words:
+                        word.start = excision_map.to_original_time_ms(word.start * 1000.0) / 1000.0
+                        word.end = excision_map.to_original_time_ms(word.end * 1000.0) / 1000.0
+                    for seg in all_segments:
+                        seg['start'] = excision_map.to_original_time_ms(seg['start'] * 1000.0) / 1000.0
+                        seg['end'] = excision_map.to_original_time_ms(seg['end'] * 1000.0) / 1000.0
+                logger.info(
+                    "Remapped %d words and %d segments to original-audio timestamps",
+                    len(all_words), len(all_segments),
+                )
 
             # Save to history if requested
             if save_to_history:
                 try:
-                    await self._repository.save_transcription(
-                        filename=filename,
-                        transcribed_text=result_text,
-                        language=language,
-                        file_size=file_size,
-                        duration=duration,
-                        user_id=user_id
-                    )
+                    with log_stage_timing(
+                        logger,
+                        "transcribe_audio.save_history",
+                        fields={"filename": filename, "user_id": user_id},
+                    ):
+                        await self._repository.save_transcription(
+                            filename=filename,
+                            transcribed_text=result_text,
+                            language=language,
+                            file_size=file_size,
+                            duration=duration,
+                            user_id=user_id
+                        )
                     logger.info("Transcription saved to history")
                 except Exception as e:
                     logger.warning(f"Failed to save transcription to history: {e}")
@@ -285,30 +384,46 @@ class TranscriptionService:
                 # Use word-first resegmentation as source of truth
                 if all_words:
                     logger.info(f"Resegmenting {len(all_words)} words into new segments")
-                    resegmented = resegment_words_to_segments(
-                        all_words,
-                        pause_threshold_ms=250.0,
-                        max_segment_ms=1500.0,
-                        split_on_punctuation=True
-                    )
+                    with log_stage_timing(
+                        logger,
+                        "transcribe_audio.resegment_words",
+                        fields={"words": len(all_words)},
+                    ):
+                        resegmented = resegment_words_to_segments(
+                            all_words,
+                            pause_threshold_ms=250.0,
+                            max_segment_ms=1500.0,
+                            split_on_punctuation=True
+                        )
                     logger.info(f"Created {len(resegmented)} resegmented segments from words")
 
                     # Normalize speaker labels (A, B, C -> Speaker 1, Speaker 2, Speaker 3)
-                    normalized_segments = normalize_speaker_labels(resegmented)
+                    with log_stage_timing(logger, "transcribe_audio.normalize_speakers"):
+                        normalized_segments = normalize_speaker_labels(resegmented)
                 else:
                     # Fallback to segment-based approach if no words available
                     logger.warning("No words available, falling back to segment-based diarization")
-                    normalized_segments = normalize_speaker_labels(all_segments)
+                    with log_stage_timing(logger, "transcribe_audio.normalize_speakers"):
+                        normalized_segments = normalize_speaker_labels(all_segments)
 
                 # Format readable text with speaker labels
-                diarized_text = format_diarized_transcript(normalized_segments)
+                with log_stage_timing(logger, "transcribe_audio.format_diarized"):
+                    diarized_text = format_diarized_transcript(normalized_segments)
 
-                return {
+                result_dict = {
                     'text': diarized_text,
                     'segments': normalized_segments,
                     'diarized': True
                 }
+                if return_waveform_overlay and waveform_overlay:
+                    result_dict['waveform_overlay'] = waveform_overlay
+                return result_dict
             else:
+                if return_waveform_overlay and waveform_overlay:
+                    return {
+                        'text': result_text,
+                        'waveform_overlay': waveform_overlay
+                    }
                 return result_text
 
         except Exception as e:
@@ -355,11 +470,20 @@ class TranscriptionService:
                 # Force PCM encoding for WAV to avoid codec issues
                 export_params.extend(["-acodec", "pcm_s16le"])  # 16-bit PCM little-endian
 
-            chunk.audio_segment.export(
-                chunk_buffer,
-                format=export_format,
-                parameters=export_params
-            )
+            with log_stage_timing(
+                logger,
+                "transcribe_chunk.export",
+                fields={
+                    "chunk_index": chunk.chunk_index,
+                    "export": export_format,
+                    "chunk_ms": len(chunk.audio_segment),
+                },
+            ):
+                chunk.audio_segment.export(
+                    chunk_buffer,
+                    format=export_format,
+                    parameters=export_params
+                )
             chunk_buffer.seek(0)
 
             # Get bytes to ensure buffer is properly read
@@ -397,12 +521,26 @@ class TranscriptionService:
                 kwargs["language"] = language
 
             # Call OpenAI API
-            response = await self._client.audio.transcriptions.create(**kwargs)
+            with log_stage_timing(
+                logger,
+                "transcribe_chunk.openai_call",
+                fields={
+                    "chunk_index": chunk.chunk_index,
+                    "model": model,
+                    "response_format": response_format,
+                },
+            ):
+                response = await self._client.audio.transcriptions.create(**kwargs)
 
             logger.info(f"Received transcription response for chunk {chunk.chunk_index}")
 
             # Delegate response parsing to pure function
-            chunk_text, segments, words = parse_transcription_response(response, chunk)
+            with log_stage_timing(
+                logger,
+                "transcribe_chunk.parse_response",
+                fields={"chunk_index": chunk.chunk_index},
+            ):
+                chunk_text, segments, words = parse_transcription_response(response, chunk)
 
             return chunk_text, segments, words
 

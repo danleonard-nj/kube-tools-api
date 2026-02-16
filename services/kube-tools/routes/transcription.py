@@ -21,17 +21,20 @@ async def transcribe_audio(container):
     - Form field 'audio': audio file (supports various formats: mp3, wav, m4a, etc.)
     - Optional form field 'language': language code (e.g., 'en', 'es', 'fr')
     - Optional form field 'diarize': 'true' or 'false' to enable/disable diarization (default: false)
+    - Optional form field 'return_waveform': 'true' or 'false' to include waveform overlay PNG (default: false)
 
     Returns:
     - JSON response (when diarize=false): { "text": "transcribed text here" }
     - JSON response (when diarize=true): { "text": "full transcript", "segments": [{"start": 0.0, "end": 3.5, "text": "..."}] }
+    - When return_waveform=true: Adds "waveform_overlay" field with base64-encoded PNG
 
     Example usage with curl:
     curl -X POST "http://localhost:5000/api/transcribe" \
          -H "Authorization: Bearer <token>" \
          -F "audio=@recording.mp3" \
          -F "language=en" \
-         -F "diarize=true"
+         -F "diarize=true" \
+         -F "return_waveform=true"
     """
     try:
         # Resolve the transcription service from DI container
@@ -64,7 +67,11 @@ async def transcribe_audio(container):
         diarize_str = form_data.get('diarize', 'false').lower()
         diarize = diarize_str in ('true', '1', 'yes')
 
-        logger.info(f"Received audio file: {audio_file.filename}, language: {language or 'auto-detect'}, diarize: {diarize}")
+        # Get optional return_waveform parameter (default to false)
+        return_waveform_str = form_data.get('return_waveform', 'false').lower()
+        return_waveform = return_waveform_str in ('true', '1', 'yes')
+
+        logger.info(f"Received audio file: {audio_file.filename}, language: {language or 'auto-detect'}, diarize: {diarize}, return_waveform: {return_waveform}")
 
         # Read the audio file data into memory
         audio_data = audio_file.read()
@@ -77,7 +84,8 @@ async def transcribe_audio(container):
             filename=audio_file.filename,
             language=language,
             file_size=file_size,
-            diarize=diarize
+            diarize=diarize,
+            return_waveform_overlay=return_waveform
         )
 
         # Service returns either a string (non-diarized) or dict (diarized)
