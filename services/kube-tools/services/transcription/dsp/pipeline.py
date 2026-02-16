@@ -75,6 +75,7 @@ DEFAULT_MIN_GAP_MS = 400
 DEFAULT_GRACE_MS = 150
 DEFAULT_TAIL_MS = 150
 DEFAULT_NOISE_LEVEL_DB = -58.0
+TRAILING_PAD_MS = 500
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +209,15 @@ def preprocess_for_transcription(
             grace_ms=DEFAULT_GRACE_MS,
             tail_ms=DEFAULT_TAIL_MS,
         )
+
+        # Preserve trailing silence for decoder flush
+        trailing_preserve = min(int(0.3 * sr), int(np.sum(inj_mask)))  # 300ms or less
+        if inj_mask[-1] and trailing_preserve > 0:
+            # Find the end of the last injection run and preserve trailing samples
+            inj_mask[-trailing_preserve:] = False
+            logger.info("Preserved %dms trailing silence for decoder flush",
+                        int(trailing_preserve * 1000 / sr))
+
         inj_count = int(np.sum(inj_mask))
         if inj_count > 0:
             keep_mask = ~inj_mask
@@ -268,6 +278,15 @@ def preprocess_for_transcription(
         )
     else:
         excision_map = ExcisionMap.identity(num_frames * 1000.0 / sr)
+
+    # ── Trailing pad: prevent decoder flush truncation ────────────────
+    pad_samples = int(TRAILING_PAD_MS * sr / 1000)
+    pad_noise = np.random.randn(pad_samples, channels).astype(np.float32) * noise_amp
+    pad_i16 = (np.clip(pad_noise, -1.0, 1.0) * np.float32(32768.0)).astype(np.int16).flatten()
+    final_i16 = np.concatenate([final_i16, pad_i16])
+    final_2d = np.concatenate([final_2d, pad_noise], axis=0)
+    logger.info("Trailing pad: added %dms noise-level tail for decoder flush",
+                TRAILING_PAD_MS)
 
     # ── Build output AudioSegment ────────────────────────────────────────
     result = AudioSegment(
