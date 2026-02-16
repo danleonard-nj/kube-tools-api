@@ -18,11 +18,11 @@ from models.openai_config import OpenAIConfig
 from data.transcription_history_repository import TranscriptionHistoryRepository
 
 # --- Sub-module imports (pure functions / data classes) ---------------
-from services.transcription.models import AudioChunk, WordToken
-from services.transcription.audio_dsp import (
+from services.transcription.models import AudioChunk, ExcisionMap, PreprocessResult, WordToken
+from services.transcription.dsp import (
     get_audio_mime_type,
-    inject_comfort_noise,
     is_single_shot_safe,
+    preprocess_for_transcription,
 )
 from services.transcription.chunking import chunk_by_duration
 from services.transcription.overlap import (
@@ -77,7 +77,8 @@ class TranscriptionService:
         file_size: Optional[int] = None,
         user_id: Optional[str] = None,
         save_to_history: bool = True,
-        diarize: bool = False
+        diarize: bool = False,
+        return_waveform_overlay: bool = False
     ) -> Union[str, Dict]:
         """
         Transcribe audio file using OpenAI's Whisper model with silence-aware chunking.
@@ -94,11 +95,14 @@ class TranscriptionService:
             user_id: Optional user identifier
             save_to_history: Whether to save the transcription to history (default: True)
             diarize: Whether to return diarized output with speaker labels (default: False)
+            return_waveform_overlay: Whether to include waveform overlay PNG as base64 (default: False)
 
         Returns:
-            If diarize=False: Plain text string
-            If diarize=True: Dict with 'text', 'segments', and 'diarized' keys
+            If diarize=False and return_waveform_overlay=False: Plain text string
+            If diarize=False and return_waveform_overlay=True: Dict with 'text' and 'waveform_overlay'
+            If diarize=True: Dict with 'text', 'segments', 'diarized' keys (and 'waveform_overlay' if requested)
                 segments include 'start', 'end', 'speaker', and 'text' fields
+                waveform_overlay is a base64-encoded PNG string showing DSP processing stages
 
         Raises:
             TranscriptionServiceError: If transcription fails
@@ -176,8 +180,8 @@ class TranscriptionService:
                 safe_for_single_shot, export_format = is_single_shot_safe(audio_segment, source_format=file_extension)
 
             if safe_for_single_shot:
-                # PATH A: Single-shot transcription with comfort noise
-                logger.info("Using Path A: Single-shot transcription with comfort noise")
+                # PATH A: Single-shot transcription with silence excision
+                logger.info("Using Path A: Single-shot transcription with silence excision")
 
                 # Inject comfort noise into long silences to keep encoder alive
                 with log_stage_timing(
@@ -195,15 +199,15 @@ class TranscriptionService:
                         tail_ms=300
                     )
 
-                logger.info(f"Transcribing full audio (duration: {len(audio_segment)}ms, format: {export_format})")
+                logger.info(f"Transcribing full audio (duration: {len(processed_audio)}ms, format: {export_format})")
 
-                # Create a single chunk for the entire audio
+                # Create a single chunk for the entire (excised) audio
                 full_audio_chunk = AudioChunk(
-                    audio_segment=audio_segment,
+                    audio_segment=processed_audio,
                     logical_start_ms=0,
-                    logical_end_ms=len(audio_segment),
+                    logical_end_ms=len(processed_audio),
                     actual_start_ms=0,
-                    actual_end_ms=len(audio_segment),
+                    actual_end_ms=len(processed_audio),
                     chunk_index=0
                 )
 
@@ -219,6 +223,11 @@ class TranscriptionService:
             else:
                 # PATH B: Duration-based chunking fallback
                 logger.info("Using Path B: Duration-based chunking (file too large for single-shot)")
+
+                # Waveform overlay not supported for chunked transcription
+                waveform_overlay = None
+                # No excision in Path B — identity map
+                excision_map = ExcisionMap.identity(float(len(audio_segment)))
 
                 overlap_ms = 1_500
                 with log_stage_timing(
@@ -376,12 +385,20 @@ class TranscriptionService:
                 with log_stage_timing(logger, "transcribe_audio.format_diarized"):
                     diarized_text = format_diarized_transcript(normalized_segments)
 
-                return {
+                result_dict = {
                     'text': diarized_text,
                     'segments': normalized_segments,
                     'diarized': True
                 }
+                if return_waveform_overlay and waveform_overlay:
+                    result_dict['waveform_overlay'] = waveform_overlay
+                return result_dict
             else:
+                if return_waveform_overlay and waveform_overlay:
+                    return {
+                        'text': result_text,
+                        'waveform_overlay': waveform_overlay
+                    }
                 return result_text
 
         except Exception as e:

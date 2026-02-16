@@ -9,10 +9,14 @@ RUN mkdir utilities
 RUN apt-get update -y
 # RUN apt-get update && apt-get dist-upgrade -y
 
-# Install ffmpeg for audio processing (required by pydub)
-RUN apt-get install -y ffmpeg
+RUN apt-get update && \
+    apt-get install -y \
+        build-essential \
+        gcc \
+        ffmpeg \
+        wget && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN apt-get install -y wget
 RUN wget https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu1804-x86_64-100.6.0.tgz
 RUN mkdir /app/utilities/mongotools 
 RUN tar -xf mongodb-database-tools-ubuntu1804-x86_64-100.6.0.tgz -C /app/utilities/mongotools --strip-components 1

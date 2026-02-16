@@ -24,6 +24,7 @@ feedparser
 readability-lxml
 # robin_stocks
 markdown
+scipy
 sib_api_v3_sdk
 coinbase-advanced-py
 pydantic[email]
@@ -33,6 +34,7 @@ matplotlib
 pydub
 numba  # optional: JIT-accelerates IIR high-pass filter in audio_dsp (~14x speedup)
 numpy
+webrtcvad  # WebRTC VAD for speech/silence detection
 pytz
 # azure-identity
 # azure-mgmt-resource
