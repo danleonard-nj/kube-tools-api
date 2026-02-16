@@ -31,6 +31,7 @@ python-multipart
 aiofiles
 matplotlib
 pydub
+numba  # optional: JIT-accelerates IIR high-pass filter in audio_dsp (~14x speedup)
 numpy
 pytz
 # azure-identity

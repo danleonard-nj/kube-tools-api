@@ -24,6 +24,10 @@ ENV ARTIFACT_INDEX=https://${ARTIFACT_FEED}:${ARTIFACT_FEED_TOKEN}@pkgs.dev.azur
 COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt --extra-index-url=${ARTIFACT_INDEX}
 
+# Optional: numba JIT speeds up IIR filter in audio DSP.
+# The fallback pure-Python path works without it.
+RUN pip install numba || true
+
 RUN pip install uvloop
 RUN pip install uvicorn
 
