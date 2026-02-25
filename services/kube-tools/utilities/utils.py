@@ -176,8 +176,15 @@ def element_at(_list, index):
         return None
 
 
+# Set of background tasks — prevents GC from collecting tasks whose
+# exceptions were never retrieved, and avoids coroutine-frame retention.
+_background_tasks: set = set()
+
+
 def fire_task(coroutine):
-    asyncio.create_task(coroutine)
+    task = asyncio.create_task(coroutine)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 def clean_unicode(unicode_str):

@@ -2,3 +2,4 @@
 config.dev.json
 scripts/
 tests/
+debug/

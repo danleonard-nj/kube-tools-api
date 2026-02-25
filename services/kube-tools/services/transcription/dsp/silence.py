@@ -81,12 +81,25 @@ def _detect_silence_vad(
     frame_ms: int = 20,
     min_silence_ms: int = 1500,
     min_gap_ms: int = 400,
+    energy_ref: np.ndarray | None = None,
+    energy_gate_db: float = -40.0,
+    energy_gate_headroom_db: float = 20.0,
 ) -> np.ndarray:
-    """Detect silence using WebRTC VAD with gap merging.
+    """Detect silence using WebRTC VAD with energy gating and gap merging.
 
     WebRTC VAD classifies frames by spectral characteristics, not just
     energy — so transient spikes (mic bumps, taps) that exceed RMS
     thresholds are still correctly labelled as non-speech.
+
+    When *energy_ref* is supplied (typically the pre-compression signal),
+    an adaptive energy gate forces frames whose windowed RMS is below
+    a computed threshold to silence regardless of VAD output.  The
+    threshold is placed *energy_gate_headroom_db* below the estimated
+    speech level (90th percentile of the energy profile), capped at
+    *energy_gate_db* so it is never more aggressive than the absolute
+    ceiling.  This prevents the compressor's makeup gain from lifting
+    near-silent regions above the VAD's speech threshold while avoiding
+    false gating of quiet speech in low-gain recordings.
 
     Returns a boolean mask where True = silence (same semantics as
     the coarse mask from ``detect_long_silences``).
@@ -131,6 +144,41 @@ def _detect_silence_vad(
 
     # -- Invert: silence = ~speech ----------------------------------------
     silence_mask = ~speech_mask
+
+    # -- Energy gate: override VAD for near-silent frames -----------------
+    # The compressor lifts quiet regions significantly (e.g. -60 dBFS →
+    # -26 dBFS after 3:1 + makeup).  The VAD, running on the compressed
+    # signal, then classifies amplified noise as speech.  The energy gate
+    # uses the *pre-compression* signal to identify frames that are truly
+    # quiet and forces them to silence.
+    #
+    # The threshold is adaptive: it estimates the speech level from p90
+    # of the energy profile and places the gate headroom_db below it,
+    # capped at energy_gate_db.  Quiet speakers get a lower (less
+    # aggressive) gate so their speech is not incorrectly excised.
+    if energy_ref is not None:
+        energy_dbfs = _compute_windowed_dbfs(
+            energy_ref, sample_rate, window_ms=200,
+        )
+        finite_energy = energy_dbfs[np.isfinite(energy_dbfs)]
+        if len(finite_energy) > 0:
+            speech_est = float(np.percentile(finite_energy, 90))
+            adaptive_gate = speech_est - energy_gate_headroom_db
+            effective_gate = min(adaptive_gate, energy_gate_db)
+        else:
+            speech_est = float('nan')
+            effective_gate = energy_gate_db
+
+        energy_silent = energy_dbfs < effective_gate
+        n_energy_only = int(np.sum(energy_silent & ~silence_mask))
+        silence_mask = silence_mask | energy_silent
+        logger.info(
+            "Energy gate: threshold=%.1f dBFS (speech~%.1f, "
+            "headroom=%.0f, cap=%.0f), reclassified %d samples (%.0fms)",
+            effective_gate, speech_est, energy_gate_headroom_db,
+            energy_gate_db, n_energy_only,
+            n_energy_only * 1000.0 / sample_rate,
+        )
 
     # -- Gap merging: bridge short speech bursts between silence regions ---
     silence_mask, n_merged = _merge_short_gaps(

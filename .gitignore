@@ -18,3 +18,5 @@ services/kube-tools/scripts/ad_login_test.py
 dev.Dockerfile
 services/kube-tools/scripts/mcp_debug.json
 .gitignore
+
+**tmpclaude**

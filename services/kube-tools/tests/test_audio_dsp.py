@@ -275,6 +275,139 @@ class TestDetectSilenceVad:
         silence_fraction = np.mean(mask)
         assert silence_fraction < 0.3
 
+    def test_energy_gate_catches_quiet_region(self):
+        """Energy gate should detect near-silent regions that VAD misses
+        when running on a compressed signal.
+
+        Simulates the scenario where compression lifts a near-silent region
+        (with a small non-speech sound) above the VAD's speech threshold.
+        The energy gate uses the pre-compression signal to force those
+        frames to silence.
+        """
+        sr = 16_000
+        rng = np.random.RandomState(77)
+
+        # Build: 2s speech | 3s near-silence (with a tiny bump) | 2s speech
+        speech_amp = 0.3
+        n_speech = int(2.0 * sr)
+        n_quiet = int(3.0 * sr)
+        total = 2 * n_speech + n_quiet
+
+        # Pre-compression signal: quiet region at ~-55 dBFS with a small bump
+        pre_comp = np.zeros(total, dtype=np.float32)
+        pre_comp[:n_speech] = (rng.randn(n_speech) * speech_amp).astype(np.float32)
+        pre_comp[n_speech + n_quiet:] = (rng.randn(n_speech) * speech_amp).astype(np.float32)
+        # Tiny non-speech sound in the middle of the quiet region
+        bump_start = n_speech + int(1.2 * sr)
+        bump_len = int(0.3 * sr)
+        pre_comp[bump_start:bump_start + bump_len] = (
+            rng.randn(bump_len) * 0.005
+        ).astype(np.float32)
+
+        # Simulated post-compression signal: quiet region is amplified
+        post_comp = pre_comp.copy()
+        post_comp[n_speech:n_speech + n_quiet] *= 30.0  # simulate makeup gain
+
+        # Without energy gate: VAD on compressed signal may miss the silence
+        mask_no_gate = _detect_silence_vad(
+            post_comp, sr,
+            aggressiveness=2,
+            min_silence_ms=1000,
+            min_gap_ms=400,
+        )
+
+        # With energy gate: pre-compression reference catches it
+        mask_with_gate = _detect_silence_vad(
+            post_comp, sr,
+            aggressiveness=2,
+            min_silence_ms=1000,
+            min_gap_ms=400,
+            energy_ref=pre_comp,
+            energy_gate_db=-40.0,
+        )
+
+        # The quiet region should be detected as silence with the energy gate
+        quiet_start = n_speech + int(0.5 * sr)  # skip edges
+        quiet_end = n_speech + n_quiet - int(0.5 * sr)
+        gate_fraction = np.mean(mask_with_gate[quiet_start:quiet_end])
+        assert gate_fraction > 0.5, (
+            f"Energy gate should detect the quiet region as silence, "
+            f"got {gate_fraction:.2%}"
+        )
+
+    def test_adaptive_gate_preserves_quiet_speech(self):
+        """Adaptive gate should not excise quiet speech.
+
+        When the speaker is quiet, the pre-compression speech level may
+        hover near the fixed -40 dBFS gate threshold, causing portions of
+        speech to be incorrectly gated.  The adaptive gate should lower
+        the threshold based on the actual speech level so that quiet
+        speech is preserved while true silence is still gated.
+        """
+        sr = 16_000
+        rng = np.random.RandomState(88)
+
+        # Build: 2s quiet speech | 3s true silence | 2s quiet speech
+        speech_amp = 0.02  # ~-34 dBFS RMS — near the old fixed gate
+        n_speech = int(2.0 * sr)
+        n_quiet = int(3.0 * sr)
+        total = 2 * n_speech + n_quiet
+
+        pre_comp = np.zeros(total, dtype=np.float32)
+        pre_comp[:n_speech] = (rng.randn(n_speech) * speech_amp).astype(np.float32)
+        pre_comp[n_speech + n_quiet:] = (rng.randn(n_speech) * speech_amp).astype(np.float32)
+        # Add ambient noise floor in the silence region
+        pre_comp[n_speech:n_speech + n_quiet] = (
+            rng.randn(n_quiet) * 0.0005
+        ).astype(np.float32)
+
+        # Simulated post-compression: quiet speech lifted to normal levels
+        post_comp = pre_comp.copy()
+        post_comp *= 15.0  # simulate makeup gain
+
+        # With fixed gate at -40: quiet speech near -34 dBFS has samples
+        # that dip below -40, incorrectly gating speech
+        mask_fixed = _detect_silence_vad(
+            post_comp, sr,
+            aggressiveness=2,
+            min_silence_ms=1000,
+            min_gap_ms=400,
+            energy_ref=pre_comp,
+            energy_gate_db=-40.0,
+            energy_gate_headroom_db=0.0,  # disable adaptive → fixed gate
+        )
+
+        # With adaptive gate: threshold drops below quiet speech
+        mask_adaptive = _detect_silence_vad(
+            post_comp, sr,
+            aggressiveness=2,
+            min_silence_ms=1000,
+            min_gap_ms=400,
+            energy_ref=pre_comp,
+            energy_gate_db=-40.0,
+            energy_gate_headroom_db=20.0,
+        )
+
+        # Check speech regions are preserved with adaptive gate
+        speech_region = np.concatenate([
+            mask_adaptive[:n_speech],
+            mask_adaptive[n_speech + n_quiet:],
+        ])
+        speech_silence_frac = np.mean(speech_region)
+        assert speech_silence_frac < 0.3, (
+            f"Adaptive gate should preserve quiet speech, "
+            f"but {speech_silence_frac:.0%} of speech was marked as silence"
+        )
+
+        # Check silence region is still detected
+        quiet_start = n_speech + int(0.5 * sr)
+        quiet_end = n_speech + n_quiet - int(0.5 * sr)
+        silence_frac = np.mean(mask_adaptive[quiet_start:quiet_end])
+        assert silence_frac > 0.5, (
+            f"Adaptive gate should still detect true silence, "
+            f"got {silence_frac:.2%}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # _shape_injection_mask

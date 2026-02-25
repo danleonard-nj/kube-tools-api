@@ -48,7 +48,7 @@ from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration.configuration import Configuration
 from framework.di.service_collection import ServiceCollection
 from framework.di.static_provider import ProviderBase
-from httpx import AsyncClient
+from httpx import AsyncClient, Limits
 from models.bank_config import BankingConfig, PlaidConfig
 from models.calendar_models import CalendarConfig
 from models.coinbase_models import CoinbaseConfig
@@ -124,7 +124,14 @@ def configure_azure_ad(container):
 def configure_http_client(
     container: ServiceCollection
 ):
-    return AsyncClient(timeout=None)
+    return AsyncClient(
+        timeout=None,
+        limits=Limits(
+            max_connections=100,
+            max_keepalive_connections=20,
+            keepalive_expiry=30,
+        ),
+    )
 
 
 def configure_mongo_client(

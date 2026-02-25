@@ -1,9 +1,11 @@
+import gc
 import io
 from quart import Blueprint, Response, request
 from framework.rest.blueprints.meta import MetaBlueprint
 from framework.logger.providers import get_logger
 from services.transcription_service import TranscriptionService, TranscriptionServiceError
 from data.transcription_history_repository import TranscriptionHistoryRepository
+from utilities.memory import release_memory
 
 logger = get_logger(__name__)
 
@@ -78,6 +80,9 @@ async def transcribe_audio(container):
         audio_stream = io.BytesIO(audio_data)
         file_size = len(audio_data)
 
+        # Release the original bytes — the BytesIO stream holds its own copy
+        del audio_data
+
         # Perform transcription
         result = await transcription_service.transcribe_audio(
             audio_file=audio_stream,
@@ -87,6 +92,11 @@ async def transcribe_audio(container):
             diarize=diarize,
             return_waveform_overlay=return_waveform
         )
+
+        # Close the stream and force a GC pass to release audio memory
+        audio_stream.close()
+        del audio_stream
+        release_memory()
 
         # Service returns either a string (non-diarized) or dict (diarized)
         if isinstance(result, dict):

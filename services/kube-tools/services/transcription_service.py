@@ -6,6 +6,7 @@ logic lives in the ``services.transcription`` sub-package.  This module
 wires them together behind the public ``TranscriptionService`` class.
 """
 
+import gc
 import io
 import time
 from typing import BinaryIO, Optional, List, Tuple, Union, Dict
@@ -16,6 +17,7 @@ from openai import AsyncOpenAI
 from framework.logger import get_logger
 from models.openai_config import OpenAIConfig
 from data.transcription_history_repository import TranscriptionHistoryRepository
+from utilities.memory import release_memory
 
 # --- Sub-module imports (pure functions / data classes) ---------------
 from services.transcription.models import AudioChunk, ExcisionMap, PreprocessResult, WordToken
@@ -153,6 +155,10 @@ class TranscriptionService:
                         )
                     else:
                         audio_segment = AudioSegment.from_file(io.BytesIO(audio_data))
+
+                # Release compressed audio bytes — pydub has decoded into
+                # raw samples so we no longer need the original file data.
+                del audio_data
 
                 logger.info(f"Audio loaded: {len(audio_segment)}ms, "
                             f"{audio_segment.frame_rate}Hz, "
@@ -417,8 +423,16 @@ class TranscriptionService:
                 }
                 if return_waveform_overlay and waveform_overlay:
                     result_dict['waveform_overlay'] = waveform_overlay
+
+                # Explicit cleanup before returning
+                del audio_segment, all_words, all_segments
+                release_memory()
                 return result_dict
             else:
+                # Explicit cleanup before returning
+                del audio_segment
+                release_memory()
+
                 if return_waveform_overlay and waveform_overlay:
                     return {
                         'text': result_text,
@@ -427,6 +441,15 @@ class TranscriptionService:
                 return result_text
 
         except Exception as e:
+            # Ensure audio data is freed even on error
+            for _var in ('audio_data', 'audio_segment'):
+                if _var in locals():
+                    try:
+                        del locals()[_var]
+                    except Exception:
+                        pass
+            release_memory()
+
             error_msg = f"Failed to transcribe audio file {filename}: {e}"
             logger.error(error_msg, exc_info=True)
             raise TranscriptionServiceError(error_msg) from e
@@ -488,6 +511,7 @@ class TranscriptionService:
 
             # Get bytes to ensure buffer is properly read
             audio_bytes = chunk_buffer.getvalue()
+            chunk_buffer.close()  # Explicitly close BytesIO buffer
 
             # Validate that we have actual audio data
             if len(audio_bytes) < 1000:  # Less than 1KB is suspicious

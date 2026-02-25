@@ -35,6 +35,7 @@ coordinates, so diarisation and segment timings remain accurate.
 """
 
 import base64
+import gc
 import re
 import time
 from pathlib import Path
@@ -44,6 +45,7 @@ from pydub import AudioSegment
 
 from framework.logger import get_logger
 from services.transcription.models import ExcisionMap, PreprocessResult
+from utilities.memory import release_memory
 
 from services.transcription.dsp.compressor import limit_transients, compress_dynamic_range
 from services.transcription.dsp.silence import (
@@ -75,6 +77,8 @@ DEFAULT_MIN_GAP_MS = 400
 DEFAULT_GRACE_MS = 150
 DEFAULT_TAIL_MS = 150
 DEFAULT_NOISE_LEVEL_DB = -58.0
+DEFAULT_ENERGY_GATE_DB = -40.0
+DEFAULT_ENERGY_GATE_HEADROOM_DB = 20.0
 TRAILING_PAD_MS = 500
 
 
@@ -179,22 +183,34 @@ def preprocess_for_transcription(
     if _dbg:
         _dump_debug_audio(compressed_mono, sr, _dbg / "02_compressed.wav")
 
+    # Free raw numpy arrays no longer needed (can be tens of MB each)
+    del raw_i16
+
     # ── Stage 3: VAD silence detection (on compressed mono) ──────────────
     silence_mask = _detect_silence_vad(
         compressed_mono, sr,
         aggressiveness=DEFAULT_VAD_AGGRESSIVENESS,
         min_silence_ms=min_silence_ms,
         min_gap_ms=DEFAULT_MIN_GAP_MS,
+        energy_ref=limited_mono,
+        energy_gate_db=DEFAULT_ENERGY_GATE_DB,
+        energy_gate_headroom_db=DEFAULT_ENERGY_GATE_HEADROOM_DB,
     )
 
     # ── Stage 4: Silence excision ────────────────────────────────────────
     # Compose limiter and compressor gains and apply once to all channels
     total_gain = limiter_gain * compressor_gain
+    # Free individual gain arrays — combined into total_gain
+    del limiter_gain, compressor_gain
+
     out_2d = samples_2d.astype(np.float32) / np.float32(32768.0)
+    del samples_2d  # Free large int16 2D array
     for ch in range(channels):
         out_2d[:, ch] *= total_gain
+    del total_gain  # No longer needed after application
     out_2d = np.clip(out_2d, -1.0, 1.0)
     comp_i16 = (out_2d * np.float32(32768.0)).astype(np.int16)
+    del out_2d  # Free float32 2D intermediate
 
     silence_processed = False
     inj_mask = np.zeros(num_frames, dtype=bool)
@@ -303,6 +319,7 @@ def preprocess_for_transcription(
     # ── Debug: final + overlay ───────────────────────────────────────────
     waveform_overlay_b64 = None
     final_mono = final_2d.mean(axis=1).astype(np.float32)
+    del final_2d  # Free large float32 2D array
 
     if _dbg:
         _dump_debug_audio(final_mono, sr, _dbg / "05_final.wav")
@@ -318,6 +335,11 @@ def preprocess_for_transcription(
         )
         if overlay_bytes:
             waveform_overlay_b64 = base64.b64encode(overlay_bytes).decode('utf-8')
+
+    # Free remaining large arrays before returning
+    del mono, final_mono, silence_mask, inj_mask, compressed_mono, limited_mono
+    del final_i16
+    release_memory()
 
     return PreprocessResult(
         audio=result,
