@@ -12,7 +12,8 @@ from models.email_config import EmailConfig
 from routes import (acr_bp, android_bp, api_event_history_bp, bank_bp,
                     calendar_bp, conversation_bp, google_bp, kubernetes_bp,
                     location_history_bp, mongo_backup_bp, podcasts_bp,
-                    redis_bp, torrent_bp, transcription_bp, usage_bp, weather_bp, ts_bp, plaid_bp)
+                    redis_bp, torrent_bp, transcription_bp, usage_bp, weather_bp, ts_bp, plaid_bp,
+                    stock_monitor_bp)
 from sib_api_v3_sdk import ApiClient, Configuration as SibConfiguration
 from sib_api_v3_sdk.api.transactional_emails_api import TransactionalEmailsApi
 from sib_api_v3_sdk.models import SendSmtpEmail
@@ -48,6 +49,7 @@ app.register_blueprint(transcription_bp)
 app.register_blueprint(android_bp)
 app.register_blueprint(ts_bp)
 app.register_blueprint(plaid_bp)
+app.register_blueprint(stock_monitor_bp)
 
 provider = ContainerProvider.get_service_provider()
 

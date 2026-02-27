@@ -1,6 +1,6 @@
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
-from azure.storage.blob import BlobProperties
+from azure.storage.blob import BlobProperties, ContentSettings
 from azure.storage.blob.aio import BlobServiceClient, ContainerClient
 from framework.configuration.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
@@ -52,6 +52,43 @@ class StorageClient:
             logger.info('Uploading blob data to storage')
             await blob_client.upload_blob(blob_data)
             logger.info('Blob uploaded successfully')
+
+    async def upload_blob_with_url(
+        self,
+        container_name: str,
+        blob_name: str,
+        blob_data: bytes,
+        content_type: str = 'application/octet-stream'
+    ) -> str:
+        """Upload a blob with content type and return its public URL.
+
+        The container must have public/blob-level read access enabled
+        for the returned URL to be accessible without SAS tokens.
+        """
+
+        ArgumentNullException.if_none_or_whitespace(
+            container_name, 'container_name')
+        ArgumentNullException.if_none_or_whitespace(
+            blob_name, 'blob_name')
+        ArgumentNullException.if_none(
+            blob_data, 'blob_data')
+
+        logger.info(f'Uploading blob with URL: {container_name}/{blob_name}')
+
+        async with self._get_blob_service_client() as client:
+            container_client = client.get_container_client(
+                container=container_name)
+            blob_client = container_client.get_blob_client(blob_name)
+
+            await blob_client.upload_blob(
+                blob_data,
+                overwrite=True,
+                content_settings=ContentSettings(
+                    content_type=content_type))
+
+            url = blob_client.url
+            logger.info(f'Blob uploaded: {url}')
+            return url
 
     async def get_blobs(
         self,

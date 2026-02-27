@@ -12,6 +12,7 @@ from clients.identity_client import IdentityClient
 from clients.open_weather_client import OpenWeatherClient
 from clients.plaid_client import PlaidClient
 from clients.sib_client import SendInBlueClient
+from clients.stock_quote_client import StockQuoteClient
 from clients.storage_client import StorageClient
 from clients.torrent_client import TorrentClient
 from clients.twilio_gateway import TwilioGatewayClient
@@ -36,6 +37,7 @@ from data.mongo_export_repository import MongoExportRepository
 from data.plaid_repository import PlaidAccountRepository, PlaidAdminItemRepository, PlaidSyncRepository, PlaidTransactionRepository
 from data.podcast_repository import PodcastRepository
 from data.sms_inbound_repository import InboundSMSRepository
+from data.stock_monitor_repository import StockAlertStateRepository, StockTickRepository
 from data.transcription_history_repository import TranscriptionHistoryRepository
 from data.ts_repository import TruthSocialRepository
 from data.weather_repository import WeatherRepository
@@ -55,6 +57,7 @@ from models.coinbase_models import CoinbaseConfig
 from models.email_config import EmailConfig
 from models.openai_config import OpenAIConfig
 from models.podcast_config import PodcastConfig
+from models.stock_monitor_config import StockMonitorConfig
 from motor.motor_asyncio import AsyncIOMotorClient
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
@@ -91,6 +94,7 @@ from services.torrent_service import TorrentService
 from services.ts_push_service import TruthSocialConfig, TruthSocialPushService
 from services.usage_service import UsageService
 from openai import AsyncOpenAI
+from services.stock_monitor_service import StockMonitorService
 from services.weather_service import WeatherService
 from services.transcription_service import TranscriptionService
 
@@ -195,6 +199,7 @@ def register_configs(descriptors):
     register_config(CalendarConfig, 'calendar')
     register_config(OpenAIConfig, 'openai')
     register_config(BankingConfig, 'banking')
+    register_config(StockMonitorConfig, 'stock_monitor')
 
 
 def register_gmail_services(
@@ -231,6 +236,7 @@ def register_clients(
     descriptors.add_singleton(CoinbaseClient)
     descriptors.add_singleton(CoinbaseRESTClient)
     descriptors.add_singleton(SendInBlueClient)
+    descriptors.add_singleton(StockQuoteClient)
     descriptors.add_singleton(GPTClient)
 
 
@@ -262,6 +268,8 @@ def register_repositories(
     descriptors.add_singleton(PlaidSyncRepository)
     descriptors.add_singleton(TranscriptionHistoryRepository)
     descriptors.add_singleton(TruthSocialRepository)
+    descriptors.add_singleton(StockTickRepository)
+    descriptors.add_singleton(StockAlertStateRepository)
 
 
 def register_services(
@@ -297,6 +305,7 @@ def register_services(
     descriptors.add_singleton(PlaidSyncService)
     descriptors.add_singleton(OpenAiUsageService)
     descriptors.add_singleton(PlaidUsageService)
+    descriptors.add_singleton(StockMonitorService)
 
 
 class ContainerProvider(ProviderBase):
