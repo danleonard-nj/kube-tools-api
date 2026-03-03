@@ -1,15 +1,15 @@
 from framework.logger.providers import get_logger
-from framework.rest.blueprints.meta import OpenAuthBlueprint
+from framework.rest.blueprints.meta import MetaBlueprint
 from quart import request
 
 from services.stock_monitor_service import StockMonitorService
 
 logger = get_logger(__name__)
 
-stock_monitor_bp = OpenAuthBlueprint('stock_monitor_bp', __name__)
+stock_monitor_bp = MetaBlueprint('stock_monitor_bp', __name__)
 
 
-@stock_monitor_bp.configure('/api/stock/monitor/poll', methods=['POST'])
+@stock_monitor_bp.configure('/api/stock/monitor/poll', methods=['POST'], auth_scheme='default')
 async def post_stock_monitor_poll(container):
     """Poll endpoint called by scheduler every 5 minutes.
 
@@ -23,6 +23,8 @@ async def post_stock_monitor_poll(container):
     service: StockMonitorService = container.resolve(StockMonitorService)
 
     body = await request.get_json(silent=True) or {}
+
+    logger.info(f'Received stock monitor poll request with body: {body}')
 
     sell_threshold = body.get('sell_threshold')
     floor_threshold = body.get('floor_threshold')

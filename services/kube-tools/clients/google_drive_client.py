@@ -22,7 +22,8 @@ class GoogleDriveClient:
         self,
         filename: str,
         data: bytes,
-        parent_directory: str = None
+        parent_directory: str = None,
+        mimetype: str = 'audio/mpeg'
     ):
         client = await self._get_client()
 
@@ -32,7 +33,7 @@ class GoogleDriveClient:
         upload = GoogleDriveFileUpload(
             filename=filename,
             data=data,
-            mimetype='audio/mpeg',
+            mimetype=mimetype,
             parent_directory=parent_directory)
 
         file = client.files().create(
@@ -71,6 +72,7 @@ class GoogleDriveClient:
 
         logger.info(f'Checking if file exists: {filename} in directory: {directory_id}')
         query = f"name='{filename}' and trashed=false and '{directory_id}' in parents"
+        logger.info(f'Gmail Query: {query}')
         # query = f"name='{filename}' and trashed=false"
 
         results = client.files().list(q=query, spaces='drive',

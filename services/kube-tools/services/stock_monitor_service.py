@@ -118,6 +118,8 @@ class StockMonitorService:
             ticker, current_price, floor_threshold)
         triggered_events.extend(floor_events)
 
+        logger.info(f'Evaluated SELL/FLOOR alerts for {ticker}: {triggered_events}')
+
         # SWING alert (regular hours only)
         if market_session == MarketSession.REGULAR:
             swing_result = await self._evaluate_swing(
@@ -125,6 +127,8 @@ class StockMonitorService:
             triggered_events.extend(swing_result['events'])
             session_open_price = swing_result.get('session_open_price')
             intraday_move_percent = swing_result.get('intraday_move_percent')
+
+            logger.info(f'Evaluated SWING alerts for {ticker}: {swing_result["events"]}')
 
         # 6 + 7) If any alerts triggered, generate charts and send email
         if triggered_events:
@@ -236,35 +240,42 @@ class StockMonitorService:
 
     # ── Alert evaluation ────────────────────────────────────
 
+    def _within_cooldown(self, state: Optional[dict]) -> bool:
+        """True if we alerted recently and should suppress."""
+        if not state or not state.get('last_triggered_at'):
+            logger.info(f'No prior alert state or timestamp, not within cooldown')
+            return False
+        elapsed = datetime.utcnow() - state['last_triggered_at']
+        is_within_cooldown = elapsed < timedelta(minutes=self._config.swing_cooldown_minutes)
+        if is_within_cooldown:
+            logger.info(f'Alert triggered recently ({elapsed}), within cooldown: {state}')
+        return is_within_cooldown
+
     async def _evaluate_sell(
         self, ticker: str, price: float, threshold: float
     ) -> list[str]:
-        state = await self._alert_repo.get_alert_state(ticker, AlertType.SELL.value)
-        is_triggered = state.get('is_triggered', False) if state else False
+        if price < threshold:
+            return []
 
-        if price >= threshold and not is_triggered:
-            await self._alert_repo.set_triggered(ticker, AlertType.SELL.value)
-            logger.info(f'{ticker} SELL alert triggered at {price} (threshold {threshold})')
-            return [f'SELL threshold (${threshold}) crossed -- now ${price:.2f}']
-        elif price < threshold and is_triggered:
-            await self._alert_repo.reset_alert(ticker, AlertType.SELL.value)
-            logger.info(f'{ticker} SELL alert reset (price {price} below {threshold})')
-        return []
+        if self._within_cooldown(await self._alert_repo.get_alert_state(ticker, AlertType.SELL.value)):
+            return []
+
+        await self._alert_repo.set_triggered(ticker, AlertType.SELL.value)
+        logger.info(f'{ticker} SELL alert triggered at {price} (threshold {threshold})')
+        return [f'SELL threshold (${threshold}) crossed -- now ${price:.2f}']
 
     async def _evaluate_floor(
         self, ticker: str, price: float, threshold: float
     ) -> list[str]:
-        state = await self._alert_repo.get_alert_state(ticker, AlertType.FLOOR.value)
-        is_triggered = state.get('is_triggered', False) if state else False
+        if price > threshold:
+            return []
 
-        if price <= threshold and not is_triggered:
-            await self._alert_repo.set_triggered(ticker, AlertType.FLOOR.value)
-            logger.info(f'{ticker} FLOOR alert triggered at {price} (threshold {threshold})')
-            return [f'FLOOR threshold (${threshold}) crossed -- now ${price:.2f}']
-        elif price > threshold and is_triggered:
-            await self._alert_repo.reset_alert(ticker, AlertType.FLOOR.value)
-            logger.info(f'{ticker} FLOOR alert reset (price {price} above {threshold})')
-        return []
+        if self._within_cooldown(await self._alert_repo.get_alert_state(ticker, AlertType.FLOOR.value)):
+            return []
+
+        await self._alert_repo.set_triggered(ticker, AlertType.FLOOR.value)
+        logger.info(f'{ticker} FLOOR alert triggered at {price} (threshold {threshold})')
+        return [f'FLOOR threshold (${threshold}) crossed -- now ${price:.2f}']
 
     async def _evaluate_swing(
         self,
@@ -307,18 +318,11 @@ class StockMonitorService:
             return result
 
         direction = AlertType.SWING_UP if move_pct > 0 else AlertType.SWING_DOWN
-        trading_day = now_et.strftime('%Y-%m-%d')
 
-        state = await self._alert_repo.get_alert_state(ticker, direction.value)
-        is_triggered = state.get('is_triggered', False) if state else False
-        state_day = state.get('trading_day') if state else None
-
-        # Allow one alert per direction per trading day
-        if is_triggered and state_day == trading_day:
+        if self._within_cooldown(await self._alert_repo.get_alert_state(ticker, direction.value)):
             return result
 
-        await self._alert_repo.set_triggered(
-            ticker, direction.value, trading_day=trading_day)
+        await self._alert_repo.set_triggered(ticker, direction.value)
 
         pct_str = f'{move_pct:+.1%}'
         event_str = f'Intraday swing {pct_str} -- now ${price:.2f} (open ${session_open_price:.2f})'

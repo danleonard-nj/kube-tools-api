@@ -116,7 +116,6 @@ class StockAlertStateRepository(MongoRepositoryAsync):
             '$set': {
                 'ticker': ticker,
                 'alert_type': alert_type,
-                'is_triggered': True,
                 'last_triggered_at': datetime.utcnow(),
             }
         }
@@ -126,17 +125,4 @@ class StockAlertStateRepository(MongoRepositoryAsync):
         await self.collection.update_one(
             {'ticker': ticker, 'alert_type': alert_type},
             update,
-            upsert=True)
-
-    async def reset_alert(
-        self,
-        ticker: str,
-        alert_type: str
-    ):
-        await self.collection.update_one(
-            {'ticker': ticker, 'alert_type': alert_type},
-            {'$set': {
-                'is_triggered': False,
-                'last_reset_at': datetime.utcnow()
-            }},
             upsert=True)
