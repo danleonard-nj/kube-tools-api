@@ -18,8 +18,11 @@ class StockQuoteClient:
     async def get_current_price(
         self,
         ticker: str
-    ) -> Optional[float]:
-        """Fetch the latest quote price for a ticker."""
+    ) -> Optional[dict]:
+        """Fetch the latest quote price and market open for a ticker.
+
+        Returns a dict with 'price' and 'market_open' keys, or None on failure.
+        """
 
         url = f'{YAHOO_CHART_URL}/{ticker}'
         params = {
@@ -47,9 +50,19 @@ class StockQuoteClient:
 
         meta = result[0].get('meta', {})
         price = meta.get('regularMarketPrice')
+        market_open = meta.get('regularMarketOpen')
+        previous_close = meta.get('chartPreviousClose') or meta.get('previousClose')
 
-        logger.info(f'{ticker} current price: {price}')
-        return float(price) if price is not None else None
+        logger.info(f'{ticker} current price: {price}, market open: {market_open}, previous close: {previous_close}')
+
+        if price is None:
+            return None
+
+        return {
+            'price': float(price),
+            'market_open': float(market_open) if market_open is not None else None,
+            'previous_close': float(previous_close) if previous_close is not None else None,
+        }
 
     async def get_history_bars(
         self,

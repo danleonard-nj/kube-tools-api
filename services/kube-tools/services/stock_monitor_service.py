@@ -67,8 +67,8 @@ class StockMonitorService:
         now_et = datetime.now(ET)
 
         # 1) Fetch current price
-        current_price = await self._quote_client.get_current_price(ticker)
-        if current_price is None:
+        quote = await self._quote_client.get_current_price(ticker)
+        if quote is None:
             logger.error(f'Failed to fetch price for {ticker}')
             return {
                 'ticker': ticker,
@@ -76,6 +76,10 @@ class StockMonitorService:
                 'error': 'Failed to fetch current price',
                 'triggered_events': [],
             }
+
+        current_price = quote['price']
+        market_open_price = quote.get('market_open')
+        previous_close = quote.get('previous_close')
 
         market_session = get_market_session(now_et)
 
@@ -123,7 +127,8 @@ class StockMonitorService:
         # SWING alert (regular hours only)
         if market_session == MarketSession.REGULAR:
             swing_result = await self._evaluate_swing(
-                ticker, current_price, swing_percent, now_et, now_utc)
+                ticker, current_price, swing_percent, now_et, now_utc,
+                market_open_price=market_open_price)
             triggered_events.extend(swing_result['events'])
             session_open_price = swing_result.get('session_open_price')
             intraday_move_percent = swing_result.get('intraday_move_percent')
@@ -283,7 +288,8 @@ class StockMonitorService:
         price: float,
         swing_pct: float,
         now_et: datetime,
-        now_utc: datetime
+        now_utc: datetime,
+        market_open_price: Optional[float] = None
     ) -> dict:
         result = {'events': [], 'session_open_price': None, 'intraday_move_percent': None}
 
@@ -293,19 +299,26 @@ class StockMonitorService:
         if not (MARKET_OPEN <= now_et.time() < MARKET_CLOSE):
             return result
 
-        # Build today's session start in UTC
-        session_start_et = now_et.replace(
-            hour=9, minute=30, second=0, microsecond=0)
-        session_start_utc = session_start_et.astimezone(pytz.utc).replace(tzinfo=None)
+        # Use the actual market open price from the API when available,
+        # fall back to the first recorded tick only as a last resort
+        session_open_price = market_open_price
 
-        open_tick = await self._tick_repo.get_session_open_tick(
-            ticker, session_start_utc)
+        if session_open_price is None:
+            session_start_et = now_et.replace(
+                hour=9, minute=30, second=0, microsecond=0)
+            session_start_utc = session_start_et.astimezone(pytz.utc).replace(tzinfo=None)
 
-        if not open_tick:
-            logger.warning(f'No session open tick found for {ticker}')
-            return result
+            open_tick = await self._tick_repo.get_session_open_tick(
+                ticker, session_start_utc)
 
-        session_open_price = open_tick['price']
+            if not open_tick:
+                logger.warning(f'No session open tick found for {ticker}')
+                return result
+
+            session_open_price = open_tick['price']
+            logger.warning(f'Using first polled tick as open price ({session_open_price}) '
+                           f'-- API open was unavailable')
+
         result['session_open_price'] = session_open_price
 
         if session_open_price == 0:
