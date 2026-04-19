@@ -6,57 +6,58 @@ from httpx import AsyncClient
 logger = get_logger(__name__)
 
 YAHOO_CHART_URL = 'https://query1.finance.yahoo.com/v8/finance/chart'
+_HEADERS = {'User-Agent': 'Mozilla/5.0'}
 
 
 class StockQuoteClient:
-    def __init__(
-        self,
-        http_client: AsyncClient
-    ):
+    def __init__(self, http_client: AsyncClient):
         self._http_client = http_client
 
-    async def get_current_price(
-        self,
-        ticker: str
-    ) -> Optional[dict]:
-        """Fetch the latest quote price and market open for a ticker.
-
-        Returns a dict with 'price' and 'market_open' keys, or None on failure.
-        """
-
+    async def _fetch_chart(self, ticker: str, range_str: str, interval: str) -> Optional[dict]:
+        """Shared Yahoo Finance chart fetch. Returns the first result node or None."""
         url = f'{YAHOO_CHART_URL}/{ticker}'
-        params = {
-            'range': '1d',
-            'interval': '1m',
-        }
-
-        logger.info(f'Fetching current price for {ticker}')
-
         response = await self._http_client.get(
             url=url,
-            params=params,
-            headers={'User-Agent': 'Mozilla/5.0'}
-        )
+            params={'range': range_str, 'interval': interval},
+            headers=_HEADERS)
 
         if response.status_code != 200:
-            logger.error(f'Yahoo Finance returned {response.status_code} for {ticker}')
+            logger.error(f'{ticker}: Yahoo Finance returned {response.status_code}')
             return None
 
-        data = response.json()
-        result = data.get('chart', {}).get('result')
-        if not result:
-            logger.error(f'No chart result for {ticker}')
+        results = response.json().get('chart', {}).get('result')
+        if not results:
+            logger.error(f'{ticker}: empty chart result')
             return None
 
-        meta = result[0].get('meta', {})
+        return results[0]
+
+    async def get_current_price(self, ticker: str) -> Optional[dict]:
+        """Returns current price, session open, and previous close for a ticker.
+
+        Keys: price, market_open, previous_close.  Returns None on failure.
+        """
+        result = await self._fetch_chart(ticker, range_str='1d', interval='1m')
+        if result is None:
+            return None
+
+        meta = result.get('meta', {})
         price = meta.get('regularMarketPrice')
+        if price is None:
+            logger.error(f'{ticker}: regularMarketPrice missing from meta')
+            return None
+
         market_open = meta.get('regularMarketOpen')
         previous_close = meta.get('chartPreviousClose') or meta.get('previousClose')
 
-        logger.info(f'{ticker} current price: {price}, market open: {market_open}, previous close: {previous_close}')
+        # Yahoo occasionally omits regularMarketOpen from meta; fall back to
+        # the first value in the intraday open series.
+        if market_open is None:
+            opens = result.get('indicators', {}).get('quote', [{}])[0].get('open', [])
+            market_open = next((v for v in opens if v is not None), None)
 
-        if price is None:
-            return None
+        logger.info(
+            f'{ticker}: price={price}, market_open={market_open}, previous_close={previous_close}')
 
         return {
             'price': float(price),
@@ -70,45 +71,19 @@ class StockQuoteClient:
         range_str: str = '5d',
         interval: str = '5m'
     ) -> list[dict]:
-        """Fetch historical OHLC bars for backfill.
-
-        Returns list of dicts with keys: ts (unix), close (float).
-        """
-
-        url = f'{YAHOO_CHART_URL}/{ticker}'
-        params = {
-            'range': range_str,
-            'interval': interval,
-        }
-
-        logger.info(f'Fetching history bars for {ticker} range={range_str} interval={interval}')
-
-        response = await self._http_client.get(
-            url=url,
-            params=params,
-            headers={'User-Agent': 'Mozilla/5.0'}
-        )
-
-        if response.status_code != 200:
-            logger.error(f'Yahoo Finance history returned {response.status_code} for {ticker}')
+        """Returns historical bars for backfill as a list of {ts, close} dicts."""
+        result = await self._fetch_chart(ticker, range_str=range_str, interval=interval)
+        if result is None:
             return []
 
-        data = response.json()
-        result = data.get('chart', {}).get('result')
-        if not result:
-            logger.error(f'No chart history result for {ticker}')
-            return []
+        timestamps = result.get('timestamp', [])
+        closes = result.get('indicators', {}).get('quote', [{}])[0].get('close', [])
 
-        timestamps = result[0].get('timestamp', [])
-        closes = result[0].get('indicators', {}).get('quote', [{}])[0].get('close', [])
+        bars = [
+            {'ts': ts, 'close': float(close)}
+            for ts, close in zip(timestamps, closes)
+            if close is not None
+        ]
 
-        bars = []
-        for ts, close in zip(timestamps, closes):
-            if close is not None:
-                bars.append({
-                    'ts': ts,
-                    'close': float(close)
-                })
-
-        logger.info(f'Fetched {len(bars)} bars for {ticker}')
+        logger.info(f'{ticker}: fetched {len(bars)} history bars (range={range_str}, interval={interval})')
         return bars

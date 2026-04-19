@@ -1,140 +1,149 @@
-"""DSP pipeline: limit → compress → VAD silence detection → excise → noise floor.
+"""Silence-budgeting preprocessor for gpt-4o-transcribe.
 
-Production-grade single-pipeline preprocessor for gpt-4o-transcribe.
+Strategy
+--------
+Don't filter, don't compress, don't level-shift speech.  Just cap dead
+air.  Silero VAD identifies speech regions in the original audio; every
+inter-region gap longer than ``max_silence_ms`` is symmetrically capped
+(keep the head + tail, drop the middle).  Everything else passes through
+untouched.
 
-Why each stage exists
----------------------
-1. **Transient limiter** — Brick-wall ceiling with lookahead prevents
-   clipping artifacts that confuse the ASR encoder into hallucinating
-   phonemes from distortion harmonics.
-
-2. **Dynamic range compressor** — Tames loud-after-quiet transitions.
-   gpt-4o-transcribe interprets a sudden energy jump after a quiet
-   passage as a new utterance boundary, emitting <|endoftext|>.
-   Compression smooths the envelope so energy transitions are gradual.
-
-3. **VAD silence detection** — WebRTC VAD classifies frames by spectral
-   characteristics (not just energy), so transient spikes like mic bumps
-   or taps don't fool it.  Only silence regions longer than
-   *min_silence_ms* are flagged.
-
-4. **Silence excision** — Physically removes flagged silence (with
-   grace/tail context preserved) so the encoder never sees a long
-   zero-energy span.  gpt-4o-transcribe emits <|endoftext|> on gaps
-   >~1.5 s; excision prevents this without injecting artificial noise.
-
-5. **Flat noise floor** — Adds very low-level white noise across the
-   entire output to prevent true digital silence, which can trigger
-   codec artefacts and ASR end-of-stream heuristics in edge cases.
-
-Timestamp remapping
--------------------
-The ``ExcisionMap`` returned alongside the processed audio translates
-timestamps from excised-audio coordinates back to original-audio
-coordinates, so diarisation and segment timings remain accurate.
+The single tuning knob is ``max_silence_ms``.  Don't add more.
 """
 
+from __future__ import annotations
+
 import base64
-import gc
 import re
 import time
+from math import gcd
 from pathlib import Path
+from typing import List, Tuple
 
 import numpy as np
 from pydub import AudioSegment
+from scipy.signal import resample_poly
 
 from framework.logger import get_logger
 from services.transcription.models import ExcisionMap, PreprocessResult
 from utilities.memory import release_memory
 
-from services.transcription.dsp.compressor import limit_transients, compress_dynamic_range
-from services.transcription.dsp.silence import (
-    _find_mask_runs,
-    _shape_injection_mask,
-    _detect_silence_vad,
-)
 from services.transcription.dsp.debug import (
     DEBUG_DSP,
     _dump_debug_audio,
     _plot_excision_overlay,
 )
+from services.transcription.dsp.vad import (
+    compute_speech_probabilities,
+    hysteresis_speech_regions,
+    FRAME_MS,
+    VAD_SR,
+)
 
 logger = get_logger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Validated pipeline defaults
-# ---------------------------------------------------------------------------
-DEFAULT_COMPRESSOR_RATIO = 3.0
-DEFAULT_COMPRESSOR_THRESHOLD_DB = -30.0
-DEFAULT_COMPRESSOR_ATTACK_MS = 10.0
-DEFAULT_COMPRESSOR_RELEASE_MS = 100.0
-DEFAULT_MAKEUP_TARGET_DB = -16.0
-DEFAULT_LIMITER_CEILING_DB = -6.0
-DEFAULT_VAD_AGGRESSIVENESS = 2
-DEFAULT_MIN_SILENCE_MS = 1000
-DEFAULT_MIN_GAP_MS = 400
-DEFAULT_GRACE_MS = 150
-DEFAULT_TAIL_MS = 150
-DEFAULT_NOISE_LEVEL_DB = -58.0
-DEFAULT_ENERGY_GATE_DB = -40.0
-DEFAULT_ENERGY_GATE_HEADROOM_DB = 20.0
-TRAILING_PAD_MS = 500
+DEFAULT_MAX_SILENCE_MS = 800
+P_HI = 0.5
+P_LO = 0.35
+MIN_SPEECH_MS = 120.0
+MIN_SILENCE_MS = 300.0
+COMFORT_NOISE_MS = 300
+COMFORT_NOISE_DBFS = -58.0
 
 
-# ---------------------------------------------------------------------------
-# Main pipeline entry point
-# ---------------------------------------------------------------------------
+def _budget_keep_regions(
+    speech_regions_ms: List[Tuple[float, float]],
+    total_ms: float,
+    max_silence_ms: int,
+) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float, float]]]:
+    """Return ``(keep_regions_ms, annotations)`` for the original timeline.
+
+    Walk gaps between consecutive speech regions (including the head
+    before the first and the tail after the last).  A gap longer than
+    ``max_silence_ms`` is capped symmetrically — keep ``max_silence_ms/2``
+    from each end, drop the middle.  Shorter gaps pass through intact.
+
+    Annotations are ``(gap_start_ms, gap_end_ms, capped_ms)`` for every
+    gap that was actually capped; the overlay uses these to label
+    ``Xms → Yms`` on the raw waveform.
+    """
+    half_cap = max_silence_ms / 2.0
+
+    # boundary pattern: gap, speech, gap, speech, ..., gap
+    boundaries: List[float] = [0.0]
+    for s, e in speech_regions_ms:
+        boundaries.extend([s, e])
+    boundaries.append(total_ms)
+
+    keep: List[Tuple[float, float]] = []
+    annotations: List[Tuple[float, float, float]] = []
+
+    for i in range(0, len(boundaries) - 1, 2):
+        gap_s, gap_e = boundaries[i], boundaries[i + 1]
+        gap_len = gap_e - gap_s
+        if gap_len > max_silence_ms:
+            keep.append((gap_s, gap_s + half_cap))
+            keep.append((gap_e - half_cap, gap_e))
+            annotations.append((gap_s, gap_e, float(max_silence_ms)))
+        elif gap_len > 0:
+            keep.append((gap_s, gap_e))
+        if i + 2 <= len(boundaries) - 1:
+            sp_s, sp_e = boundaries[i + 1], boundaries[i + 2]
+            if sp_e > sp_s:
+                keep.append((sp_s, sp_e))
+
+    # Merge touching regions so the ExcisionMap stays compact.
+    merged: List[Tuple[float, float]] = []
+    for s, e in keep:
+        if merged and abs(s - merged[-1][1]) < 1e-6:
+            merged[-1] = (merged[-1][0], e)
+        else:
+            merged.append((s, e))
+    return merged, annotations
+
 
 def preprocess_for_transcription(
     audio_segment: AudioSegment,
-    min_silence_ms: int = DEFAULT_MIN_SILENCE_MS,
+    max_silence_ms: int = DEFAULT_MAX_SILENCE_MS,
     debug_tag: str | None = None,
     return_waveform_overlay: bool = False,
 ) -> PreprocessResult:
-    """Preprocess audio for gpt-4o-transcribe: limit → compress → excise → noise floor.
+    """Cap long silences in ``audio_segment`` for safe single-shot ASR.
 
-    This is the single production DSP pipeline.  It produces an
-    ``AudioSegment`` that is safe for single-shot transcription (no long
-    silences that trigger <|endoftext|>) plus an ``ExcisionMap`` for
-    remapping timestamps back to the original recording.
-
-    Args:
-        audio_segment: Input audio (any sample rate, any channel count).
-        min_silence_ms: Minimum silence duration in ms to trigger excision.
-            Shorter silences are left intact.
-        debug_tag: Optional tag for debug artifact filenames (used when
-            ``DSP_DEBUG=1`` is set in the environment).
-        return_waveform_overlay: If True, include a base64-encoded PNG
-            waveform overlay in the result.
-
-    Returns:
-        ``PreprocessResult`` containing the processed audio, an
-        ``ExcisionMap`` for timestamp remapping, and an optional
-        waveform overlay PNG.
+    Returns the processed audio (original samples concatenated, plus a
+    short comfort-noise tail), an ``ExcisionMap`` for timestamp
+    remapping, and an optional base64 PNG overlay.
     """
     t0 = time.perf_counter()
     sr = audio_segment.frame_rate
     channels = audio_segment.channels
+    sample_width = audio_segment.sample_width
+    total_ms = float(len(audio_segment))
 
     logger.info(
-        "pipeline: min_silence=%dms audio=%dms sr=%d ch=%d",
-        min_silence_ms, len(audio_segment), sr, channels,
+        "pipeline: max_silence=%dms audio=%.0fms sr=%d ch=%d",
+        max_silence_ms, total_ms, sr, channels,
     )
 
-    # ── Convert to numpy ─────────────────────────────────────────────────
-    t_c = time.perf_counter()
+    # ── Original PCM as int16, interleaved (n_frames, channels) ──────────
     raw_i16 = np.array(audio_segment.get_array_of_samples(), dtype=np.int16)
-    num_frames = len(raw_i16) // channels
-    samples_2d = raw_i16.reshape((num_frames, channels))
+    n_frames = len(raw_i16) // channels
+    samples_2d = raw_i16.reshape((n_frames, channels))
+
+    # Mono float32 @ 16 kHz for VAD only — samples_2d is left untouched
+    # so the concatenation step can pull from original samples.
     mono = samples_2d.mean(axis=1).astype(np.float32) / np.float32(32768.0)
-    logger.info(
-        "[timing] stage=pipeline.to_numpy duration_ms=%d",
-        int((time.perf_counter() - t_c) * 1000),
-    )
+    if sr == VAD_SR:
+        mono_16k = mono
+    else:
+        g = gcd(sr, VAD_SR)
+        mono_16k = resample_poly(
+            mono, up=VAD_SR // g, down=sr // g,
+        ).astype(np.float32)
 
     # ── Debug setup ──────────────────────────────────────────────────────
-    _dbg = None
+    _dbg: Path | None = None
     if DEBUG_DSP:
         ts = time.strftime("%Y%m%d_%H%M%S")
         tag = re.sub(r"[^\w]+", "_", Path(debug_tag).stem).strip("_") if debug_tag else ""
@@ -143,202 +152,101 @@ def preprocess_for_transcription(
         logger.info("[DSP_DEBUG] Debug artifacts → %s", _dbg)
         _dump_debug_audio(mono, sr, _dbg / "01_raw.wav")
 
-    # ── Stage 1: Transient limiter ───────────────────────────────────────
+    # ── Stage 1: VAD ─────────────────────────────────────────────────────
     t_c = time.perf_counter()
-    original_peak = float(np.max(np.abs(mono)))
-    ceiling_lin = 10.0 ** (DEFAULT_LIMITER_CEILING_DB / 20.0)
-    n_limited = int(np.sum(np.abs(mono) > ceiling_lin))
-
-    limited_mono, limiter_gain = limit_transients(
-        mono, sr, ceiling_db=DEFAULT_LIMITER_CEILING_DB,
+    probs = compute_speech_probabilities(mono_16k)
+    speech_regions_ms = hysteresis_speech_regions(
+        probs, p_hi=P_HI, p_lo=P_LO,
+        min_speech_ms=MIN_SPEECH_MS, min_silence_ms=MIN_SILENCE_MS,
     )
-
-    limited_peak = float(np.max(np.abs(limited_mono)))
-    pct = n_limited * 100.0 / num_frames if num_frames else 0.0
+    # Clamp to audio duration — frame quantisation can push the final
+    # region a frame past the end.
+    speech_regions_ms = [
+        (s, min(e, total_ms)) for s, e in speech_regions_ms if s < total_ms
+    ]
     logger.info(
-        "Limiter: %d samples exceeded ceiling (%.1f%%), "
-        "peak reduced from %.3f to %.3f",
-        n_limited, pct, original_peak, limited_peak,
-    )
-    logger.info(
-        "[timing] stage=pipeline.limiter duration_ms=%d",
-        int((time.perf_counter() - t_c) * 1000),
+        "[timing] stage=pipeline.vad duration_ms=%d regions=%d",
+        int((time.perf_counter() - t_c) * 1000), len(speech_regions_ms),
     )
 
-    # ── Stage 2: Dynamic range compression ───────────────────────────────
+    # ── Stage 2: budget gaps → keep-regions in ms ────────────────────────
     t_c = time.perf_counter()
-    compressed_mono, compressor_gain = compress_dynamic_range(
-        limited_mono, sr,
-        ratio=DEFAULT_COMPRESSOR_RATIO,
-        threshold_db=DEFAULT_COMPRESSOR_THRESHOLD_DB,
-        attack_ms=DEFAULT_COMPRESSOR_ATTACK_MS,
-        release_ms=DEFAULT_COMPRESSOR_RELEASE_MS,
-        makeup_target_db=DEFAULT_MAKEUP_TARGET_DB,
+    keep_ms, annotations = _budget_keep_regions(
+        speech_regions_ms, total_ms, max_silence_ms,
     )
+    removed_ms = sum((e - s) - capped for s, e, capped in annotations)
     logger.info(
-        "[timing] stage=pipeline.compress duration_ms=%d",
-        int((time.perf_counter() - t_c) * 1000),
+        "[timing] stage=pipeline.budget duration_ms=%d gaps_capped=%d removed_ms=%.0f",
+        int((time.perf_counter() - t_c) * 1000), len(annotations), removed_ms,
     )
 
-    if _dbg:
-        _dump_debug_audio(compressed_mono, sr, _dbg / "02_compressed.wav")
+    # Convert to original-audio sample indices.
+    keep_runs: List[Tuple[int, int]] = []
+    for s_ms, e_ms in keep_ms:
+        s_idx = max(0, int(round(s_ms * sr / 1000.0)))
+        e_idx = min(n_frames, int(round(e_ms * sr / 1000.0)))
+        if e_idx > s_idx:
+            keep_runs.append((s_idx, e_idx))
+    if not keep_runs:  # nothing to keep — pass the whole recording through
+        keep_runs = [(0, n_frames)]
 
-    # Free raw numpy arrays no longer needed (can be tens of MB each)
-    del raw_i16
-
-    # ── Stage 3: VAD silence detection (on compressed mono) ──────────────
-    silence_mask = _detect_silence_vad(
-        compressed_mono, sr,
-        aggressiveness=DEFAULT_VAD_AGGRESSIVENESS,
-        min_silence_ms=min_silence_ms,
-        min_gap_ms=DEFAULT_MIN_GAP_MS,
-        energy_ref=limited_mono,
-        energy_gate_db=DEFAULT_ENERGY_GATE_DB,
-        energy_gate_headroom_db=DEFAULT_ENERGY_GATE_HEADROOM_DB,
-    )
-
-    # ── Stage 4: Silence excision ────────────────────────────────────────
-    # Compose limiter and compressor gains and apply once to all channels
-    total_gain = limiter_gain * compressor_gain
-    # Free individual gain arrays — combined into total_gain
-    del limiter_gain, compressor_gain
-
-    out_2d = samples_2d.astype(np.float32) / np.float32(32768.0)
-    del samples_2d  # Free large int16 2D array
-    for ch in range(channels):
-        out_2d[:, ch] *= total_gain
-    del total_gain  # No longer needed after application
-    out_2d = np.clip(out_2d, -1.0, 1.0)
-    comp_i16 = (out_2d * np.float32(32768.0)).astype(np.int16)
-    del out_2d  # Free float32 2D intermediate
-
-    silence_processed = False
-    inj_mask = np.zeros(num_frames, dtype=bool)
-    excision_keep_runs: list[tuple[int, int]] | None = None
-
-    if int(np.sum(silence_mask)) > 0:
-        t_c = time.perf_counter()
-        # Shape the mask with grace/tail carving.  Since VAD produces a
-        # single clean mask, fine_mask == coarse_mask.
-        inj_mask = _shape_injection_mask(
-            silence_mask, silence_mask, sr,
-            grace_ms=DEFAULT_GRACE_MS,
-            tail_ms=DEFAULT_TAIL_MS,
-        )
-
-        # Preserve trailing silence for decoder flush
-        trailing_preserve = min(int(0.3 * sr), int(np.sum(inj_mask)))  # 300ms or less
-        if inj_mask[-1] and trailing_preserve > 0:
-            # Find the end of the last injection run and preserve trailing samples
-            inj_mask[-trailing_preserve:] = False
-            logger.info("Preserved %dms trailing silence for decoder flush",
-                        int(trailing_preserve * 1000 / sr))
-
-        inj_count = int(np.sum(inj_mask))
-        if inj_count > 0:
-            keep_mask = ~inj_mask
-            keep_runs = _find_mask_runs(keep_mask)
-            excision_keep_runs = keep_runs
-            segments = [comp_i16[s:e] for s, e in keep_runs]
-            if segments:
-                comp_i16 = np.concatenate(segments, axis=0)
-                silence_processed = True
-            inj_runs = _find_mask_runs(inj_mask)
-            removed_ms = inj_count * 1000.0 / sr
-            logger.info(
-                "Excised %d silence region(s): removed %.0fms, "
-                "duration %.0fms → %.0fms",
-                len(inj_runs), removed_ms,
-                num_frames * 1000.0 / sr,
-                len(comp_i16) * 1000.0 / sr,
-            )
-        else:
-            logger.info("Silence detected but within grace/tail — no excision")
-        logger.info(
-            "[timing] stage=pipeline.excise duration_ms=%d",
-            int((time.perf_counter() - t_c) * 1000),
-        )
-    else:
-        logger.info("No silence detected — skipping excision")
-
-    if _dbg and silence_processed:
-        proc_mono = comp_i16.mean(axis=1).astype(np.float32) / np.float32(32768.0)
-        _dump_debug_audio(proc_mono, sr, _dbg / "03_excised.wav")
-
-    # ── Stage 5: Flat noise floor ────────────────────────────────────────
+    # ── Stage 3: concatenate from original samples ───────────────────────
     t_c = time.perf_counter()
-    n_out = len(comp_i16)
-    noise_amp = np.float32(10.0 ** (DEFAULT_NOISE_LEVEL_DB / 20.0))
-    noise = np.random.randn(n_out).astype(np.float32) * noise_amp
+    kept_2d = np.concatenate([samples_2d[s:e] for s, e in keep_runs], axis=0)
 
-    final_2d = comp_i16.astype(np.float32) / np.float32(32768.0)
-    for ch in range(channels):
-        final_2d[:, ch] += noise
-    final_2d = np.clip(final_2d, -1.0, 1.0)
-    final_i16 = (final_2d * np.float32(32768.0)).astype(np.int16).flatten()
+    # Trailing comfort noise (-58 dBFS, 300 ms) — same level on all channels.
+    pad_samples = int(round(COMFORT_NOISE_MS * sr / 1000.0))
+    noise_amp = 10.0 ** (COMFORT_NOISE_DBFS / 20.0)
+    pad_f32 = (
+        np.random.randn(pad_samples, channels).astype(np.float32)
+        * np.float32(noise_amp)
+    )
+    pad_i16 = np.clip(pad_f32 * 32768.0, -32768, 32767).astype(np.int16)
+    final_2d = np.concatenate([kept_2d, pad_i16], axis=0)
     logger.info(
-        "[timing] stage=pipeline.noise_floor duration_ms=%d",
-        int((time.perf_counter() - t_c) * 1000),
+        "[timing] stage=pipeline.concatenate duration_ms=%d kept_runs=%d out_ms=%.0f",
+        int((time.perf_counter() - t_c) * 1000), len(keep_runs),
+        len(final_2d) * 1000.0 / sr,
     )
 
-    # ── Build ExcisionMap ────────────────────────────────────────────────
-    if excision_keep_runs is not None:
-        excision_map = ExcisionMap.from_keep_runs(
-            excision_keep_runs, sr, num_frames,
-        )
-        logger.info(
-            "ExcisionMap: %d keep-regions, original=%.0fms excised=%.0fms",
-            len(excision_keep_runs),
-            excision_map.original_duration_ms,
-            excision_map.excised_duration_ms,
-        )
-    else:
-        excision_map = ExcisionMap.identity(num_frames * 1000.0 / sr)
-
-    # ── Trailing pad: prevent decoder flush truncation ────────────────
-    pad_samples = int(TRAILING_PAD_MS * sr / 1000)
-    pad_noise = np.random.randn(pad_samples, channels).astype(np.float32) * noise_amp
-    pad_i16 = (np.clip(pad_noise, -1.0, 1.0) * np.float32(32768.0)).astype(np.int16).flatten()
-    final_i16 = np.concatenate([final_i16, pad_i16])
-    final_2d = np.concatenate([final_2d, pad_noise], axis=0)
-    logger.info("Trailing pad: added %dms noise-level tail for decoder flush",
-                TRAILING_PAD_MS)
-
-    # ── Build output AudioSegment ────────────────────────────────────────
+    excision_map = ExcisionMap.from_keep_runs(keep_runs, sr, n_frames)
     result = AudioSegment(
-        final_i16.tobytes(),
+        final_2d.flatten().tobytes(),
         frame_rate=sr,
-        sample_width=audio_segment.sample_width,
+        sample_width=sample_width,
         channels=channels,
     )
+
     logger.info(
-        "[timing] stage=pipeline.total duration_ms=%d audio_ms=%d sr=%d ch=%d",
-        int((time.perf_counter() - t0) * 1000), len(audio_segment), sr, channels,
+        "[timing] stage=pipeline.total duration_ms=%d audio_ms=%.0f "
+        "original=%.0fms kept=%.0fms",
+        int((time.perf_counter() - t0) * 1000), total_ms,
+        excision_map.original_duration_ms, excision_map.excised_duration_ms,
     )
 
-    # ── Debug: final + overlay ───────────────────────────────────────────
-    waveform_overlay_b64 = None
-    final_mono = final_2d.mean(axis=1).astype(np.float32)
-    del final_2d  # Free large float32 2D array
+    # ── Debug overlay + optional base64 PNG ─────────────────────────────
+    waveform_overlay_b64: str | None = None
+    final_mono = final_2d.astype(np.float32).mean(axis=1) / np.float32(32768.0)
 
-    if _dbg:
-        _dump_debug_audio(final_mono, sr, _dbg / "05_final.wav")
+    if _dbg is not None:
+        _dump_debug_audio(final_mono, sr, _dbg / "02_final.wav")
         _plot_excision_overlay(
-            mono, final_mono, sr, silence_mask, inj_mask,
-            _dbg / "waveform_overlay.png",
+            raw=mono, sr=sr, probs=probs, frame_ms=FRAME_MS,
+            annotations=annotations, p_hi=P_HI, p_lo=P_LO,
+            final=final_mono, path=_dbg / "waveform_overlay.png",
         )
 
     if return_waveform_overlay:
         overlay_bytes = _plot_excision_overlay(
-            mono, final_mono, sr, silence_mask, inj_mask,
-            path=None, return_bytes=True,
+            raw=mono, sr=sr, probs=probs, frame_ms=FRAME_MS,
+            annotations=annotations, p_hi=P_HI, p_lo=P_LO,
+            final=final_mono, path=None, return_bytes=True,
         )
         if overlay_bytes:
-            waveform_overlay_b64 = base64.b64encode(overlay_bytes).decode('utf-8')
+            waveform_overlay_b64 = base64.b64encode(overlay_bytes).decode("utf-8")
 
-    # Free remaining large arrays before returning
-    del mono, final_mono, silence_mask, inj_mask, compressed_mono, limited_mono
-    del final_i16
+    del mono, mono_16k, probs, raw_i16, samples_2d, kept_2d, pad_f32, pad_i16
+    del final_2d, final_mono
     release_memory()
 
     return PreprocessResult(

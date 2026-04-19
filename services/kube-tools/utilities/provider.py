@@ -94,6 +94,7 @@ from services.torrent_service import TorrentService
 from services.ts_push_service import TruthSocialConfig, TruthSocialPushService
 from services.usage_service import UsageService
 from openai import AsyncOpenAI
+from services.scheduler_service import SchedulerService
 from services.stock_monitor_service import StockMonitorService
 from services.weather_service import WeatherService
 from services.transcription_service import TranscriptionService
@@ -306,6 +307,7 @@ def register_services(
     descriptors.add_singleton(OpenAiUsageService)
     descriptors.add_singleton(PlaidUsageService)
     descriptors.add_singleton(StockMonitorService)
+    descriptors.add_singleton(SchedulerService)
 
 
 class ContainerProvider(ProviderBase):

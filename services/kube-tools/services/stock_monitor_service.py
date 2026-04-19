@@ -17,10 +17,12 @@ from data.stock_monitor_repository import (StockAlertStateRepository,
 from domain.stock_monitor import (ET, MARKET_CLOSE, MARKET_OPEN, AlertType,
                                   MarketSession, get_market_session)
 from framework.logger import get_logger
+from framework.clients.feature_client import FeatureClientAsync
 from models.stock_monitor_config import StockMonitorConfig
 
 logger = get_logger(__name__)
 
+SWING_COOLDOWN_FEATURE_KEY = 'stock-monitor-swing-cooldown'
 
 class StockMonitorService:
     CHART_CONTAINER = 'stock-charts'
@@ -32,7 +34,8 @@ class StockMonitorService:
         alert_state_repository: StockAlertStateRepository,
         sib_client: SendInBlueClient,
         storage_client: StorageClient,
-        config: StockMonitorConfig
+        config: StockMonitorConfig,
+        feature_client: FeatureClientAsync
     ):
         self._quote_client = stock_quote_client
         self._tick_repo = tick_repository
@@ -41,6 +44,17 @@ class StockMonitorService:
         self._storage = storage_client
         self._config = config
         self._indexes_ensured = False
+        self._feature_client = feature_client
+
+    async def _get_cooldown_minutes(self) -> int:
+        if result := await self._feature_client.is_enabled(SWING_COOLDOWN_FEATURE_KEY):
+            try:
+                cooldown = int(result)
+                logger.info(f'Feature override: {SWING_COOLDOWN_FEATURE_KEY}={cooldown}')
+                return cooldown
+            except ValueError:
+                logger.warning(f'Invalid value for {SWING_COOLDOWN_FEATURE_KEY}: {result}')
+        return self._config.swing_cooldown_minutes
 
     async def _ensure_indexes(self):
         if not self._indexes_ensured:
@@ -128,7 +142,8 @@ class StockMonitorService:
         if market_session == MarketSession.REGULAR:
             swing_result = await self._evaluate_swing(
                 ticker, current_price, swing_percent, now_et, now_utc,
-                market_open_price=market_open_price)
+                market_open_price=market_open_price,
+                previous_close=previous_close)
             triggered_events.extend(swing_result['events'])
             session_open_price = swing_result.get('session_open_price')
             intraday_move_percent = swing_result.get('intraday_move_percent')
@@ -245,15 +260,16 @@ class StockMonitorService:
 
     # ── Alert evaluation ────────────────────────────────────
 
-    def _within_cooldown(self, state: Optional[dict]) -> bool:
+    async def _within_cooldown(self, state: Optional[dict]) -> bool:
         """True if we alerted recently and should suppress."""
         if not state or not state.get('last_triggered_at'):
-            logger.info(f'No prior alert state or timestamp, not within cooldown')
+            logger.info('No prior alert state or timestamp, not within cooldown')
             return False
         elapsed = datetime.utcnow() - state['last_triggered_at']
-        is_within_cooldown = elapsed < timedelta(minutes=self._config.swing_cooldown_minutes)
+        cooldown_minutes = await self._get_cooldown_minutes()
+        is_within_cooldown = elapsed < timedelta(minutes=cooldown_minutes)
         if is_within_cooldown:
-            logger.info(f'Alert triggered recently ({elapsed}), within cooldown: {state}')
+            logger.info(f'Alert triggered recently ({elapsed}), within cooldown ({cooldown_minutes}m): {state}')
         return is_within_cooldown
 
     async def _evaluate_sell(
@@ -262,7 +278,7 @@ class StockMonitorService:
         if price < threshold:
             return []
 
-        if self._within_cooldown(await self._alert_repo.get_alert_state(ticker, AlertType.SELL.value)):
+        if await self._within_cooldown(await self._alert_repo.get_alert_state(ticker, AlertType.SELL.value)):
             return []
 
         await self._alert_repo.set_triggered(ticker, AlertType.SELL.value)
@@ -275,7 +291,7 @@ class StockMonitorService:
         if price > threshold:
             return []
 
-        if self._within_cooldown(await self._alert_repo.get_alert_state(ticker, AlertType.FLOOR.value)):
+        if await self._within_cooldown(await self._alert_repo.get_alert_state(ticker, AlertType.FLOOR.value)):
             return []
 
         await self._alert_repo.set_triggered(ticker, AlertType.FLOOR.value)
@@ -289,21 +305,45 @@ class StockMonitorService:
         swing_pct: float,
         now_et: datetime,
         now_utc: datetime,
-        market_open_price: Optional[float] = None
+        market_open_price: Optional[float] = None,
+        previous_close: Optional[float] = None
     ) -> dict:
         result = {'events': [], 'session_open_price': None, 'intraday_move_percent': None}
 
+        logger.info(
+            f'[SWING] {ticker}: price={price:.2f}, swing_pct={swing_pct:.2%}, '
+            f'market_open={market_open_price}, previous_close={previous_close}, '
+            f'weekday={now_et.weekday()}, time_et={now_et.time()}, '
+            f'market_open_window={MARKET_OPEN}-{MARKET_CLOSE}'
+        )
+
         # Only evaluate on weekdays during regular hours
         if now_et.weekday() >= 5:
+            logger.info(f'[SWING] {ticker}: skipping -- weekend (weekday={now_et.weekday()})')
             return result
         if not (MARKET_OPEN <= now_et.time() < MARKET_CLOSE):
+            logger.info(
+                f'[SWING] {ticker}: skipping -- outside regular hours '
+                f'(time_et={now_et.time()}, window={MARKET_OPEN}-{MARKET_CLOSE})'
+            )
             return result
 
-        # Use the actual market open price from the API when available,
-        # fall back to the first recorded tick only as a last resort
-        session_open_price = market_open_price
+        # Use previous_close as the reference price so that the swing %
+        # matches what everyone sees as "up/down X% today".  This also
+        # handles gap-open days correctly (a stock can gap down 3% at open
+        # and never cross the 1% intraday-from-open threshold even though
+        # it is clearly in a significant move).
+        # Fall back chain: previous_close → market_open → first polled tick.
+        reference_price = previous_close
 
-        if session_open_price is None:
+        if reference_price is None:
+            logger.warning(
+                f'[SWING] {ticker}: previous_close not available from API, '
+                f'falling back to market_open={market_open_price}'
+            )
+            reference_price = market_open_price
+
+        if reference_price is None:
             session_start_et = now_et.replace(
                 hour=9, minute=30, second=0, microsecond=0)
             session_start_utc = session_start_et.astimezone(pytz.utc).replace(tzinfo=None)
@@ -312,35 +352,60 @@ class StockMonitorService:
                 ticker, session_start_utc)
 
             if not open_tick:
-                logger.warning(f'No session open tick found for {ticker}')
+                logger.warning(
+                    f'[SWING] {ticker}: aborting -- no previous_close, no market_open, '
+                    f'and no session open tick found in DB'
+                )
                 return result
 
-            session_open_price = open_tick['price']
-            logger.warning(f'Using first polled tick as open price ({session_open_price}) '
-                           f'-- API open was unavailable')
+            reference_price = open_tick['price']
+            logger.warning(
+                f'[SWING] {ticker}: last-resort fallback -- using first polled tick '
+                f'as reference price ({reference_price:.2f})'
+            )
 
-        result['session_open_price'] = session_open_price
+        result['session_open_price'] = market_open_price or reference_price
 
-        if session_open_price == 0:
+        if reference_price == 0:
+            logger.warning(f'[SWING] {ticker}: aborting -- reference_price is 0')
             return result
 
-        move_pct = (price - session_open_price) / session_open_price
+        move_pct = (price - reference_price) / reference_price
         result['intraday_move_percent'] = round(move_pct, 5)
 
+        logger.info(
+            f'[SWING] {ticker}: reference_price={reference_price:.2f}, '
+            f'move_pct={move_pct:+.4%}, threshold={swing_pct:.2%}, '
+            f'passes_threshold={abs(move_pct) >= swing_pct}'
+        )
+
         if abs(move_pct) < swing_pct:
+            logger.info(
+                f'[SWING] {ticker}: no alert -- move {move_pct:+.4%} '
+                f'is within ±{swing_pct:.2%} threshold'
+            )
             return result
 
         direction = AlertType.SWING_UP if move_pct > 0 else AlertType.SWING_DOWN
 
-        if self._within_cooldown(await self._alert_repo.get_alert_state(ticker, direction.value)):
+        alert_state = await self._alert_repo.get_alert_state(ticker, direction.value)
+        logger.info(f'[SWING] {ticker}: checking cooldown for {direction.value}, state={alert_state}')
+
+        if await self._within_cooldown(alert_state):
+            logger.info(
+                f'[SWING] {ticker}: suppressed -- {direction.value} alert is within cooldown'
+            )
             return result
 
         await self._alert_repo.set_triggered(ticker, direction.value)
 
         pct_str = f'{move_pct:+.1%}'
-        event_str = f'Intraday swing {pct_str} -- now ${price:.2f} (open ${session_open_price:.2f})'
+        event_str = (
+            f'Intraday swing {pct_str} vs prev close -- '
+            f'now ${price:.2f} (prev close ${reference_price:.2f})'
+        )
         result['events'].append(event_str)
-        logger.info(f'{ticker} {direction.value} alert: {event_str}')
+        logger.info(f'[SWING] {ticker}: FIRING {direction.value} alert: {event_str}')
 
         return result
 
@@ -444,7 +509,6 @@ class StockMonitorService:
         fig, ax = plt.subplots(figsize=(8, 4))
 
         all_prices = []
-        separator_x = []  # x positions for vertical session dividers
         label_positions = []  # (x, date_label) for x-axis labels
         today_str = today_date.strftime('%Y-%m-%d')
 

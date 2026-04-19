@@ -32,9 +32,10 @@ python-multipart
 aiofiles
 matplotlib
 pydub
-numba  # optional: JIT-accelerates compressor attack/release smoothing loop in dsp/compressor.py
+croniter
+cron-descriptor
 numpy
-webrtcvad  # WebRTC VAD for speech/silence detection
+silero-vad  # Silero VAD (pulls torch) — used by services/transcription/dsp/vad.py
 pytz
 # azure-identity
 # azure-mgmt-resource
