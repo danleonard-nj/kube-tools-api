@@ -35,7 +35,8 @@ pydub
 croniter
 cron-descriptor
 numpy
-silero-vad  # Silero VAD (pulls torch) — used by services/transcription/dsp/vad.py
+# silero-vad pulls torch; install CPU-only torch + silero-vad explicitly
+# from the Dockerfile so we don't drag in CUDA wheels (~6 GB).
 pytz
 # azure-identity
 # azure-mgmt-resource
