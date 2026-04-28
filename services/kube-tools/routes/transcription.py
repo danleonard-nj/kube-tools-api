@@ -1,177 +1,246 @@
-import gc
+"""Transcription HTTP routes.
+
+Endpoints
+---------
+POST  /api/transcribe                              — upload audio + transcribe
+GET   /api/transcribe/history                      — legacy history list
+POST  /api/transcription/feedback                  — flag a bad transcription
+GET   /api/transcription/feedback                  — list feedback rows
+GET   /api/transcription/feedback/<transcription_id> — full row + audio link
+GET   /api/transcription/audio/<storage_ref>       — stream retained GridFS audio
+"""
+
+from __future__ import annotations
+
 import io
+from datetime import datetime
+from typing import Any, Dict, Optional
+
 from quart import Blueprint, Response, request
-from framework.rest.blueprints.meta import MetaBlueprint
-from framework.logger.providers import get_logger
-from services.transcription_service import TranscriptionService, TranscriptionServiceError
+
 from data.transcription_history_repository import TranscriptionHistoryRepository
+from data.transcription_run_repository import TranscriptionRunRepository
+from framework.logger.providers import get_logger
+from framework.rest.blueprints.meta import MetaBlueprint
+from services.transcription.upload_cache import UploadCache
+from services.transcription_service import TranscriptionService, TranscriptionServiceError
 from utilities.memory import release_memory
 
 logger = get_logger(__name__)
 
-# Create blueprint following the established pattern
-transcription_bp = MetaBlueprint('transcription_bp', __name__)
+transcription_bp = MetaBlueprint("transcription_bp", __name__)
 
 
-@transcription_bp.configure('/api/transcribe', methods=['POST'], auth_scheme='default')
+def _parse_iso(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Transcribe
+# ---------------------------------------------------------------------------
+
+@transcription_bp.configure("/api/transcribe", methods=["POST"], auth_scheme="default")
 async def transcribe_audio(container):
-    """
-    Endpoint to transcribe uploaded audio files using OpenAI's Whisper model.
+    """Upload audio + transcribe.
 
-    Expected request:
-    - Content-Type: multipart/form-data
-    - Form field 'audio': audio file (supports various formats: mp3, wav, m4a, etc.)
-    - Optional form field 'language': language code (e.g., 'en', 'es', 'fr')
-    - Optional form field 'diarize': 'true' or 'false' to enable/disable diarization (default: false)
-    - Optional form field 'return_waveform': 'true' or 'false' to include waveform overlay PNG (default: false)
-
-    Returns:
-    - JSON response (when diarize=false): { "text": "transcribed text here" }
-    - JSON response (when diarize=true): { "text": "full transcript", "segments": [{"start": 0.0, "end": 3.5, "text": "..."}] }
-    - When return_waveform=true: Adds "waveform_overlay" field with base64-encoded PNG
-
-    Example usage with curl:
-    curl -X POST "http://localhost:5000/api/transcribe" \
-         -H "Authorization: Bearer <token>" \
-         -F "audio=@recording.mp3" \
-         -F "language=en" \
-         -F "diarize=true" \
-         -F "return_waveform=true"
+    Form fields:
+      - ``audio`` (file, required)
+      - ``language`` (str, optional)
+      - ``diarize`` (bool, default false)
+      - ``return_waveform`` (bool, default false)
+      - ``provider`` (str, optional) — override the configured speech-to-text
+        engine. Supported: ``openai``, ``azure``, ``google``, ``whisper``.
     """
     try:
-        # Resolve the transcription service from DI container
         transcription_service: TranscriptionService = container.resolve(TranscriptionService)
+        upload_cache: UploadCache = container.resolve(UploadCache)
 
-        logger.info("Processing transcription request")
-
-        # Get the uploaded files from the multipart form
         files = await request.files
         form_data = await request.form
+        if "audio" not in files:
+            return {"error": "No audio file provided. Use the 'audio' form field."}, 400
 
-        # Check if audio file was provided
-        if 'audio' not in files:
-            available_fields = list(files.keys())
-            available_msg = f" Available form fields: {available_fields}" if available_fields else " No form fields found in request."
-            return {
-                'error': f'No audio file provided. Please upload an audio file using the "audio" form field.{available_msg}'
-            }, 400
-
-        audio_file = files['audio']
+        audio_file = files["audio"]
         if not audio_file.filename:
-            return {
-                'error': f'Invalid audio file. No filename provided. (Content-Type: {audio_file.content_type})'
-            }, 400
+            return {"error": "Invalid audio file: missing filename"}, 400
 
-        # Get optional language parameter
-        language = form_data.get('language')
+        language = form_data.get("language")
+        diarize = form_data.get("diarize", "false").lower() in ("true", "1", "yes")
+        return_waveform = form_data.get("return_waveform", "false").lower() in ("true", "1", "yes")
+        provider_name = form_data.get("provider") or None
 
-        # Get optional diarize parameter (default to false)
-        diarize_str = form_data.get('diarize', 'false').lower()
-        diarize = diarize_str in ('true', '1', 'yes')
-
-        # Get optional return_waveform parameter (default to false)
-        return_waveform_str = form_data.get('return_waveform', 'false').lower()
-        return_waveform = return_waveform_str in ('true', '1', 'yes')
-
-        logger.info(f"Received audio file: {audio_file.filename}, language: {language or 'auto-detect'}, diarize: {diarize}, return_waveform: {return_waveform}")
-
-        # Read the audio file data into memory
         audio_data = audio_file.read()
-        audio_stream = io.BytesIO(audio_data)
         file_size = len(audio_data)
+        upload_id = await upload_cache.put(audio_data)
 
-        # Release the original bytes — the BytesIO stream holds its own copy
+        audio_stream = io.BytesIO(audio_data)
         del audio_data
 
-        # Perform transcription
-        result = await transcription_service.transcribe_audio(
-            audio_file=audio_stream,
-            filename=audio_file.filename,
-            language=language,
-            file_size=file_size,
-            diarize=diarize,
-            return_waveform_overlay=return_waveform
-        )
-
-        # Close the stream and force a GC pass to release audio memory
+        try:
+            result = await transcription_service.transcribe_audio(
+                audio_file=audio_stream,
+                filename=audio_file.filename,
+                upload_id=upload_id,
+                language=language,
+                file_size=file_size,
+                diarize=diarize,
+                return_waveform_overlay=return_waveform,
+                provider_name=provider_name,
+            )
+        except ValueError as e:
+            # Unknown provider name from get_provider().
+            return {"error": str(e)}, 400
         audio_stream.close()
-        del audio_stream
         release_memory()
 
-        # Service returns either a string (non-diarized) or dict (diarized)
-        if isinstance(result, dict):
-            # Diarized response with segments
-            return result, 200
-        else:
-            # Simple text response
-            return {'text': result}, 200
+        return result, 200
 
     except TranscriptionServiceError as e:
-        file_info = f"File: {audio_file.filename if 'audio_file' in locals() else 'unknown'}, Size: {file_size if 'file_size' in locals() else 'unknown'} bytes, Language: {language if 'language' in locals() else 'auto-detect'}"
-        logger.error(f"Transcription service error: {str(e)} - {file_info}")
-        return {
-            'error': f'Transcription failed: {str(e)} ({file_info})'
-        }, 500
-
+        logger.error(f"Transcription service error: {e}")
+        return {"error": f"Transcription failed: {e}"}, 500
     except Exception as e:
-        context_info = f"File: {audio_file.filename if 'audio_file' in locals() else 'unknown'}, Size: {file_size if 'file_size' in locals() else 'unknown'} bytes"
-        logger.error(f"Unexpected error during transcription: {str(e)} - {context_info}", exc_info=True)
-        return {
-            'error': f'An unexpected error occurred during transcription. Error: {type(e).__name__}: {str(e)} ({context_info})'
-        }, 500
+        logger.error(f"Unexpected error during transcription: {e}", exc_info=True)
+        return {"error": f"Unexpected error: {type(e).__name__}: {e}"}, 500
 
 
-@transcription_bp.configure('/api/transcribe/history', methods=['GET'], auth_scheme='default')
+# ---------------------------------------------------------------------------
+# Legacy history
+# ---------------------------------------------------------------------------
+
+@transcription_bp.configure("/api/transcribe/history", methods=["GET"], auth_scheme="default")
 async def get_transcription_history(container):
-    """
-    Endpoint to retrieve transcription history.
-
-    Query parameters:
-    - limit: Number of results to return (default: 50, max: 100)
-    - skip: Number of results to skip for pagination (default: 0)
-
-    Returns:
-    - JSON response: { "transcriptions": [list of transcription records] }
-
-    Example usage with curl:
-    curl -X GET "http://localhost:5000/api/transcribe/history?limit=10&skip=0" \
-         -H "Authorization: Bearer <token>"
-    """
     try:
-        # Resolve the repository from DI container
-        transcription_repository: TranscriptionHistoryRepository = container.resolve(TranscriptionHistoryRepository)
-
-        # Get query parameters
-        limit = int(request.args.get('limit', 50))
-        skip = int(request.args.get('skip', 0))
-
-        # Validate parameters
-        if limit > 100:
-            limit = 100
-        if limit < 1:
-            limit = 1
-        if skip < 0:
-            skip = 0
-
-        logger.info(f"Retrieving transcription history: limit={limit}, skip={skip}")
-
-        # Get transcriptions from repository
-        transcriptions = await transcription_repository.get_transcriptions(
-            limit=limit,
-            skip=skip
-        )
-
-        return {'transcriptions': transcriptions}, 200
-
-    except ValueError as e:
-        received_params = f"limit: {request.args.get('limit', 'not provided')}, skip: {request.args.get('skip', 'not provided')}"
-        return {
-            'error': f'Invalid limit or skip parameter. Must be integers. Received - {received_params}. Error: {str(e)}'
-        }, 400
-
+        repo: TranscriptionHistoryRepository = container.resolve(TranscriptionHistoryRepository)
+        try:
+            limit = int(request.args.get("limit", 50))
+            skip = int(request.args.get("skip", 0))
+        except ValueError as e:
+            return {"error": f"Invalid limit/skip: {e}"}, 400
+        limit = max(1, min(limit, 100))
+        skip = max(0, skip)
+        transcriptions = await repo.get_transcriptions(limit=limit, skip=skip)
+        return {"transcriptions": transcriptions}, 200
     except Exception as e:
-        params_info = f"limit: {limit if 'limit' in locals() else 'unknown'}, skip: {skip if 'skip' in locals() else 'unknown'}"
-        logger.error(f"Unexpected error retrieving transcription history: {str(e)} - Parameters: {params_info}", exc_info=True)
-        return {
-            'error': f'An unexpected error occurred while retrieving history. Error: {type(e).__name__}: {str(e)} (Parameters: {params_info})'
-        }, 500
+        logger.error(f"Error retrieving transcription history: {e}", exc_info=True)
+        return {"error": f"Unexpected error: {type(e).__name__}: {e}"}, 500
+
+
+# ---------------------------------------------------------------------------
+# Feedback
+# ---------------------------------------------------------------------------
+
+@transcription_bp.configure("/api/transcription/feedback", methods=["POST"], auth_scheme="default")
+async def submit_feedback(container):
+    """Flag a transcription as bad and (best-effort) retain its audio."""
+    try:
+        runs: TranscriptionRunRepository = container.resolve(TranscriptionRunRepository)
+        upload_cache: UploadCache = container.resolve(UploadCache)
+        body: Dict[str, Any] = await request.get_json() or {}
+
+        transcription_id = body.get("transcription_id")
+        if not transcription_id:
+            return {"error": "transcription_id is required"}, 400
+
+        run = await runs.get_run(transcription_id)
+        if run is None:
+            return {"error": f"transcription_id {transcription_id} not found"}, 404
+
+        upload_id = run.get("upload_id")
+        audio_status = "upload_expired"
+        audio_storage_ref: Optional[str] = run.get("audio_storage_ref")
+
+        if upload_id:
+            audio_bytes = await upload_cache.get(upload_id)
+            if audio_bytes is not None:
+                audio_storage_ref = await runs.store_audio(
+                    audio_bytes=audio_bytes,
+                    filename=run.get("filename") or f"{transcription_id}.bin",
+                    transcription_id=transcription_id,
+                )
+                audio_status = "retained"
+            else:
+                logger.info("feedback: upload expired id=%s tx=%s", upload_id, transcription_id)
+
+        feedback = {
+            "rating": "bad",
+            "reason": body.get("reason"),
+            "notes": body.get("notes"),
+            "submitted_at": datetime.utcnow(),
+        }
+        await runs.set_feedback(
+            transcription_id=transcription_id,
+            feedback=feedback,
+            audio_status=audio_status,
+            audio_storage_ref=audio_storage_ref,
+        )
+        return {"status": "ok", "audio_retained": audio_status == "retained"}, 200
+    except Exception as e:
+        logger.error(f"feedback submit failed: {e}", exc_info=True)
+        return {"error": f"Unexpected error: {type(e).__name__}: {e}"}, 500
+
+
+@transcription_bp.configure("/api/transcription/feedback", methods=["GET"], auth_scheme="default")
+async def list_feedback(container):
+    """Paginated list of runs with feedback != null."""
+    try:
+        runs: TranscriptionRunRepository = container.resolve(TranscriptionRunRepository)
+        try:
+            limit = int(request.args.get("limit", 50))
+            offset = int(request.args.get("offset", 0))
+        except ValueError as e:
+            return {"error": f"Invalid limit/offset: {e}"}, 400
+        limit = max(1, min(limit, 100))
+        offset = max(0, offset)
+        verbose = request.args.get("verbose", "false").lower() in ("true", "1", "yes")
+
+        results = await runs.list_with_feedback(
+            pipeline_version=request.args.get("pipeline_version"),
+            reason=request.args.get("reason"),
+            after=_parse_iso(request.args.get("after")),
+            before=_parse_iso(request.args.get("before")),
+            limit=limit, offset=offset, verbose=verbose,
+        )
+        return {"results": results, "count": len(results)}, 200
+    except Exception as e:
+        logger.error(f"feedback list failed: {e}", exc_info=True)
+        return {"error": f"Unexpected error: {type(e).__name__}: {e}"}, 500
+
+
+@transcription_bp.configure(
+    "/api/transcription/feedback/<transcription_id>", methods=["GET"], auth_scheme="default",
+)
+async def get_feedback_detail(container, transcription_id: str):
+    """Full row including VAD stream and chunk plan."""
+    try:
+        runs: TranscriptionRunRepository = container.resolve(TranscriptionRunRepository)
+        run = await runs.get_run(transcription_id)
+        if run is None:
+            return {"error": f"transcription_id {transcription_id} not found"}, 404
+
+        if run.get("audio_storage_ref"):
+            run["audio_url"] = f"/api/transcription/audio/{run['audio_storage_ref']}"
+        return run, 200
+    except Exception as e:
+        logger.error(f"feedback detail failed: {e}", exc_info=True)
+        return {"error": f"Unexpected error: {type(e).__name__}: {e}"}, 500
+
+
+@transcription_bp.configure(
+    "/api/transcription/audio/<storage_ref>", methods=["GET"], auth_scheme="default",
+)
+async def stream_retained_audio(container, storage_ref: str):
+    """Stream audio bytes from GridFS by storage ref."""
+    try:
+        runs: TranscriptionRunRepository = container.resolve(TranscriptionRunRepository)
+        data = await runs.fetch_audio(storage_ref)
+        if data is None:
+            return {"error": f"audio ref {storage_ref} not found"}, 404
+        return Response(data, mimetype="application/octet-stream")
+    except Exception as e:
+        logger.error(f"audio stream failed: {e}", exc_info=True)
+        return {"error": f"Unexpected error: {type(e).__name__}: {e}"}, 500

@@ -151,3 +151,6 @@ git-*
 
 debug/
 tests/resources/*
+
+**/client_secret.json
+**/token.json

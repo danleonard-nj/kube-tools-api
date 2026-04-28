@@ -1,53 +1,126 @@
-"""
-Transcription service — orchestration layer.
+"""Transcription service — orchestration layer.
 
-All DSP, chunking, overlap-trimming, segmentation, and response-parsing
-logic lives in the ``services.transcription`` sub-package.  This module
-wires them together behind the public ``TranscriptionService`` class.
+Pipeline:
+    raw audio bytes (Redis upload cache) →
+    pydub decode → VAD-planned chunks (services.transcription.dsp.pipeline) →
+    per-chunk OpenAI ASR → overlap.py seam dedup →
+    persist run row to Mongo (services.data.transcription_run_repository).
 """
 
-import gc
 import io
 import time
-from typing import BinaryIO, Optional, List, Tuple, Union, Dict
+from datetime import datetime
+from typing import Any, BinaryIO, Dict, List, Optional, Tuple, Union
 
-from pydub import AudioSegment
+import numpy as np
 from openai import AsyncOpenAI
+from pydub import AudioSegment
+from pydub.effects import normalize as pydub_normalize
 
+from data.transcription_history_repository import TranscriptionHistoryRepository
+from data.transcription_run_repository import TranscriptionRunRepository
 from framework.logger import get_logger
 from models.openai_config import OpenAIConfig
-from data.transcription_history_repository import TranscriptionHistoryRepository
-from utilities.memory import release_memory
-
-# --- Sub-module imports (pure functions / data classes) ---------------
-from services.transcription.models import AudioChunk, ExcisionMap, PreprocessResult, WordToken
-from services.transcription.dsp import (
-    get_audio_mime_type,
-    is_single_shot_safe,
-    preprocess_for_transcription,
+from models.transcription_config import TranscriptionConfig
+from services.transcription import PIPELINE_VERSION
+from services.transcription.dsp import get_audio_mime_type, preprocess_for_transcription
+from services.transcription.models import (
+    AudioChunk, ChunkPlanEntry, PreprocessResult, WordToken,
 )
-from services.transcription.chunking import chunk_by_duration
 from services.transcription.overlap import (
+    deduplicate_seam, trim_segments_in_overlap_window,
     trim_word_tokens_in_overlap_window,
-    trim_segments_in_overlap_window,
-    deduplicate_seam,
 )
+from services.transcription.providers import (
+    TranscriptionProvider, TranscriptionResult,
+)
+from services.transcription.providers.azure_provider import AzureSpeechProvider
+from services.transcription.providers.google_provider import GoogleSpeechProvider
+from services.transcription.providers.openai_provider import OpenAIProvider
+from services.transcription.providers.whisper_provider import WhisperProvider
+from services.transcription.response_parsing import globalize_chunk_result
 from services.transcription.segmentation import (
-    resegment_words_to_segments,
-    normalize_speaker_labels,
-    format_diarized_transcript,
+    format_diarized_transcript, normalize_speaker_labels, resegment_words_to_segments,
 )
-from services.transcription.response_parsing import parse_transcription_response
-
+from utilities.memory import release_memory
 from utilities.timing import log_stage_timing
 
 logger = get_logger(__name__)
 
 
-class TranscriptionServiceError(Exception):
-    """Exception raised for transcription service errors."""
-    pass
+TAIL_PAD_MS=1500  # Silence to append to the final chunk to help the model finalise decoding
 
+
+class TranscriptionServiceError(Exception):
+    """Raised for transcription failures."""
+
+
+# ---------------------------------------------------------------------------
+# Audio statistics (cheap; no DSP, just summaries)
+# ---------------------------------------------------------------------------
+
+def _audio_stats(audio: AudioSegment) -> Dict[str, Any]:
+    """Return cheap audio summary stats for the run row."""
+    sr = audio.frame_rate
+    channels = audio.channels
+    duration_ms = float(len(audio))
+
+    raw = np.array(audio.get_array_of_samples(), dtype=np.int16)
+    if channels > 1:
+        raw = raw.reshape(-1, channels).mean(axis=1)
+    samples = raw.astype(np.float32) / 32768.0
+
+    # Sliding 100 ms RMS for loudness percentiles.
+    win = max(1, int(sr * 0.1))
+    if samples.size >= win:
+        # Vectorised RMS via cumulative-sum trick.
+        sq = samples * samples
+        csum = np.concatenate([[0.0], np.cumsum(sq)])
+        rms = np.sqrt((csum[win:] - csum[:-win]) / win)
+        rms = rms[rms > 1e-6]
+    else:
+        rms = np.array([], dtype=np.float32)
+
+    if rms.size:
+        db = 20.0 * np.log10(rms)
+        p10, p50, p90 = (float(np.percentile(db, p)) for p in (10, 50, 90))
+        # Crude SNR proxy: top decile loudness − bottom decile loudness.
+        estimated_snr_db = float(p90 - p10)
+    else:
+        p10 = p50 = p90 = -120.0
+        estimated_snr_db = 0.0
+
+    return {
+        "duration_ms": duration_ms,
+        "sample_rate": sr,
+        "channels": channels,
+        "loudness_p10_db": p10,
+        "loudness_p50_db": p50,
+        "loudness_p90_db": p90,
+        "estimated_snr_db": estimated_snr_db,
+    }
+
+
+def _compress_probs(probs: np.ndarray, max_kb: int = 100) -> List[float]:
+    """Downsample VAD probability stream so the JSON list stays under ``max_kb``."""
+    arr = np.asarray(probs, dtype=np.float32)
+    if arr.size == 0:
+        return []
+    # Each float ≈ 8 bytes JSON-encoded.  Aim for ≤ max_kb * 1024 bytes.
+    max_floats = max(256, (max_kb * 1024) // 8)
+    if arr.size <= max_floats:
+        return [round(float(v), 4) for v in arr.tolist()]
+    factor = int(np.ceil(arr.size / max_floats))
+    pad = (-arr.size) % factor
+    if pad:
+        arr = np.concatenate([arr, np.full(pad, arr[-1], dtype=np.float32)])
+    down = arr.reshape(-1, factor).mean(axis=1)
+    return [round(float(v), 4) for v in down.tolist()]
+
+
+# ---------------------------------------------------------------------------
+# Service
+# ---------------------------------------------------------------------------
 
 class TranscriptionService:
     """Service for handling audio transcription using OpenAI's Whisper model."""
@@ -56,518 +129,395 @@ class TranscriptionService:
         self,
         openai_client: AsyncOpenAI,
         openai_config: OpenAIConfig,
-        transcription_repository: TranscriptionHistoryRepository
+        transcription_repository: TranscriptionHistoryRepository,
+        transcription_run_repository: TranscriptionRunRepository,
+        transcription_config: TranscriptionConfig,
+        openai_provider: OpenAIProvider,
+        google_provider: GoogleSpeechProvider,
+        azure_provider: AzureSpeechProvider,
+        whisper_provider: WhisperProvider,
     ):
-        """
-        Initialize the transcription service.
-
-        Args:
-            openai_client: Configured AsyncOpenAI client
-            openai_config: OpenAI configuration containing API key
-            transcription_repository: Repository for storing transcription history
-        """
         self._client = openai_client
         self._config = openai_config
         self._repository = transcription_repository
+        self._runs = transcription_run_repository
+        self._providers: Dict[str, TranscriptionProvider] = {
+            "openai": openai_provider,
+            "google": google_provider,
+            "azure": azure_provider,
+            "whisper": whisper_provider,
+        }
+        self._default_provider_name = (transcription_config.provider or "openai").lower()
+        logger.info(
+            f"TranscriptionService default provider: {self._default_provider_name}"
+        )
+
+    def _get_provider(self, name: Optional[str]) -> TranscriptionProvider:
+        key = (name or self._default_provider_name).lower()
+        provider = self._providers.get(key)
+        if provider is None:
+            raise ValueError(
+                f"Unknown transcription provider {name!r} "
+                f"(supported: {', '.join(sorted(self._providers))})"
+            )
+        return provider
+
+    # ------------------------------------------------------------------
+    # Public entry point
+    # ------------------------------------------------------------------
 
     async def transcribe_audio(
         self,
         audio_file: BinaryIO,
         filename: str,
+        upload_id: str,
         language: Optional[str] = None,
         temperature: float = 0.0,
         file_size: Optional[int] = None,
         user_id: Optional[str] = None,
         save_to_history: bool = True,
         diarize: bool = False,
-        return_waveform_overlay: bool = False
-    ) -> Union[str, Dict]:
-        """
-        Transcribe audio file using OpenAI's Whisper model with silence-aware chunking.
-
-        When diarize=True, extracts speaker labels automatically provided by OpenAI's
-        gpt-4o-transcribe model.
+        return_waveform_overlay: bool = False,
+        provider_name: Optional[str] = None,
+        ) -> Dict[str, Any]:
+        """Transcribe audio using VAD-planned chunking.
 
         Args:
-            audio_file: Binary audio file data
-            filename: Original filename (used by OpenAI for format detection)
-            language: Optional language code (e.g., 'en', 'es', 'fr')
-            temperature: Sampling temperature between 0 and 1 (0=deterministic)
-            file_size: Optional size of the audio file in bytes
-            user_id: Optional user identifier
-            save_to_history: Whether to save the transcription to history (default: True)
-            diarize: Whether to return diarized output with speaker labels (default: False)
-            return_waveform_overlay: Whether to include waveform overlay PNG as base64 (default: False)
+            provider_name: Optional override for the speech-to-text
+                backend (e.g. ``"openai"``, ``"azure"``, ``"google"``,
+                ``"whisper"``). Defaults to the configured provider.
 
         Returns:
-            If diarize=False and return_waveform_overlay=False: Plain text string
-            If diarize=False and return_waveform_overlay=True: Dict with 'text' and 'waveform_overlay'
-            If diarize=True: Dict with 'text', 'segments', 'diarized' keys (and 'waveform_overlay' if requested)
-                segments include 'start', 'end', 'speaker', and 'text' fields
-                waveform_overlay is a base64-encoded PNG string showing DSP processing stages
-
-        Raises:
-            TranscriptionServiceError: If transcription fails
+                        Dict payload with ``text`` and ``transcription_id``.
+                        Optional keys: ``segments``, ``diarized``, ``waveform_overlay``.
         """
         t0 = time.perf_counter()
-
         try:
-            logger.info(f"Starting transcription for file: {filename} (diarize={diarize})")
-
-            # Validate file size (OpenAI limit is 25MB)
-            max_file_size = 25 * 1024 * 1024  # 25MB in bytes
-            if file_size and file_size > max_file_size:
-                raise TranscriptionServiceError(
-                    f"File size ({file_size / (1024*1024):.1f}MB) exceeds maximum allowed size of 25MB"
-                )
-
-            # Determine MIME type
-            with log_stage_timing(logger, "transcribe_audio.get_mime", fields={"filename": filename}):
-                mime_type = get_audio_mime_type(filename)
-            logger.info(f"Using MIME type: {mime_type}")
-
-            # Use diarize model when diarization is requested
-            model = "gpt-4o-transcribe-diarize" if diarize else "gpt-4o-transcribe"
-
-            # Load audio file
-            logger.info("Loading audio file...")
-            audio_file.seek(0)
-            with log_stage_timing(logger, "transcribe_audio.read_bytes", fields={"filename": filename}):
-                audio_data = audio_file.read()
-            logger.info(f"Read {len(audio_data)} bytes")
-
-            # Parse audio with pydub
-            # Extract file extension for explicit format specification (critical for WebM)
-            file_extension = filename.lower().split('.')[-1] if '.' in filename else ''
-
-            try:
-                # Explicitly specify format for WebM files to ensure proper Opus decoding
-                with log_stage_timing(
-                    logger,
-                    "transcribe_audio.decode_pydub",
-                    fields={"filename": filename, "ext": file_extension},
-                ):
-                    if file_extension == 'webm':
-                        audio_segment = AudioSegment.from_file(
-                            io.BytesIO(audio_data),
-                            format='webm',
-                            codec='opus'  # WebM from browsers typically uses Opus codec
-                        )
-                    else:
-                        audio_segment = AudioSegment.from_file(io.BytesIO(audio_data))
-
-                # Release compressed audio bytes — pydub has decoded into
-                # raw samples so we no longer need the original file data.
-                del audio_data
-
-                logger.info(f"Audio loaded: {len(audio_segment)}ms, "
-                            f"{audio_segment.frame_rate}Hz, "
-                            f"{audio_segment.channels}ch, "
-                            f"{audio_segment.sample_width}B/sample")
-            except Exception as e:
-                logger.error(f"Failed to load audio: {e}", exc_info=True)
-                raise TranscriptionServiceError(f"Failed to load audio file: {e}")
-
-            # Two-path transcription strategy:
-            # Path A: Single-shot with comfort noise (preferred, faster, more accurate)
-            # Path B: Duration-based chunking (fallback for large files)
-
-            # Determine which path to use (file_extension already extracted above)
-            with log_stage_timing(
-                logger,
-                "transcribe_audio.single_shot_gate",
-                fields={
-                    "filename": filename,
-                    "audio_ms": len(audio_segment),
-                    "sr": audio_segment.frame_rate,
-                    "ch": audio_segment.channels,
-                },
-            ):
-                safe_for_single_shot, export_format = is_single_shot_safe(audio_segment, source_format=file_extension)
-
-            if safe_for_single_shot:
-                # PATH A: Single-shot transcription with silence excision
-                logger.info("Using Path A: Single-shot transcription with silence excision")
-
-                # Preprocess audio: excise silence regions so the encoder
-                # never sees long zero-energy spans.
-                with log_stage_timing(
-                    logger,
-                    "transcribe_audio.preprocess_audio",
-                    fields={"filename": filename, "audio_ms": len(audio_segment)},
-                ):
-                    preprocess_result: PreprocessResult = preprocess_for_transcription(
-                        audio_segment,
-                        debug_tag=filename,
-                        return_waveform_overlay=return_waveform_overlay,
-                    )
-                    processed_audio = preprocess_result.audio
-                    excision_map = preprocess_result.excision_map
-                    waveform_overlay = preprocess_result.waveform_overlay
-
-                logger.info(f"Transcribing full audio (duration: {len(processed_audio)}ms, format: {export_format})")
-
-                # Create a single chunk for the entire (excised) audio
-                full_audio_chunk = AudioChunk(
-                    audio_segment=processed_audio,
-                    logical_start_ms=0,
-                    logical_end_ms=len(processed_audio),
-                    actual_start_ms=0,
-                    actual_end_ms=len(processed_audio),
-                    chunk_index=0
-                )
-
-                # Transcribe with specified format
-                with log_stage_timing(
-                    logger,
-                    "transcribe_audio.transcribe_single_chunk",
-                    fields={"filename": filename, "export": export_format, "model": model},
-                ):
-                    result_text, all_segments, all_words = await self._transcribe_chunk(
-                        full_audio_chunk, filename, model, language, temperature, export_format
-                    )
-            else:
-                # PATH B: Duration-based chunking fallback
-                logger.info("Using Path B: Duration-based chunking (file too large for single-shot)")
-
-                # Waveform overlay not supported for chunked transcription
-                waveform_overlay = None
-                # No excision in Path B — identity map
-                excision_map = ExcisionMap.identity(float(len(audio_segment)))
-
-                overlap_ms = 1_500
-                with log_stage_timing(
-                    logger,
-                    "transcribe_audio.chunk_by_duration",
-                    fields={"filename": filename, "audio_ms": len(audio_segment), "overlap_ms": overlap_ms},
-                ):
-                    chunks = chunk_by_duration(
-                        audio_segment,
-                        chunk_duration_ms=60_000,
-                        overlap_ms=overlap_ms
-                    )
-
-                logger.info(f"Audio split into {len(chunks)} chunks")
-
-                # Transcribe each chunk
-                all_segments: List[Dict] = []
-                all_texts: List[str] = []
-                all_words: List[WordToken] = []
-
-                # Use the same export format determined earlier (WAV for WebM, FLAC otherwise)
-                chunk_export_format = export_format
-
-                for chunk in chunks:
-                    logger.info(f"Transcribing chunk {chunk.chunk_index + 1}/{len(chunks)} "
-                                f"(duration: {len(chunk.audio_segment)}ms)")
-
-                    with log_stage_timing(
-                        logger,
-                        "transcribe_audio.transcribe_chunk",
-                        fields={
-                            "filename": filename,
-                            "chunk_index": chunk.chunk_index,
-                            "chunks": len(chunks),
-                            "chunk_ms": len(chunk.audio_segment),
-                            "export": chunk_export_format,
-                            "model": model,
-                        },
-                    ):
-                        chunk_text, chunk_segments, chunk_words = await self._transcribe_chunk(
-                            chunk, filename, model, language, temperature, chunk_export_format
-                        )
-
-                    # --- Deterministic time-based overlap trimming ---
-                    # The overlap region [actual_start, logical_start) belongs
-                    # to the PREVIOUS chunk.  Compute boundary directly from
-                    # logical_start so intent is obvious to future readers.
-                    if chunk.chunk_index > 0 and overlap_ms > 0:
-                        overlap_end_sec = chunk.logical_start_ms / 1000.0
-
-                        with log_stage_timing(
-                            logger,
-                            "transcribe_audio.overlap_trim",
-                            fields={"chunk_index": chunk.chunk_index, "overlap_ms": overlap_ms},
-                        ):
-                            if chunk_words:
-                                chunk_words = trim_word_tokens_in_overlap_window(
-                                    chunk_words, overlap_end_sec
-                                )
-                            if chunk_segments:
-                                chunk_segments = trim_segments_in_overlap_window(
-                                    chunk_segments, overlap_end_sec
-                                )
-
-                    # If trimming removed everything the model returned for
-                    # this chunk, blank out chunk_text to avoid phantom
-                    # duplicates from coarse timing.
-                    if chunk.chunk_index > 0 and not chunk_words and not chunk_segments:
-                        logger.info(f"Chunk {chunk.chunk_index}: all tokens/segments fell in overlap, dropping text")
-                        chunk_text = ""
-
-                    # Text-level deduplicate_seam as fallback for the first
-                    # segment boundary (covers edge cases where timing is
-                    # unavailable or imprecise).
-                    if all_texts:
-                        with log_stage_timing(
-                            logger,
-                            "transcribe_audio.deduplicate_seam",
-                            fields={"chunk_index": chunk.chunk_index},
-                        ):
-                            chunk_text = deduplicate_seam(all_texts[-1], chunk_text)
-
-                    all_texts.append(chunk_text)
-
-                    if chunk_segments:
-                        if all_segments:
-                            prev_text = all_segments[-1].get('text', '')
-                            first_seg_text = chunk_segments[0].get('text', '')
-                            deduped = deduplicate_seam(prev_text, first_seg_text)
-                            chunk_segments[0]['text'] = deduped
-                        all_segments.extend(chunk_segments)
-
-                    if chunk_words:
-                        all_words.extend(chunk_words)
-
-                # Combine results
-                result_text = ' '.join(all_texts).strip()
-
-            duration = time.perf_counter() - t0
-
-            logger.info(f"Transcription completed: {len(result_text)} chars in {duration:.2f}s")
+            provider = self._get_provider(provider_name)
             logger.info(
-                f"[timing] stage=transcribe_audio.total duration_ms={int(duration * 1000)} "
-                f"filename={filename} diarize={diarize} bytes={file_size or 'unknown'}"
+                f"Starting transcription for file: {filename} "
+                f"(diarize={diarize}, provider={provider.name})"
             )
 
-            # ── Remap timestamps from excised-audio time to original time ──
-            # After excision the audio sent to OpenAI is shorter; timestamps
-            # returned by the model are in excised-audio coordinates.  The
-            # excision_map translates them back to positions in the original
-            # recording so that diarization and segment timings are accurate.
-            if excision_map is not None and not excision_map.is_identity:
-                with log_stage_timing(
-                    logger,
-                    "transcribe_audio.remap_timestamps",
-                    fields={
-                        "words": len(all_words),
-                        "segments": len(all_segments),
-                    },
-                ):
-                    for word in all_words:
-                        word.start = excision_map.to_original_time_ms(word.start * 1000.0) / 1000.0
-                        word.end = excision_map.to_original_time_ms(word.end * 1000.0) / 1000.0
-                    for seg in all_segments:
-                        seg['start'] = excision_map.to_original_time_ms(seg['start'] * 1000.0) / 1000.0
-                        seg['end'] = excision_map.to_original_time_ms(seg['end'] * 1000.0) / 1000.0
-                logger.info(
-                    "Remapped %d words and %d segments to original-audio timestamps",
-                    len(all_words), len(all_segments),
-                )
+            with log_stage_timing(logger, "transcribe_audio.get_mime", fields={"filename": filename}):
+                _ = get_audio_mime_type(filename)
 
-            # Save to history if requested
+            audio_segment = self._decode_audio(audio_file, filename)
+            # Compute audio stats once up-front so we can drop the decoded
+            # AudioSegment as soon as chunks are materialised.
+            audio_stats = _audio_stats(audio_segment)
+            audio_ms = float(len(audio_segment))
+
+            # ── DSP: VAD → plan → materialise ──────────────────────────
+            with log_stage_timing(
+                logger, "transcribe_audio.preprocess",
+                fields={"filename": filename, "audio_ms": audio_ms},
+            ):
+                pre: PreprocessResult = preprocess_for_transcription(
+                    audio_segment,
+                    debug_tag=filename,
+                    return_waveform_overlay=return_waveform_overlay,
+                )
+            chunks: List[AudioChunk] = pre.chunks
+            chunk_plan: List[ChunkPlanEntry] = pre.chunk_plan
+            waveform_overlay = pre.waveform_overlay
+            # Free the decoded source AudioSegment — chunks own their own
+            # slices, the overlay PNG is already rendered, and stats were
+            # captured above.
+            audio_segment = None  # type: ignore[assignment]
+            pre.audio = None  # type: ignore[assignment]
+            logger.info(f"Plan produced {len(chunks)} chunks")
+
+            # ── Transcribe + dedup ─────────────────────────────────────
+            result_text, all_segments, all_words, per_chunk_records = await self._run_chunks(
+                chunks=chunks, filename=filename,
+                language=language, temperature=temperature, diarize=diarize,
+                provider=provider,
+            )
+
+            # ── Persist run row ────────────────────────────────────────
+            transcription_id = await self._persist_run(
+                user_id=user_id, filename=filename, upload_id=upload_id,
+                audio_stats=audio_stats, vad_probs=pre.vad_probs,
+                chunk_plan=chunk_plan, merged_text=result_text,
+                per_chunk=per_chunk_records,
+            )
+
+            duration = time.perf_counter() - t0
+            logger.info(
+                f"Transcription completed: {len(result_text)} chars in {duration:.2f}s "
+                f"(id={transcription_id})",
+            )
+
             if save_to_history:
                 try:
-                    with log_stage_timing(
-                        logger,
-                        "transcribe_audio.save_history",
-                        fields={"filename": filename, "user_id": user_id},
-                    ):
-                        await self._repository.save_transcription(
-                            filename=filename,
-                            transcribed_text=result_text,
-                            language=language,
-                            file_size=file_size,
-                            duration=duration,
-                            user_id=user_id
-                        )
-                    logger.info("Transcription saved to history")
-                except Exception as e:
-                    logger.warning(f"Failed to save transcription to history: {e}")
+                    await self._repository.save_transcription(
+                        filename=filename, transcribed_text=result_text,
+                        language=language, file_size=file_size,
+                        duration=duration, user_id=user_id,
+                    )
+                except Exception as exc:
+                    logger.warning(f"history save failed: {exc}")
 
-            # Return appropriate format
-            if diarize:
-                # Use word-first resegmentation as source of truth
-                if all_words:
-                    logger.info(f"Resegmenting {len(all_words)} words into new segments")
-                    with log_stage_timing(
-                        logger,
-                        "transcribe_audio.resegment_words",
-                        fields={"words": len(all_words)},
-                    ):
-                        resegmented = resegment_words_to_segments(
-                            all_words,
-                            pause_threshold_ms=250.0,
-                            max_segment_ms=1500.0,
-                            split_on_punctuation=True
-                        )
-                    logger.info(f"Created {len(resegmented)} resegmented segments from words")
+            return self._build_response(
+                result_text=result_text, all_words=all_words, all_segments=all_segments,
+                diarize=diarize, waveform_overlay=waveform_overlay,
+                return_waveform_overlay=return_waveform_overlay,
+                transcription_id=transcription_id,
+            )
 
-                    # Normalize speaker labels (A, B, C -> Speaker 1, Speaker 2, Speaker 3)
-                    with log_stage_timing(logger, "transcribe_audio.normalize_speakers"):
-                        normalized_segments = normalize_speaker_labels(resegmented)
-                else:
-                    # Fallback to segment-based approach if no words available
-                    logger.warning("No words available, falling back to segment-based diarization")
-                    with log_stage_timing(logger, "transcribe_audio.normalize_speakers"):
-                        normalized_segments = normalize_speaker_labels(all_segments)
-
-                # Format readable text with speaker labels
-                with log_stage_timing(logger, "transcribe_audio.format_diarized"):
-                    diarized_text = format_diarized_transcript(normalized_segments)
-
-                result_dict = {
-                    'text': diarized_text,
-                    'segments': normalized_segments,
-                    'diarized': True
-                }
-                if return_waveform_overlay and waveform_overlay:
-                    result_dict['waveform_overlay'] = waveform_overlay
-
-                # Explicit cleanup before returning
-                del audio_segment, all_words, all_segments
-                release_memory()
-                return result_dict
-            else:
-                # Explicit cleanup before returning
-                del audio_segment
-                release_memory()
-
-                if return_waveform_overlay and waveform_overlay:
-                    return {
-                        'text': result_text,
-                        'waveform_overlay': waveform_overlay
-                    }
-                return result_text
-
-        except Exception as e:
-            # Ensure audio data is freed even on error
-            for _var in ('audio_data', 'audio_segment'):
-                if _var in locals():
-                    try:
-                        del locals()[_var]
-                    except Exception:
-                        pass
+        except TranscriptionServiceError:
             release_memory()
+            raise
+        except Exception as e:
+            release_memory()
+            logger.error(f"Failed to transcribe audio file {filename}: {e}", exc_info=True)
+            raise TranscriptionServiceError(f"Failed to transcribe audio file {filename}: {e}") from e
 
-            error_msg = f"Failed to transcribe audio file {filename}: {e}"
-            logger.error(error_msg, exc_info=True)
-            raise TranscriptionServiceError(error_msg) from e
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _decode_audio(audio_file: BinaryIO, filename: str) -> AudioSegment:
+        audio_file.seek(0)
+        data = audio_file.read()
+        ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+        try:
+            if ext == "webm":
+                return AudioSegment.from_file(io.BytesIO(data), format="webm", codec="opus")
+            return AudioSegment.from_file(io.BytesIO(data))
+        except Exception as exc:
+            raise TranscriptionServiceError(f"Failed to load audio file: {exc}") from exc
+
+    async def _run_chunks(
+        self,
+        chunks: List[AudioChunk],
+        filename: str,
+        language: Optional[str],
+        temperature: float,
+        diarize: bool,
+        provider: TranscriptionProvider,
+    ) -> Tuple[str, List[Dict], List[WordToken], List[Dict[str, Any]]]:
+        """Transcribe each chunk, dedup at seams, return merged outputs + per-chunk record."""
+        all_segments: List[Dict] = []
+        all_texts: List[str] = []
+        all_words: List[WordToken] = []
+        per_chunk_records: List[Dict[str, Any]] = []
+
+        export_format = "flac"
+        last_idx = len(chunks) - 1
+        for chunk in chunks:
+            is_last = chunk.chunk_index == chunks[last_idx].chunk_index
+            with log_stage_timing(
+                logger, "transcribe_audio.chunk",
+                fields={
+                    "chunk_index": chunk.chunk_index, "chunks": len(chunks),
+                    "chunk_ms": len(chunk.audio_segment),
+                    "provider": provider.name,
+                    "is_last": is_last,
+                },
+            ):
+                chunk_text, chunk_segments, chunk_words = await self._transcribe_chunk(
+                    chunk, filename, language, temperature, export_format,
+                    is_last=is_last, diarize=diarize, provider=provider,
+                )
+            # Free the per-chunk audio immediately — no downstream consumer
+            # needs the raw samples once the API call has completed and the
+            # response has been parsed (timestamps were globalised inside
+            # parse_transcription_response via the chunk's excision_map).
+            chunk.audio_segment = None  # type: ignore[assignment]
+            chunk.excision_map = None
+
+            # Drop tokens/segments inside the leading overlap (owned by previous chunk).
+            if chunk.chunk_index > 0:
+                overlap_end_sec = chunk.logical_start_ms / 1000.0
+                if chunk_words:
+                    chunk_words = trim_word_tokens_in_overlap_window(chunk_words, overlap_end_sec)
+                if chunk_segments:
+                    chunk_segments = trim_segments_in_overlap_window(chunk_segments, overlap_end_sec)
+                if not chunk_words and not chunk_segments:
+                    chunk_text = ""
+
+            # Text-level seam dedup as a safety net for coarse timing.
+            if all_texts:
+                chunk_text = deduplicate_seam(all_texts[-1], chunk_text)
+
+            words_after_dedup_count = len(chunk_words)
+            per_chunk_records.append({
+                "chunk_index": chunk.chunk_index,
+                "raw_text": chunk_text,
+                "words_after_dedup": words_after_dedup_count,
+            })
+
+            all_texts.append(chunk_text)
+            if chunk_segments:
+                if all_segments:
+                    prev_text = all_segments[-1].get("text", "")
+                    chunk_segments[0]["text"] = deduplicate_seam(prev_text, chunk_segments[0].get("text", ""))
+                all_segments.extend(chunk_segments)
+            if chunk_words:
+                all_words.extend(chunk_words)
+
+        return " ".join(all_texts).strip(), all_segments, all_words, per_chunk_records
+
+    async def _persist_run(
+        self,
+        user_id: Optional[str],
+        filename: str,
+        upload_id: str,
+        audio_stats: Dict[str, Any],
+        vad_probs: Optional[np.ndarray],
+        chunk_plan: List[ChunkPlanEntry],
+        merged_text: str,
+        per_chunk: List[Dict[str, Any]],
+    ) -> str:
+        document = {
+            "created_at": datetime.utcnow(),
+            "pipeline_version": PIPELINE_VERSION,
+            "user_id": user_id,
+            "filename": filename,
+            "upload_id": upload_id,
+            "audio_stats": audio_stats,
+            "vad_probability_stream": _compress_probs(vad_probs) if vad_probs is not None else [],
+            "chunk_plan": [e.to_dict() for e in chunk_plan],
+            "transcript": {"merged_text": merged_text, "per_chunk": per_chunk},
+            "audio_status": "ephemeral",
+            "audio_storage_ref": None,
+            "feedback": None,
+        }
+        return await self._runs.insert_run(document)
+
+    @staticmethod
+    def _build_response(
+        result_text: str,
+        all_words: List[WordToken],
+        all_segments: List[Dict],
+        diarize: bool,
+        waveform_overlay: Optional[str],
+        return_waveform_overlay: bool,
+        transcription_id: str,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "text": result_text,
+            "transcription_id": transcription_id,
+        }
+
+        if diarize:
+            if all_words:
+                resegmented = resegment_words_to_segments(
+                    all_words, pause_threshold_ms=250.0,
+                    max_segment_ms=1500.0, split_on_punctuation=True,
+                )
+                normalized_segments = normalize_speaker_labels(resegmented)
+            else:
+                normalized_segments = normalize_speaker_labels(all_segments)
+            diarized_text = format_diarized_transcript(normalized_segments)
+            payload["text"] = diarized_text
+            payload["segments"] = normalized_segments
+            payload["diarized"] = True
+            if return_waveform_overlay and waveform_overlay:
+                payload["waveform_overlay"] = waveform_overlay
+            return payload
+
+        if return_waveform_overlay and waveform_overlay:
+            payload["waveform_overlay"] = waveform_overlay
+        return payload
+
+    # ------------------------------------------------------------------
+    # Per-chunk provider call (provider-agnostic)
+    # ------------------------------------------------------------------
 
     async def _transcribe_chunk(
         self,
         chunk: AudioChunk,
         filename: str,
-        model: str,
         language: Optional[str],
         temperature: float,
-        export_format: str = 'flac'
+        export_format: str = "flac",
+        is_last: bool = False,
+        diarize: bool = False,
+        provider: Optional[TranscriptionProvider] = None,
     ) -> Tuple[str, List[Dict], List[WordToken]]:
-        """
-        Transcribe a single audio chunk.
-
-        This method handles the OpenAI API call; response parsing and
-        timestamp offsetting are delegated to ``parse_transcription_response``.
-
-        Args:
-            chunk: AudioChunk to transcribe
-            filename: Base filename for identification
-            model: OpenAI model name
-            language: Optional language code
-            temperature: Sampling temperature
-            export_format: Format to export audio ('flac' or 'wav', default 'flac')
-
-        Returns:
-            Tuple of (transcribed_text, segments_list, word_tokens)
-            - transcribed_text: Plain text transcription
-            - segments_list: Segments for backward compatibility
-            - word_tokens: List of WordToken (source of truth for timing)
-        """
+        if provider is None:
+            provider = self._get_provider(None)
         try:
-            # Export chunk to specified format (prefer FLAC for size)
-            chunk_buffer = io.BytesIO()
-
-            # Build export parameters - explicit codec ensures proper encoding
-            export_params = ["-ar", "16000", "-ac", "1"]  # 16kHz mono
-            if export_format == 'wav':
-                # Force PCM encoding for WAV to avoid codec issues
-                export_params.extend(["-acodec", "pcm_s16le"])  # 16-bit PCM little-endian
-
-            with log_stage_timing(
-                logger,
-                "transcribe_chunk.export",
-                fields={
-                    "chunk_index": chunk.chunk_index,
-                    "export": export_format,
-                    "chunk_ms": len(chunk.audio_segment),
-                },
-            ):
-                chunk.audio_segment.export(
-                    chunk_buffer,
-                    format=export_format,
-                    parameters=export_params
+            # ── Pre-export conditioning ────────────────────────────────
+            # For the final chunk only, append real digital silence after
+            # the speech so the transcriber sees a clear EOS boundary and
+            # finalises decoding.  Production ASR systems (Whisper-style)
+            # rely on trailing silence as the implicit end-of-utterance
+            # cue; the previous "final word lost" failure was the encoder
+            # waiting for more audio.
+            export_seg = chunk.audio_segment
+            tail_pad_ms = 0
+            if is_last:
+                tail_pad_ms = TAIL_PAD_MS
+                export_seg = export_seg + AudioSegment.silent(
+                    duration=tail_pad_ms, frame_rate=export_seg.frame_rate,
                 )
-            chunk_buffer.seek(0)
 
-            # Get bytes to ensure buffer is properly read
-            audio_bytes = chunk_buffer.getvalue()
-            chunk_buffer.close()  # Explicitly close BytesIO buffer
+            chunk_buffer = io.BytesIO()
+            export_params = ["-ar", "16000", "-ac", "1"]
+            if export_format == "wav":
+                export_params.extend(["-acodec", "pcm_s16le"])
 
-            # Validate that we have actual audio data
-            if len(audio_bytes) < 1000:  # Less than 1KB is suspicious
-                logger.warning(f"Export produced only {len(audio_bytes)} bytes for {len(chunk.audio_segment)}ms audio")
-
-            logger.debug(f"Exported {len(audio_bytes)} bytes of {export_format.upper()} audio for chunk {chunk.chunk_index}")
-
-            chunk_filename = f"{filename}_chunk_{chunk.chunk_index}.{export_format}"
-
-            # Determine MIME type
-            mime_type = 'audio/flac' if export_format == 'flac' else 'audio/wav'
-
-            # Prepare API request
-            # Use diarized_json for diarization (gpt-4o-transcribe-diarize) to get granular segments
-            # Use json for regular transcription (gpt-4o-transcribe)
-            response_format = "diarized_json" if model == "gpt-4o-transcribe-diarize" else "json"
-
-            # Use the audio bytes directly to avoid any cursor issues
-            kwargs = {
-                "file": (chunk_filename, audio_bytes, mime_type),
-                "model": model,
-                "temperature": temperature,
-                "response_format": response_format
-            }
-
-            # Add chunking_strategy for diarization models (required parameter)
-            if model == "gpt-4o-transcribe-diarize":
-                kwargs["chunking_strategy"] = "auto"
-
-            if language:
-                kwargs["language"] = language
-
-            # Call OpenAI API
             with log_stage_timing(
-                logger,
-                "transcribe_chunk.openai_call",
-                fields={
-                    "chunk_index": chunk.chunk_index,
-                    "model": model,
-                    "response_format": response_format,
-                },
+                logger, "transcribe_chunk.export",
+                fields={"chunk_index": chunk.chunk_index, "export": export_format,
+                        "chunk_ms": len(export_seg), "tail_pad_ms": tail_pad_ms,
+                        "is_last": is_last},
             ):
-                response = await self._client.audio.transcriptions.create(**kwargs)
+                export_seg.export(chunk_buffer, format=export_format, parameters=export_params)
+            chunk_buffer.seek(0)
+            audio_bytes = chunk_buffer.getvalue()
+            chunk_buffer.close()
 
-            logger.info(f"Received transcription response for chunk {chunk.chunk_index}")
+            voiced_ms = float(len(chunk.audio_segment))  # excised → already voice-only
+            chunk_ms = float(len(export_seg))
 
-            # Delegate response parsing to pure function
+            # ── Provider call ──────────────────────────────────────────
             with log_stage_timing(
-                logger,
-                "transcribe_chunk.parse_response",
+                logger, "transcribe_chunk.provider_call",
+                fields={"chunk_index": chunk.chunk_index,
+                        "provider": provider.name,
+                        "diarize": diarize},
+            ):
+                provider_result: TranscriptionResult = await provider.transcribe(
+                    audio_bytes,
+                    sample_rate=16000,
+                    language=language,
+                    diarize=diarize,
+                )
+
+            with log_stage_timing(
+                logger, "transcribe_chunk.parse_response",
                 fields={"chunk_index": chunk.chunk_index},
             ):
-                chunk_text, segments, words = parse_transcription_response(response, chunk)
+                chunk_text, segments, words = globalize_chunk_result(
+                    provider_result.text, provider_result.segments, chunk,
+                )
 
+            # ── Per-chunk instrumentation (truncation detector) ────────
+            voiced_sec = voiced_ms / 1000.0 if voiced_ms else 0.0
+            wps = (len(chunk_text.split()) / voiced_sec) if voiced_sec > 0 else 0.0
+            logger.info(
+                "chunk_transcribed "
+                f"provider={provider.name} "
+                f"chunk_index={chunk.chunk_index} "
+                f"chunk_ms={chunk_ms:.0f} "
+                f"voiced_ms={voiced_ms:.0f} "
+                f"text_chars={len(chunk_text)} "
+                f"text_words={len(chunk_text.split())} "
+                f"wps={wps:.2f} "
+                f"segments={len(segments)} "
+                f"confidence={provider_result.confidence}"
+            )
             return chunk_text, segments, words
-
-        except Exception as e:
-            logger.error(f"Failed to transcribe chunk {chunk.chunk_index}: {e}", exc_info=True)
+        except Exception as exc:
+            logger.error(
+                f"Provider {provider.name} failed on chunk "
+                f"{chunk.chunk_index}: {exc}",
+                exc_info=True,
+            )
             raise

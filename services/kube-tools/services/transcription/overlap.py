@@ -1,11 +1,21 @@
 """Overlap trimming and text seam deduplication for chunk boundaries."""
 
+import re
 from typing import List, Dict
 
 from framework.logger import get_logger
 from services.transcription.models import WordToken
 
 logger = get_logger(__name__)
+
+
+_WORD_RE = re.compile(r"\S+")
+_NORM_STRIP = re.compile(r"[^\w']+", re.UNICODE)
+
+
+def _normalize_token(tok: str) -> str:
+    """Lowercase + strip leading/trailing non-word punctuation for comparison."""
+    return _NORM_STRIP.sub("", tok).lower()
 
 
 def trim_word_tokens_in_overlap_window(
@@ -59,30 +69,54 @@ def find_overlap_suffix_prefix(prev_text: str, new_text: str, max_overlap: int =
     """
     Find the longest overlapping text between the suffix of prev_text and prefix of new_text.
 
-    This is used to de-duplicate text at chunk boundaries caused by overlapping audio.
+    Used for de-duplication at chunk boundaries.  Matches at the **word**
+    level after normalizing case and stripping non-word punctuation, so that
+    re-transcribed overlap text like ``"...see how this"`` followed by
+    ``"See how this interprets..."`` still matches.
 
     Args:
         prev_text: Previous chunk's text
         new_text: New chunk's text
-        max_overlap: Maximum characters to check for overlap
+        max_overlap: Maximum characters of *new_text* to ever consume
 
     Returns:
-        Number of characters to trim from the start of new_text
+        Number of leading characters to trim from ``new_text`` (literal
+        characters in the original string, including any whitespace before
+        the first matched word).
     """
     if not prev_text or not new_text:
         return 0
 
-    # Check progressively smaller overlaps
-    check_len = min(max_overlap, len(prev_text), len(new_text))
+    # Tokenize with span info so we can map back to character offsets.
+    new_matches = list(_WORD_RE.finditer(new_text))
+    prev_matches = list(_WORD_RE.finditer(prev_text))
+    if not new_matches or not prev_matches:
+        return 0
 
-    for overlap_len in range(check_len, 0, -1):
-        prev_suffix = prev_text[-overlap_len:]
-        new_prefix = new_text[:overlap_len]
+    new_norm = [_normalize_token(m.group(0)) for m in new_matches]
+    prev_norm = [_normalize_token(m.group(0)) for m in prev_matches]
 
-        if prev_suffix == new_prefix:
-            logger.debug(f"Found {overlap_len}-char overlap: '{prev_suffix}'")
-            return overlap_len
+    # Cap how many tokens of new we'll consider (rough char budget).
+    cap_tokens = len(new_matches)
+    cum_chars = 0
+    for i, m in enumerate(new_matches):
+        cum_chars = m.end()
+        if cum_chars > max_overlap:
+            cap_tokens = i
+            break
+    if cap_tokens < 1:
+        return 0
 
+    max_k = min(cap_tokens, len(prev_norm))
+    for k in range(max_k, 0, -1):
+        prev_tail = prev_norm[-k:]
+        new_head = new_norm[:k]
+        if all(p and p == n for p, n in zip(prev_tail, new_head)):
+            trim_chars = new_matches[k - 1].end()
+            logger.debug(
+                "Found %d-word seam overlap: '%s'", k, " ".join(new_head),
+            )
+            return trim_chars
     return 0
 
 

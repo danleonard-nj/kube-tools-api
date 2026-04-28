@@ -13,7 +13,14 @@ from clients.open_weather_client import OpenWeatherClient
 from clients.plaid_client import PlaidClient
 from clients.sib_client import SendInBlueClient
 from clients.stock_quote_client import StockQuoteClient
+
 from clients.storage_client import StorageClient
+    # Speech-to-text providers — registered as singletons. Whisper
+    # lazy-loads its model on first transcribe() so startup is cheap.
+from services.transcription.providers.azure_provider import AzureSpeechProvider
+from services.transcription.providers.google_provider import GoogleSpeechProvider
+from services.transcription.providers.openai_provider import OpenAIProvider
+from services.transcription.providers.whisper_provider import WhisperProvider
 from clients.torrent_client import TorrentClient
 from clients.twilio_gateway import TwilioGatewayClient
 from data.android_repository import AndroidNetworkDiagnosticsRepository
@@ -39,6 +46,7 @@ from data.podcast_repository import PodcastRepository
 from data.sms_inbound_repository import InboundSMSRepository
 from data.stock_monitor_repository import StockAlertStateRepository, StockTickRepository
 from data.transcription_history_repository import TranscriptionHistoryRepository
+from data.transcription_run_repository import TranscriptionRunRepository
 from data.ts_repository import TruthSocialRepository
 from data.weather_repository import WeatherRepository
 from domain.auth import AdRole, AuthPolicy
@@ -58,6 +66,7 @@ from models.email_config import EmailConfig
 from models.openai_config import OpenAIConfig
 from models.podcast_config import PodcastConfig
 from models.stock_monitor_config import StockMonitorConfig
+from models.transcription_config import TranscriptionConfig
 from motor.motor_asyncio import AsyncIOMotorClient
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
@@ -98,6 +107,7 @@ from services.scheduler_service import SchedulerService
 from services.stock_monitor_service import StockMonitorService
 from services.weather_service import WeatherService
 from services.transcription_service import TranscriptionService
+from services.transcription.upload_cache import UploadCache
 
 
 def configure_azure_ad(container):
@@ -201,6 +211,7 @@ def register_configs(descriptors):
     register_config(OpenAIConfig, 'openai')
     register_config(BankingConfig, 'banking')
     register_config(StockMonitorConfig, 'stock_monitor')
+    register_config(TranscriptionConfig, 'transcription')
 
 
 def register_gmail_services(
@@ -268,6 +279,7 @@ def register_repositories(
     descriptors.add_singleton(PlaidTransactionRepository)
     descriptors.add_singleton(PlaidSyncRepository)
     descriptors.add_singleton(TranscriptionHistoryRepository)
+    descriptors.add_singleton(TranscriptionRunRepository)
     descriptors.add_singleton(TruthSocialRepository)
     descriptors.add_singleton(StockTickRepository)
     descriptors.add_singleton(StockAlertStateRepository)
@@ -300,6 +312,7 @@ def register_services(
     descriptors.add_singleton(GoogleDriveService)
     descriptors.add_singleton(ConversationService)
     descriptors.add_singleton(TranscriptionService)
+    descriptors.add_singleton(UploadCache)
     descriptors.add_singleton(CoinbaseService)
     descriptors.add_singleton(AndroidService)
     descriptors.add_singleton(TruthSocialPushService)
@@ -307,8 +320,11 @@ def register_services(
     descriptors.add_singleton(OpenAiUsageService)
     descriptors.add_singleton(PlaidUsageService)
     descriptors.add_singleton(StockMonitorService)
-    descriptors.add_singleton(SchedulerService)
-
+    descriptors.add_singleton(SchedulerService)  
+    descriptors.add_singleton(OpenAIProvider)
+    descriptors.add_singleton(AzureSpeechProvider)
+    descriptors.add_singleton(GoogleSpeechProvider)
+    descriptors.add_singleton(WhisperProvider)
 
 class ContainerProvider(ProviderBase):
     @classmethod

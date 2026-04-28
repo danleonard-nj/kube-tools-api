@@ -38,6 +38,16 @@ numpy
 # silero-vad pulls torch; install CPU-only torch + silero-vad explicitly
 # from the Dockerfile so we don't drag in CUDA wheels (~6 GB).
 pytz
+# ── Speech-to-text providers (optional; install only what you use) ──
+# OpenAI: already covered by `openai` above.
+# Azure Speech:
+# azure-cognitiveservices-speech
+# Google Cloud Speech-to-Text (long-form):
+# google-cloud-speech
+# Local Whisper (preferred: faster-whisper, CPU/GPU via CTranslate2):
+# faster-whisper
+# Fallback if faster-whisper is unavailable:
+# openai-whisper
 # azure-identity
 # azure-mgmt-resource
 # azure-mgmt-compute
@@ -49,3 +59,7 @@ pytz
 # azure-mgmt-costmanagement
 # azure-mgmt-monitor
 # sib-api-v3-sdk
+azure-cognitiveservices-speech
+google-cloud-speech
+faster-whisper
+openai-whisper

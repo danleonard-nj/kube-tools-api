@@ -28,10 +28,13 @@ ENV ARTIFACT_INDEX=https://${ARTIFACT_FEED}:${ARTIFACT_FEED_TOKEN}@pkgs.dev.azur
 COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt --extra-index-url=${ARTIFACT_INDEX}
 
-# CPU-only torch (no CUDA) for Silero VAD — saves ~6 GB vs default wheel.
+# CPU-only torch + torchaudio (no CUDA) for Silero VAD — saves ~6 GB
+# vs default wheels.  Both must come from the CPU index; if torchaudio
+# is pulled transitively by silero-vad it defaults to the CUDA build
+# and imports fail at runtime with libcudart.so.* not found.
 RUN pip install --no-cache-dir \
         --index-url https://download.pytorch.org/whl/cpu \
-        torch==2.4.1
+        torch==2.4.1 torchaudio==2.4.1
 RUN pip install --no-cache-dir silero-vad
 
 RUN pip install uvloop

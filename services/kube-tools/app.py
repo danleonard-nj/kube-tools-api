@@ -52,7 +52,13 @@ app.register_blueprint(plaid_bp)
 app.register_blueprint(stock_monitor_bp)
 app.register_blueprint(scheduler_bp)
 
-provider = ContainerProvider.get_service_provider()
+# NOTE: Build the DI container *inside* the serving event loop. Building it at
+# module-import time causes AsyncIOMotorClient (and any other loop-bound
+# singleton) to bind to a throw-away loop created by asyncio.get_event_loop(),
+# which then differs from Quart's serving loop and produces:
+#   RuntimeError: ... got Future <...> attached to a different loop
+# Resolving against `provider` is deferred until startup() runs.
+provider = None
 
 
 async def send_email_sendinblue(subject, message, recipient_email, sender_email, api_key):
@@ -103,6 +109,11 @@ async def send_initial_email():
 
 @app.before_serving
 async def startup():
+    # Build the DI container in the serving loop so loop-bound singletons
+    # (AsyncIOMotorClient, etc.) attach to the correct event loop.
+    global provider
+    provider = ContainerProvider.get_service_provider()
+
     RequestContextProvider.initialize_provider(
         app=app)
 
