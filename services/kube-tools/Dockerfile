@@ -5,44 +5,40 @@ ARG ARTIFACT_FEED_TOKEN
 
 WORKDIR /app
 
-RUN mkdir utilities
-RUN apt-get update -y
-# RUN apt-get update && apt-get dist-upgrade -y
+ENV PIP_NO_CACHE_DIR=1
 
-RUN apt-get update && \
+RUN mkdir -p utilities/mongotools logs && \
+    apt-get update && \
     apt-get install -y \
         build-essential \
         gcc \
         ffmpeg \
         wget && \
+    wget -O /tmp/mongodb-database-tools.tgz https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu1804-x86_64-100.6.0.tgz && \
+    tar -xf /tmp/mongodb-database-tools.tgz -C /app/utilities/mongotools --strip-components 1 && \
+    rm -f /tmp/mongodb-database-tools.tgz && \
     rm -rf /var/lib/apt/lists/*
 
-RUN wget https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu1804-x86_64-100.6.0.tgz
-RUN mkdir /app/utilities/mongotools 
-RUN tar -xf mongodb-database-tools-ubuntu1804-x86_64-100.6.0.tgz -C /app/utilities/mongotools --strip-components 1
-
-RUN mkdir logs
-
-ENV ARTIFACT_INDEX=https://${ARTIFACT_FEED}:${ARTIFACT_FEED_TOKEN}@pkgs.dev.azure.com/dcl525/_packaging/${ARTIFACT_FEED}/pypi/simple/
-
 COPY requirements.txt requirements.txt
-RUN pip install -r requirements.txt --extra-index-url=${ARTIFACT_INDEX}
+
 
 # CPU-only torch + torchaudio (no CUDA) for Silero VAD — saves ~6 GB
 # vs default wheels.  Both must come from the CPU index; if torchaudio
 # is pulled transitively by silero-vad it defaults to the CUDA build
 # and imports fail at runtime with libcudart.so.* not found.
-RUN pip install --no-cache-dir \
+RUN python -m pip install \
         --index-url https://download.pytorch.org/whl/cpu \
         torch==2.4.1 torchaudio==2.4.1
-RUN pip install --no-cache-dir silero-vad
+RUN python -m pip install silero-vad
+RUN python -m pip install \
+    -r requirements.txt \
+    --extra-index-url=https://${ARTIFACT_FEED}:${ARTIFACT_FEED_TOKEN}@pkgs.dev.azure.com/dcl525/_packaging/${ARTIFACT_FEED}/pypi/simple/
 
-RUN pip install uvloop
-RUN pip install uvicorn
+RUN python -m pip install uvloop
 
 COPY . .
 
-RUN apt-get update && apt-get dist-upgrade -y
+# RUN apt-get update && apt-get dist-upgrade -y
 
 # Run tests during build
 # RUN pytest || (echo "Tests failed" && exit 1)

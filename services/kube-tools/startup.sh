@@ -9,4 +9,4 @@ export MALLOC_TRIM_THRESHOLD_=65536
 export MALLOC_MMAP_THRESHOLD_=65536
 export MALLOC_ARENA_MAX=2
 
-uvicorn --log-level=error --host 0.0.0.0 --port=80 --workers 2 app:app
+uvicorn --log-level=error --host 0.0.0.0 --port=80 --workers 2 --proxy-headers --timeout-keep-alive 300 app:app

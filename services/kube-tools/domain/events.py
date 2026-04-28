@@ -118,3 +118,33 @@ class ProcessEmailRuleEvent(ApiMessage):
         base_url: str
     ) -> str:
         return self.endpoint
+
+
+class TranscriptionArchiveEvent(ApiMessage):
+    """Async fan-out: relay calls back into this service to archive the
+    raw upload (Opus-encoded) and overlay PNG for a completed transcription."""
+
+    def __init__(
+        self,
+        transcription_id: str,
+        upload_id: str,
+        endpoint: str,
+        token: str,
+    ):
+        self.body = {
+            'transcription_id': transcription_id,
+            'upload_id': upload_id,
+        }
+        self.endpoint = endpoint
+        self.token = token
+
+        super().__init__(
+            None,
+            'POST',
+            token)
+
+    def get_body(self) -> dict:
+        return self.body
+
+    def get_endpoint(self, base_url: str) -> str:
+        return self.endpoint

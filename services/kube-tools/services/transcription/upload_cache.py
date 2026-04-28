@@ -18,7 +18,9 @@ logger = get_logger(__name__)
 
 
 KEY_PREFIX = "upload:"
-DEFAULT_TTL_SECONDS = 30 * 60  # 30 minutes
+# 45 min: comfortably exceeds the worst-case Service Bus relay + retry window
+# for the async archive worker (which fetches the bytes back via upload_id).
+DEFAULT_TTL_SECONDS = 45 * 60  # 45 minutes
 
 
 def _key(upload_id: str) -> str:

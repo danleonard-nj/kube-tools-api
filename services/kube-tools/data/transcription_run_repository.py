@@ -14,7 +14,13 @@ Schema (per spec)::
       ],
       transcript: {merged_text, per_chunk: [...]},
       audio_status: "ephemeral" | "retained" | "upload_expired",
-      audio_storage_ref: str | null,               # GridFS ObjectId
+      audio_storage_ref: str | null,               # GridFS ObjectId (lossless, on bad feedback)
+      archive_audio_ref: str | null,               # GridFS ObjectId (Opus archive, every run)
+      archive_audio_codec: str | null,             # e.g. "opus"
+      archive_audio_size_bytes: int | null,
+      archive_overlay_ref: str | null,             # GridFS ObjectId (PNG, every run w/ overlay)
+      archive_overlay_size_bytes: int | null,
+      archived_at: datetime | null,
       feedback: {rating, reason, notes, submitted_at} | null,
     }
 """
@@ -34,6 +40,7 @@ logger = get_logger(__name__)
 _DATABASE = "Transcriptions"
 _COLLECTION = "TranscriptionRuns"
 _GRIDFS_BUCKET = "TranscriptionAudio"
+_GRIDFS_ARCHIVE_BUCKET = "TranscriptionArchive"
 
 
 class TranscriptionRunRepository(MongoRepositoryAsync):
@@ -44,6 +51,9 @@ class TranscriptionRunRepository(MongoRepositoryAsync):
         self._client = client
         self._gridfs = AsyncIOMotorGridFSBucket(
             client[_DATABASE], bucket_name=_GRIDFS_BUCKET,
+        )
+        self._gridfs_archive = AsyncIOMotorGridFSBucket(
+            client[_DATABASE], bucket_name=_GRIDFS_ARCHIVE_BUCKET,
         )
 
     # ------------------------------------------------------------------
@@ -152,3 +162,90 @@ class TranscriptionRunRepository(MongoRepositoryAsync):
         except Exception as exc:
             logger.warning("gridfs.fetch_audio failed ref=%s: %s", audio_storage_ref, exc)
             return None
+
+    # ------------------------------------------------------------------
+    # GridFS lossy archive (audio + overlay) — written by the async
+    # archive worker for *every* successful transcription.
+    # ------------------------------------------------------------------
+
+    async def store_archive_audio(
+        self,
+        audio_bytes: bytes,
+        filename: str,
+        transcription_id: str,
+        codec: str,
+        content_type: str,
+    ) -> str:
+        oid = await self._gridfs_archive.upload_from_stream(
+            filename=filename,
+            source=audio_bytes,
+            metadata={
+                "transcription_id": transcription_id,
+                "kind": "audio",
+                "codec": codec,
+                "content_type": content_type,
+            },
+        )
+        return str(oid)
+
+    async def store_archive_overlay(
+        self,
+        png_bytes: bytes,
+        transcription_id: str,
+    ) -> str:
+        oid = await self._gridfs_archive.upload_from_stream(
+            filename=f"{transcription_id}.overlay.png",
+            source=png_bytes,
+            metadata={
+                "transcription_id": transcription_id,
+                "kind": "overlay",
+                "content_type": "image/png",
+            },
+        )
+        return str(oid)
+
+    async def fetch_archive(self, storage_ref: str) -> Optional[Dict[str, Any]]:
+        """Return ``{"data": bytes, "metadata": dict, "filename": str}`` or ``None``."""
+        try:
+            stream = await self._gridfs_archive.open_download_stream(ObjectId(storage_ref))
+            data = await stream.read()
+            return {
+                "data": data,
+                "metadata": dict(stream.metadata or {}),
+                "filename": stream.filename,
+            }
+        except Exception as exc:
+            logger.warning("gridfs.fetch_archive failed ref=%s: %s", storage_ref, exc)
+            return None
+
+    async def set_archive_refs(
+        self,
+        transcription_id: str,
+        audio_ref: Optional[str],
+        audio_codec: Optional[str],
+        audio_size_bytes: Optional[int],
+        overlay_ref: Optional[str],
+        overlay_size_bytes: Optional[int],
+        clear_inline_overlay: bool,
+    ) -> bool:
+        update: Dict[str, Any] = {
+            "archived_at": datetime.utcnow(),
+        }
+        if audio_ref is not None:
+            update["archive_audio_ref"] = audio_ref
+            update["archive_audio_codec"] = audio_codec
+            update["archive_audio_size_bytes"] = audio_size_bytes
+        if overlay_ref is not None:
+            update["archive_overlay_ref"] = overlay_ref
+            update["archive_overlay_size_bytes"] = overlay_size_bytes
+
+        op: Dict[str, Any] = {"$set": update}
+        if clear_inline_overlay:
+            # Drop the bulky inline base64 PNG to keep the run doc small;
+            # the bytes are now safely stored in GridFS.
+            op["$unset"] = {"waveform_overlay": ""}
+
+        result = await self.collection.update_one(
+            {"_id": ObjectId(transcription_id)}, op,
+        )
+        return result.matched_count > 0

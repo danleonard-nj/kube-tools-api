@@ -281,6 +281,7 @@ def register_repositories(
     descriptors.add_singleton(TranscriptionHistoryRepository)
     descriptors.add_singleton(TranscriptionRunRepository)
     descriptors.add_singleton(TruthSocialRepository)
+    descriptors.add_singleton(JournalRepository)
     descriptors.add_singleton(StockTickRepository)
     descriptors.add_singleton(StockAlertStateRepository)
 

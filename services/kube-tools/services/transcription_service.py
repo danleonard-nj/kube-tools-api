@@ -17,6 +17,7 @@ from openai import AsyncOpenAI
 from pydub import AudioSegment
 from pydub.effects import normalize as pydub_normalize
 
+from clients.gpt_client import GPTClient
 from data.transcription_history_repository import TranscriptionHistoryRepository
 from data.transcription_run_repository import TranscriptionRunRepository
 from framework.logger import get_logger
@@ -50,6 +51,104 @@ logger = get_logger(__name__)
 
 TAIL_PAD_MS=1500  # Silence to append to the final chunk to help the model finalise decoding
 
+# ── LLM polish layer ──────────────────────────────────────────────────────
+DEFAULT_POLISH_MODEL = "gpt-4o-mini"
+POLISH_MIN_CHARS = 20  # Skip polish for trivially short transcripts.
+POLISH_SYSTEM_PROMPT = """
+You are a transcript post-processor.
+
+Your task is to lightly clean a transcript while preserving the original wording and meaning.
+
+STRICT RULES:
+- Do NOT rephrase sentences.
+- Do NOT change wording unless correcting a clear transcription error.
+- Do NOT remove filler words (e.g., "um", "uh", "like") unless they are clearly erroneous duplicates.
+- Do NOT summarize or add information.
+- Do NOT change tone or style.
+
+ALLOWED CHANGES ONLY:
+- Fix punctuation
+- Fix capitalization
+- Fix obvious transcription errors (misspelled common words, clearly wrong words)
+- Split into readable paragraphs
+
+OUTPUT REQUIREMENTS:
+- Preserve original wording as much as possible
+- Keep sentence structure intact
+- Return only the cleaned transcript
+"""
+
+
+class TranscriptionServiceError(Exception):
+    """Raised for transcription failures."""
+
+
+# ---------------------------------------------------------------------------
+# Audio statistics (cheap; no DSP, just summaries)
+# ---------------------------------------------------------------------------
+
+def _audio_stats(audio: AudioSegment) -> Dict[str, Any]:
+    """Return cheap audio summary stats for the run row."""
+    sr = audio.frame_rate
+    channels = audio.channels
+    duration_ms = float(len(audio))
+
+    raw = np.array(audio.get_array_of_samples(), dtype=np.int16)
+    if channels > 1:
+        raw = raw.reshape(-1, channels).mean(axis=1)
+    samples = raw.astype(np.float32) / 32768.0
+
+    # Sliding 100 ms RMS for loudness percentiles.
+    win = max(1, int(sr * 0.1))
+    if samples.size >= win:
+        # Vectorised RMS via cumulative-sum trick.
+        sq = samples * samples
+        csum = np.concatenate([[0.0], np.cumsum(sq)])
+        rms = np.sqrt((csum[win:] - csum[:-win]) / win)
+        rms = rms[rms > 1e-6]
+    else:
+        rms = np.array([], dtype=np.float32)
+
+    if rms.size:
+        db = 20.0 * np.log10(rms)
+        p10, p50, p90 = (float(np.percentile(db, p)) for p in (10, 50, 90))
+        # Crude SNR proxy: top decile loudness − bottom decile loudness.
+        estimated_snr_db = float(p90 - p10)
+    else:
+        p10 = p50 = p90 = -120.0
+        estimated_snr_db = 0.0
+
+    return {
+        "duration_ms": duration_ms,
+        "sample_rate": sr,
+        "channels": channels,
+        "loudness_p10_db": p10,
+        "loudness_p50_db": p50,
+        "loudness_p90_db": p90,
+        "estimated_snr_db": estimated_snr_db,
+    }
+
+
+def _compress_probs(probs: np.ndarray, max_kb: int = 100) -> List[float]:
+    """Downsample VAD probability stream so the JSON list stays under ``max_kb``."""
+    arr = np.asarray(probs, dtype=np.float32)
+    if arr.size == 0:
+        return []
+    # Each float ≈ 8 bytes JSON-encoded.  Aim for ≤ max_kb * 1024 bytes.
+    max_floats = max(256, (max_kb * 1024) // 8)
+    if arr.size <= max_floats:
+        return [round(float(v), 4) for v in arr.tolist()]
+    factor = int(np.ceil(arr.size / max_floats))
+    pad = (-arr.size) % factor
+    if pad:
+        arr = np.concatenate([arr, np.full(pad, arr[-1], dtype=np.float32)])
+    down = arr.reshape(-1, factor).mean(axis=1)
+    return [round(float(v), 4) for v in down.tolist()]
+
+
+# ---------------------------------------------------------------------------
+# Service
+# ---------------------------------------------------------------------------
 
 class TranscriptionServiceError(Exception):
     """Raised for transcription failures."""
@@ -136,11 +235,13 @@ class TranscriptionService:
         google_provider: GoogleSpeechProvider,
         azure_provider: AzureSpeechProvider,
         whisper_provider: WhisperProvider,
+        gpt_client: GPTClient,
     ):
         self._client = openai_client
         self._config = openai_config
         self._repository = transcription_repository
         self._runs = transcription_run_repository
+        self._gpt_client = gpt_client
         self._providers: Dict[str, TranscriptionProvider] = {
             "openai": openai_provider,
             "google": google_provider,
@@ -179,6 +280,8 @@ class TranscriptionService:
         diarize: bool = False,
         return_waveform_overlay: bool = False,
         provider_name: Optional[str] = None,
+        polish: bool = False,
+        polish_model: Optional[str] = None,
         ) -> Dict[str, Any]:
         """Transcribe audio using VAD-planned chunking.
 
@@ -216,7 +319,7 @@ class TranscriptionService:
                 pre: PreprocessResult = preprocess_for_transcription(
                     audio_segment,
                     debug_tag=filename,
-                    return_waveform_overlay=return_waveform_overlay,
+                    return_waveform_overlay=True,
                 )
             chunks: List[AudioChunk] = pre.chunks
             chunk_plan: List[ChunkPlanEntry] = pre.chunk_plan
@@ -229,18 +332,33 @@ class TranscriptionService:
             logger.info(f"Plan produced {len(chunks)} chunks")
 
             # ── Transcribe + dedup ─────────────────────────────────────
-            result_text, all_segments, all_words, per_chunk_records = await self._run_chunks(
+            raw_text, all_segments, all_words, per_chunk_records = await self._run_chunks(
                 chunks=chunks, filename=filename,
                 language=language, temperature=temperature, diarize=diarize,
                 provider=provider,
             )
 
+            # ── Optional LLM polish (skipped when diarize=True) ────────
+            polished_text: Optional[str] = None
+            polish_model_used: Optional[str] = None
+            if polish and not diarize:
+                polished_text, polish_model_used = await self._polish_text(
+                    raw_text, polish_model, filename=filename,
+                )
+            elif polish and diarize:
+                logger.info("polish requested but diarize=True; skipping polish pass")
+
+            result_text = polished_text if polished_text else raw_text
+
             # ── Persist run row ────────────────────────────────────────
             transcription_id = await self._persist_run(
                 user_id=user_id, filename=filename, upload_id=upload_id,
                 audio_stats=audio_stats, vad_probs=pre.vad_probs,
-                chunk_plan=chunk_plan, merged_text=result_text,
+                chunk_plan=chunk_plan, merged_text=raw_text,
                 per_chunk=per_chunk_records,
+                polished_text=polished_text,
+                polish_model=polish_model_used,
+                waveform_overlay=waveform_overlay,
             )
 
             duration = time.perf_counter() - t0
@@ -264,6 +382,9 @@ class TranscriptionService:
                 diarize=diarize, waveform_overlay=waveform_overlay,
                 return_waveform_overlay=return_waveform_overlay,
                 transcription_id=transcription_id,
+                raw_text=raw_text,
+                polished=polished_text is not None,
+                polish_model=polish_model_used,
             )
 
         except TranscriptionServiceError:
@@ -289,6 +410,46 @@ class TranscriptionService:
             return AudioSegment.from_file(io.BytesIO(data))
         except Exception as exc:
             raise TranscriptionServiceError(f"Failed to load audio file: {exc}") from exc
+
+    async def _polish_text(
+        self,
+        text: str,
+        polish_model: Optional[str],
+        filename: str,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Run an LLM cleanup pass over the merged transcript.
+
+        Returns ``(polished_text, model_used)`` on success or
+        ``(None, None)`` on failure / skip — callers fall back to the
+        raw text in either case so polish never fails the request.
+        """
+        if not text or len(text.strip()) < POLISH_MIN_CHARS:
+            logger.info(
+                f"polish skipped: text too short ({len(text.strip())} chars)"
+            )
+            return None, None
+
+        model = polish_model or DEFAULT_POLISH_MODEL
+        try:
+            with log_stage_timing(
+                logger, "transcribe_audio.polish",
+                fields={"filename": filename, "model": model, "chars": len(text)},
+            ):
+                result = await self._gpt_client.generate_completion(
+                    prompt=text,
+                    model=model,
+                    system_prompt=POLISH_SYSTEM_PROMPT,
+                    temperature=0.2,
+                    use_cache=False,
+                )
+            polished = (result.content or "").strip()
+            if not polished:
+                logger.warning("polish returned empty content; falling back to raw text")
+                return None, None
+            return polished, model
+        except Exception as exc:
+            logger.warning(f"polish failed ({model}): {exc}; falling back to raw text")
+            return None, None
 
     async def _run_chunks(
         self,
@@ -371,7 +532,17 @@ class TranscriptionService:
         chunk_plan: List[ChunkPlanEntry],
         merged_text: str,
         per_chunk: List[Dict[str, Any]],
+        polished_text: Optional[str] = None,
+        polish_model: Optional[str] = None,
+        waveform_overlay: Optional[str] = None,
     ) -> str:
+        transcript_doc: Dict[str, Any] = {
+            "merged_text": merged_text,
+            "per_chunk": per_chunk,
+        }
+        if polished_text is not None:
+            transcript_doc["polished_text"] = polished_text
+            transcript_doc["polish_model"] = polish_model
         document = {
             "created_at": datetime.utcnow(),
             "pipeline_version": PIPELINE_VERSION,
@@ -381,7 +552,8 @@ class TranscriptionService:
             "audio_stats": audio_stats,
             "vad_probability_stream": _compress_probs(vad_probs) if vad_probs is not None else [],
             "chunk_plan": [e.to_dict() for e in chunk_plan],
-            "transcript": {"merged_text": merged_text, "per_chunk": per_chunk},
+            "transcript": transcript_doc,
+            "waveform_overlay": waveform_overlay,
             "audio_status": "ephemeral",
             "audio_storage_ref": None,
             "feedback": None,
@@ -397,11 +569,18 @@ class TranscriptionService:
         waveform_overlay: Optional[str],
         return_waveform_overlay: bool,
         transcription_id: str,
+        raw_text: str,
+        polished: bool = False,
+        polish_model: Optional[str] = None,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "text": result_text,
+            "raw_text": raw_text,
             "transcription_id": transcription_id,
         }
+        if polished:
+            payload["polished"] = True
+            payload["polish_model"] = polish_model
 
         if diarize:
             if all_words:

@@ -59,7 +59,7 @@ pytz
 # azure-mgmt-costmanagement
 # azure-mgmt-monitor
 # sib-api-v3-sdk
-azure-cognitiveservices-speech
+# azure-cognitiveservices-speech  # no longer needed: AzureSpeechProvider uses Fast Transcription REST via httpx
 google-cloud-speech
 faster-whisper
-openai-whisper
+# openai-whisper
