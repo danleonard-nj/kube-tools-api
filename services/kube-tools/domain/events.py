@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from azure.servicebus import ServiceBusMessage
 from framework.serialization import Serializable
@@ -10,12 +11,14 @@ class ApiMessage(Serializable):
         self,
         base_url: str,
         method: str,
-        token: str
+        token: str,
+        service_key: Optional[str] = None,
     ):
         self.endpoint = self.get_endpoint(
             base_url=base_url)
 
         self.method = method
+        self.event_key = service_key or 'ApiMessage'
         self.json = self.get_body()
         self.headers = self.get_headers(
             token=token)
@@ -54,7 +57,8 @@ class ApiMessage(Serializable):
                 'endpoint': self.endpoint,
                 'method': self.method,
                 'headers': self.headers,
-                'content': self.json
+                'content': self.json,
+                'eventKey' : self.event_key,
             }))
 
         if self.get_delay() is not None:
@@ -158,6 +162,7 @@ class JournalProcessEvent(ApiMessage):
     def __init__(self, entry_id: str, base_url: str, token: str):
         self._body = {'entry_id': entry_id}
         self._endpoint = f'{base_url}/api/tools/journal/entries/{entry_id}/process'
+
 
         super().__init__(None, 'POST', token)
 

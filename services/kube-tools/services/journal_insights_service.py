@@ -15,8 +15,8 @@ logger = get_logger(__name__)
 _INSIGHTS_SYSTEM_PROMPT = """\
 You are a thoughtful personal journal analyst performing a windowed retrospective.
 You are given a structured digest of journal entries from a specific recent period.
-Each entry includes its date, summary, key points, emotional tone, themes, \
-symptoms noted, and open action items.
+Each entry includes its date, short and detailed summaries, key events, stressors, \
+positive developments, open loops, emotional tone, themes, symptoms noted, and open action items.
 
 Your task is to synthesise all of this into a rich, human-readable insight report.
 
@@ -76,15 +76,15 @@ class JournalInsightsService:
     # ------------------------------------------------------------------
 
     def _build_summary(self, processed: List[dict]) -> dict:
-        bullets: List[str] = []
+        key_events: List[str] = []
         source_entry_ids: List[str] = []
         for doc in processed:
-            entry_bullets = (doc.get('analysis') or {}).get('bullets') or []
-            if entry_bullets:
-                bullets.extend(entry_bullets)
+            entry_events = (doc.get('analysis') or {}).get('key_events') or []
+            if entry_events:
+                key_events.extend(entry_events)
                 source_entry_ids.append(doc.get('entry_id'))
         return {
-            'bullets': bullets[:10],
+            'key_events': key_events[:10],
             'source_entry_ids': source_entry_ids,
         }
 
@@ -99,8 +99,12 @@ class JournalInsightsService:
         return {
             'date': self._date_str(doc.get('created_at')),
             'title': doc.get('title'),
-            'summary': analysis.get('summary'),
-            'bullets': analysis.get('bullets') or [],
+            'summary_short': analysis.get('summary_short'),
+            'summary_detailed': analysis.get('summary_detailed'),
+            'key_events': analysis.get('key_events') or [],
+            'stressors': analysis.get('stressors') or [],
+            'positive_developments': analysis.get('positive_developments') or [],
+            'open_loops': analysis.get('open_loops') or [],
             'themes': analysis.get('themes') or [],
             'mood': {
                 'score': mood.get('score'),

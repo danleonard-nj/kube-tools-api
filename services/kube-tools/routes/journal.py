@@ -2,13 +2,15 @@
 
 Endpoints
 ---------
-POST   /api/journal/entries                        — create journal entry
-GET    /api/journal/entries                        — list recent entries
-GET    /api/journal/entries/<entry_id>             — get full entry
-POST   /api/journal/entries/<entry_id>/process     — request/retry processing
-POST   /api/journal/entries/<entry_id>/title       — refresh auto-title
-PATCH  /api/journal/entries/<entry_id>             — update title/transcript
-DELETE /api/journal/entries/<entry_id>             — delete entry
+POST   /api/journal/entries                              — create journal entry
+GET    /api/journal/entries                              — list recent entries
+GET    /api/journal/entries/<entry_id>                   — get full entry
+POST   /api/journal/entries/<entry_id>/process           — request/retry processing
+POST   /api/journal/entries/<entry_id>/title             — refresh auto-title
+PATCH  /api/journal/entries/<entry_id>                   — update title/transcript
+DELETE /api/journal/entries/<entry_id>                   — delete entry
+POST   /api/journal/entries/<entry_id>/polish            — LLM-polish transcript
+POST   /api/journal/entries/<entry_id>/polish/undo       — undo last polish
 """
 from __future__ import annotations
 
@@ -110,3 +112,45 @@ async def get_journal_insights(container):
     days = min(int(request.args.get('days', 14)), 90)
     result = await service.get_insights(days=days)
     return result
+
+
+_VALID_POLISH_MODES = {'grammar', 'organize', 'concise', 'expand', 'tone'}
+
+
+@journal_bp.configure('/api/journal/entries/<entry_id>/polish', methods=['POST'], auth_scheme='default')
+async def polish_journal_entry(container, entry_id: str):
+    """Apply LLM polish to a transcript.
+
+    Body: ``{"modes": ["grammar", "organize", "concise", "expand", "tone"]}``
+    At least one valid mode is required.
+    """
+    service: JournalService = container.resolve(JournalService)
+
+    body = await request.get_json() or {}
+    modes = body.get('modes', [])
+
+    if not isinstance(modes, list) or not modes:
+        return {'error': 'modes must be a non-empty list'}, 400
+
+    invalid = [m for m in modes if m not in _VALID_POLISH_MODES]
+    if invalid:
+        return {
+            'error': f'Invalid modes: {invalid}',
+            'valid_modes': sorted(_VALID_POLISH_MODES),
+        }, 400
+
+    entry = await service.polish_transcript(entry_id, modes)
+    if not entry:
+        return {'error': 'Entry not found or no transcript to polish'}, 404
+    return entry
+
+
+@journal_bp.configure('/api/journal/entries/<entry_id>/polish/undo', methods=['POST'], auth_scheme='default')
+async def undo_journal_entry_polish(container, entry_id: str):
+    """Restore the transcript to the state before the last polish."""
+    service: JournalService = container.resolve(JournalService)
+
+    entry = await service.undo_polish(entry_id)
+    if not entry:
+        return {'error': 'No polish to undo for this entry'}, 404
+    return entry

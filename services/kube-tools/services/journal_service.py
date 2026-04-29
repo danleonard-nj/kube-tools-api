@@ -25,6 +25,21 @@ _TITLE_SYSTEM_PROMPT = (
     'Return only the title — 3 to 7 words, no punctuation, no quotes.'
 )
 
+_POLISH_SYSTEM_PROMPT = (
+    'You are a light editing assistant for personal journal entries. '
+    'Apply ONLY the requested adjustments listed below — do not paraphrase, '
+    'summarize, add content, or change the writer\'s voice or meaning. '
+    'Return only the polished text with no commentary, headers, or markdown.'
+)
+
+_POLISH_MODE_DESCRIPTIONS: dict = {
+    'grammar': 'Fix grammar, spelling, and punctuation errors.',
+    'organize': 'Restructure sentences and paragraphs for logical flow without changing content.',
+    'concise': 'Remove redundant phrases and excessive filler words.',
+    'expand': 'Lightly elaborate terse or incomplete sentences to improve clarity.',
+    'tone': 'Smooth rough or fragmented phrasing into natural prose while preserving meaning.',
+}
+
 logger = get_logger(__name__)
 
 
@@ -191,13 +206,96 @@ class JournalService:
         update = {k: v for k, v in body.items() if k in allowed_fields}
         if not update:
             return await self.get_entry(entry_id)
+
+        transcript_changed = 'raw_transcript' in update
+
+        if transcript_changed:
+            now = datetime.utcnow()
+            update.update({
+                'cleaned_transcript': None,
+                'pre_polish_transcript': None,
+                'analysis': None,
+                'status': JournalEntryStatus.QUEUED,
+                'processing.requested_at': now,
+                'processing.error': None,
+                'processing.failed_at': None,
+            })
+
         updated = await self._repository.update_entry(entry_id, update)
         if not updated:
             return None
+
+        if transcript_changed:
+            await self._dispatch_processing(entry_id)
+            logger.info(f'Re-queued analysis for updated transcript: {entry_id}')
+
         return await self.get_entry(entry_id)
 
     async def delete_entry(self, entry_id: str) -> bool:
         return await self._repository.delete_entry(entry_id)
+
+    async def polish_transcript(self, entry_id: str, modes: list) -> Optional[dict]:
+        """Apply lightweight LLM edits to cleaned_transcript (or raw_transcript).
+
+        The previous value is saved to ``pre_polish_transcript`` so callers can
+        undo with :meth:`undo_polish`.
+        """
+        doc = await self._repository.get_entry(entry_id)
+        if not doc:
+            return None
+
+        source_text = (doc.get('cleaned_transcript') or doc.get('raw_transcript', '')).strip()
+        if not source_text:
+            return None
+
+        mode_lines = [
+            f'- {_POLISH_MODE_DESCRIPTIONS[m]}'
+            for m in modes
+            if m in _POLISH_MODE_DESCRIPTIONS
+        ]
+        if not mode_lines:
+            return await self.get_entry(entry_id)
+
+        system_prompt = (
+            _POLISH_SYSTEM_PROMPT
+            + '\n\nRequested adjustments:\n'
+            + '\n'.join(mode_lines)
+        )
+
+        result = await self._gpt.generate_completion(
+            prompt=source_text,
+            model=GPTModel.GPT_4O,
+            system_prompt=system_prompt,
+            temperature=0.3,
+            use_cache=False,
+        )
+        polished = result.content.strip()
+
+        await self._repository.update_entry(entry_id, {
+            'pre_polish_transcript': source_text,
+            'cleaned_transcript': polished,
+        })
+
+        logger.info(f'Transcript polished for entry: {entry_id} (modes: {modes})')
+        return await self.get_entry(entry_id)
+
+    async def undo_polish(self, entry_id: str) -> Optional[dict]:
+        """Restore cleaned_transcript from pre_polish_transcript."""
+        doc = await self._repository.get_entry(entry_id)
+        if not doc:
+            return None
+
+        pre_polish = doc.get('pre_polish_transcript')
+        if not pre_polish:
+            return None
+
+        await self._repository.update_entry(entry_id, {
+            'cleaned_transcript': pre_polish,
+            'pre_polish_transcript': None,
+        })
+
+        logger.info(f'Polish undone for entry: {entry_id}')
+        return await self.get_entry(entry_id)
 
     async def refresh_title(self, entry_id: str) -> Optional[dict]:
         """Regenerate the auto-title for an entry.
