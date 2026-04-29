@@ -248,7 +248,7 @@ class TranscriptionService:
             "azure": azure_provider,
             "whisper": whisper_provider,
         }
-        self._default_provider_name = (transcription_config.provider or "openai").lower()
+        self._default_provider_name = (transcription_config.provider or "azure").lower()
         logger.info(
             f"TranscriptionService default provider: {self._default_provider_name}"
         )

@@ -69,7 +69,7 @@ class AzureSpeechProvider(TranscriptionProvider):
 
         definition: dict = {
             "locales": locales,
-            "profanityFilterMode": "Masked",
+            "profanityFilterMode": "None",
         }
         if diarize:
             definition["diarization"] = {"enabled": True, "maxSpeakers": 4}

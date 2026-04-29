@@ -119,7 +119,7 @@ class GoogleSpeechProvider(TranscriptionProvider):
             language_code=language,
             model=self._model,
             enable_automatic_punctuation=True,
-            use_enhanced=True,
+            use_enhanced=True
         )
         audio = speech.RecognitionAudio(content=audio_bytes)
         response = client.recognize(config=config, audio=audio)

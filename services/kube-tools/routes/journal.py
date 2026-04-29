@@ -6,6 +6,7 @@ POST   /api/journal/entries                        — create journal entry
 GET    /api/journal/entries                        — list recent entries
 GET    /api/journal/entries/<entry_id>             — get full entry
 POST   /api/journal/entries/<entry_id>/process     — request/retry processing
+POST   /api/journal/entries/<entry_id>/title       — refresh auto-title
 PATCH  /api/journal/entries/<entry_id>             — update title/transcript
 DELETE /api/journal/entries/<entry_id>             — delete entry
 """
@@ -15,6 +16,8 @@ from quart import request
 
 from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
+from services.journal_insights_service import JournalInsightsService
+from services.journal_processing_service import JournalProcessingService
 from services.journal_service import JournalService, JournalServiceError
 
 logger = get_logger(__name__)
@@ -57,17 +60,23 @@ async def get_journal_entry(container, entry_id: str):
 
 @journal_bp.configure('/api/journal/entries/<entry_id>/process', methods=['POST'], auth_scheme='default')
 async def process_journal_entry(container, entry_id: str):
+    """Event bus callback — executes LLM analysis for the given entry.
+    Also serves as the manual re-trigger endpoint; process_entry() is idempotent.
+    """
+    processing_service: JournalProcessingService = container.resolve(JournalProcessingService)
+    await processing_service.process_entry(entry_id)
+    return {'entry_id': entry_id, 'accepted': True}, 202
+
+
+@journal_bp.configure('/api/journal/entries/<entry_id>/title', methods=['POST'], auth_scheme='default')
+async def refresh_journal_entry_title(container, entry_id: str):
+    """Regenerate the auto-title for an entry (no-op when a manual title is set)."""
     service: JournalService = container.resolve(JournalService)
 
-    body = await request.get_json(silent=True) or {}
-    force = bool(body.get('force', False))
-
-    try:
-        result = await service.request_processing(entry_id, force=force)
-        status_code = 202 if result.get('accepted') else 200
-        return result, status_code
-    except JournalServiceError as exc:
-        return {'error': str(exc)}, 404
+    entry = await service.refresh_title(entry_id)
+    if not entry:
+        return {'error': 'Entry not found or no transcript available'}, 404
+    return entry
 
 
 @journal_bp.configure('/api/journal/entries/<entry_id>', methods=['PATCH'], auth_scheme='default')
@@ -92,3 +101,12 @@ async def delete_journal_entry(container, entry_id: str):
     if not deleted:
         return {'error': 'Entry not found'}, 404
     return {'deleted': True}, 200
+
+
+@journal_bp.configure('/api/journal/insights', methods=['GET'], auth_scheme='default')
+async def get_journal_insights(container):
+    service: JournalInsightsService = container.resolve(JournalInsightsService)
+
+    days = min(int(request.args.get('days', 14)), 90)
+    result = await service.get_insights(days=days)
+    return result

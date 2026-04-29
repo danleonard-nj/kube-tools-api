@@ -108,6 +108,10 @@ from services.stock_monitor_service import StockMonitorService
 from services.weather_service import WeatherService
 from services.transcription_service import TranscriptionService
 from services.transcription.upload_cache import UploadCache
+from services.journal_service import JournalService
+from services.journal_processing_service import JournalProcessingService
+from services.journal_insights_service import JournalInsightsService
+from data.journal_repository import JournalRepository
 
 
 def configure_azure_ad(container):
@@ -321,7 +325,10 @@ def register_services(
     descriptors.add_singleton(OpenAiUsageService)
     descriptors.add_singleton(PlaidUsageService)
     descriptors.add_singleton(StockMonitorService)
-    descriptors.add_singleton(SchedulerService)  
+    descriptors.add_singleton(SchedulerService)
+    descriptors.add_singleton(JournalProcessingService)
+    descriptors.add_singleton(JournalService)
+    descriptors.add_singleton(JournalInsightsService)
     descriptors.add_singleton(OpenAIProvider)
     descriptors.add_singleton(AzureSpeechProvider)
     descriptors.add_singleton(GoogleSpeechProvider)

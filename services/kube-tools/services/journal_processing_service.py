@@ -1,6 +1,4 @@
 """Journal processing service — LLM analysis of journal entries."""
-from __future__ import annotations
-
 import json
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -98,15 +96,15 @@ class JournalProcessingService:
     async def _run_analysis(self, raw_transcript: str) -> dict:
         prompt = f'Journal entry:\n\n{raw_transcript}'
 
-        completion = await self._gpt.generate_completion(
+        result = await self._gpt.generate_response(
             prompt=prompt,
             system_prompt=_ANALYSIS_SYSTEM_PROMPT,
-            model=GPTModel.GPT_4O_MINI,
+            model=GPTModel.GPT_4O,
             use_cache=False,
             temperature=0.3,
         )
 
-        content = completion.content.strip()
+        content = result.text.strip()
 
         # Strip markdown code fences the model sometimes adds despite instructions
         if content.startswith('```'):

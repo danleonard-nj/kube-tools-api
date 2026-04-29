@@ -148,3 +148,21 @@ class TranscriptionArchiveEvent(ApiMessage):
 
     def get_endpoint(self, base_url: str) -> str:
         return self.endpoint
+
+
+class JournalProcessEvent(ApiMessage):
+    """Event bus callback to run LLM analysis for a journal entry.
+    The Service Bus consumer will POST to /api/journal/entries/{entry_id}/process.
+    """
+
+    def __init__(self, entry_id: str, base_url: str, token: str):
+        self._body = {'entry_id': entry_id}
+        self._endpoint = f'{base_url}/api/tools/journal/entries/{entry_id}/process'
+
+        super().__init__(None, 'POST', token)
+
+    def get_body(self) -> dict:
+        return self._body
+
+    def get_endpoint(self, base_url: str) -> str:
+        return self._endpoint

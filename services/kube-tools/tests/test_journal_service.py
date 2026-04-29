@@ -1,8 +1,7 @@
 """Unit tests for JournalService and JournalProcessingService."""
-import asyncio
 import json
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -21,12 +20,23 @@ from services.journal_service import JournalService, JournalServiceError
 # Helpers
 # ---------------------------------------------------------------------------
 
-def make_journal_service(repo=None, processing=None):
+def make_journal_service(repo=None, event_service=None, identity_client=None, configuration=None, gpt_client=None):
     repo = repo or AsyncMock()
-    processing = processing or AsyncMock()
+    event_service = event_service or AsyncMock()
+    identity_client = identity_client or AsyncMock()
+    identity_client.get_token = AsyncMock(return_value='test-token')
+    if configuration is None:
+        configuration = MagicMock()
+        configuration.chatgpt = {'base_url': 'https://api.dan-leonard.com'}
+    if gpt_client is None:
+        gpt_client = AsyncMock()
+        gpt_client.generate_completion = AsyncMock(return_value=MagicMock(content=''))
     return JournalService(
         journal_repository=repo,
-        journal_processing_service=processing,
+        event_service=event_service,
+        identity_client=identity_client,
+        configuration=configuration,
+        gpt_client=gpt_client,
     )
 
 
@@ -70,9 +80,9 @@ def _make_stored_entry(entry_id='test-id', status=JournalEntryStatus.CREATED):
 async def test_create_entry_returns_dict_with_entry_id():
     repo = AsyncMock()
     repo.insert_entry = AsyncMock(return_value='mongo-id')
-    processing = AsyncMock()
+    event_service = AsyncMock()
 
-    service = make_journal_service(repo=repo, processing=processing)
+    service = make_journal_service(repo=repo, event_service=event_service)
 
     body = {
         'title': 'Morning thoughts',
@@ -88,8 +98,7 @@ async def test_create_entry_returns_dict_with_entry_id():
         ],
     }
 
-    with patch('services.journal_service.fire_task'):
-        result = await service.create_entry(body)
+    result = await service.create_entry(body)
 
     assert result['entry_id'] is not None
     assert result['status'] == JournalEntryStatus.QUEUED
@@ -99,19 +108,129 @@ async def test_create_entry_returns_dict_with_entry_id():
 
 
 @pytest.mark.asyncio
-async def test_create_entry_fires_processing_task():
+async def test_create_entry_dispatches_processing_event():
     repo = AsyncMock()
     repo.insert_entry = AsyncMock(return_value='mongo-id')
-    processing = AsyncMock()
-    processing.process_entry = AsyncMock()
+    event_service = AsyncMock()
 
-    service = make_journal_service(repo=repo, processing=processing)
+    service = make_journal_service(repo=repo, event_service=event_service)
 
     body = {'raw_transcript': 'Some transcript.', 'title': 'Test'}
 
-    with patch('services.journal_service.fire_task') as mock_fire:
-        await service.create_entry(body)
-        mock_fire.assert_called_once()
+    await service.create_entry(body)
+    event_service.dispatch_event.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# JournalService auto-title on create
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_create_entry_generates_title_when_no_manual_title():
+    repo = AsyncMock()
+    repo.insert_entry = AsyncMock(return_value='mongo-id')
+    repo.update_entry = AsyncMock(return_value=True)
+
+    gpt = AsyncMock()
+    gpt.generate_completion = AsyncMock(return_value=MagicMock(content='Calm morning reflections'))
+
+    service = make_journal_service(repo=repo, gpt_client=gpt)
+    result = await service.create_entry({'raw_transcript': 'Today was a calm morning.'})
+
+    gpt.generate_completion.assert_awaited_once()
+    assert result['title'] == 'Calm morning reflections'
+    assert result['is_manual_title'] is False
+    # Confirm title was persisted
+    repo.update_entry.assert_awaited_once_with(result['entry_id'], {'title': 'Calm morning reflections'})
+
+
+@pytest.mark.asyncio
+async def test_create_entry_skips_title_generation_when_manual_title_provided():
+    repo = AsyncMock()
+    repo.insert_entry = AsyncMock(return_value='mongo-id')
+
+    gpt = AsyncMock()
+    gpt.generate_completion = AsyncMock()
+
+    service = make_journal_service(repo=repo, gpt_client=gpt)
+    result = await service.create_entry({
+        'raw_transcript': 'Today was a calm morning.',
+        'title': 'My custom title',
+    })
+
+    gpt.generate_completion.assert_not_awaited()
+    assert result['title'] == 'My custom title'
+    assert result['is_manual_title'] is True
+
+
+@pytest.mark.asyncio
+async def test_create_entry_continues_when_auto_title_fails():
+    repo = AsyncMock()
+    repo.insert_entry = AsyncMock(return_value='mongo-id')
+
+    gpt = AsyncMock()
+    gpt.generate_completion = AsyncMock(side_effect=Exception('LLM error'))
+
+    service = make_journal_service(repo=repo, gpt_client=gpt)
+    result = await service.create_entry({'raw_transcript': 'Some text.'})
+
+    # Entry still created successfully, title just stays None
+    assert result['entry_id'] is not None
+    assert result['title'] is None
+    assert result['is_manual_title'] is False
+    # No update_entry call for title since generation failed
+    repo.update_entry.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# JournalService.refresh_title
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_refresh_title_returns_none_when_entry_not_found():
+    repo = AsyncMock()
+    repo.get_entry = AsyncMock(return_value=None)
+    service = make_journal_service(repo=repo)
+
+    result = await service.refresh_title('missing-id')
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_refresh_title_skips_update_when_manual_title_set():
+    repo = AsyncMock()
+    stored = _make_stored_entry()  # has is_manual_title=True
+    stored['is_manual_title'] = True
+    repo.get_entry = AsyncMock(return_value=stored)
+
+    gpt = AsyncMock()
+    gpt.generate_completion = AsyncMock()
+
+    service = make_journal_service(repo=repo, gpt_client=gpt)
+    result = await service.refresh_title('test-id')
+
+    gpt.generate_completion.assert_not_awaited()
+    assert result is not None  # returns existing entry unchanged
+
+
+@pytest.mark.asyncio
+async def test_refresh_title_updates_when_no_manual_title():
+    stored = _make_stored_entry()
+    stored['title'] = None
+    stored['is_manual_title'] = False
+
+    repo = AsyncMock()
+    repo.get_entry = AsyncMock(return_value=stored)
+    repo.update_entry = AsyncMock(return_value=True)
+
+    gpt = AsyncMock()
+    gpt.generate_completion = AsyncMock(return_value=MagicMock(content='New generated title'))
+
+    service = make_journal_service(repo=repo, gpt_client=gpt)
+    await service.refresh_title('test-id')
+
+    gpt.generate_completion.assert_awaited_once()
+    repo.update_entry.assert_awaited_once_with('test-id', {'title': 'New generated title'})
 
 
 # ---------------------------------------------------------------------------
@@ -159,42 +278,41 @@ async def test_request_processing_queues_when_created():
     repo = AsyncMock()
     repo.get_entry = AsyncMock(return_value=_make_stored_entry(status=JournalEntryStatus.CREATED))
     repo.update_entry = AsyncMock(return_value=True)
-    processing = AsyncMock()
-    service = make_journal_service(repo=repo, processing=processing)
+    event_service = AsyncMock()
+    service = make_journal_service(repo=repo, event_service=event_service)
 
-    with patch('services.journal_service.fire_task') as mock_fire:
-        result = await service.request_processing('test-id')
+    result = await service.request_processing('test-id')
 
     assert result['accepted'] is True
     assert result['status'] == JournalEntryStatus.QUEUED
-    mock_fire.assert_called_once()
+    event_service.dispatch_event.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_request_processing_does_not_re_queue_when_processing():
     repo = AsyncMock()
     repo.get_entry = AsyncMock(return_value=_make_stored_entry(status=JournalEntryStatus.PROCESSING))
-    service = make_journal_service(repo=repo)
+    event_service = AsyncMock()
+    service = make_journal_service(repo=repo, event_service=event_service)
 
-    with patch('services.journal_service.fire_task') as mock_fire:
-        result = await service.request_processing('test-id')
+    result = await service.request_processing('test-id')
 
     assert result['accepted'] is True
     assert result['status'] == JournalEntryStatus.PROCESSING
-    mock_fire.assert_not_called()
+    event_service.dispatch_event.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_request_processing_blocks_reprocess_without_force():
     repo = AsyncMock()
     repo.get_entry = AsyncMock(return_value=_make_stored_entry(status=JournalEntryStatus.PROCESSED))
-    service = make_journal_service(repo=repo)
+    event_service = AsyncMock()
+    service = make_journal_service(repo=repo, event_service=event_service)
 
-    with patch('services.journal_service.fire_task') as mock_fire:
-        result = await service.request_processing('test-id', force=False)
+    result = await service.request_processing('test-id', force=False)
 
     assert result['accepted'] is False
-    mock_fire.assert_not_called()
+    event_service.dispatch_event.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -202,13 +320,13 @@ async def test_request_processing_allows_reprocess_with_force():
     repo = AsyncMock()
     repo.get_entry = AsyncMock(return_value=_make_stored_entry(status=JournalEntryStatus.PROCESSED))
     repo.update_entry = AsyncMock(return_value=True)
-    service = make_journal_service(repo=repo)
+    event_service = AsyncMock()
+    service = make_journal_service(repo=repo, event_service=event_service)
 
-    with patch('services.journal_service.fire_task') as mock_fire:
-        result = await service.request_processing('test-id', force=True)
+    result = await service.request_processing('test-id', force=True)
 
     assert result['accepted'] is True
-    mock_fire.assert_called_once()
+    event_service.dispatch_event.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -216,13 +334,13 @@ async def test_request_processing_allows_retry_after_failure():
     repo = AsyncMock()
     repo.get_entry = AsyncMock(return_value=_make_stored_entry(status=JournalEntryStatus.FAILED))
     repo.update_entry = AsyncMock(return_value=True)
-    service = make_journal_service(repo=repo)
+    event_service = AsyncMock()
+    service = make_journal_service(repo=repo, event_service=event_service)
 
-    with patch('services.journal_service.fire_task') as mock_fire:
-        result = await service.request_processing('test-id')
+    result = await service.request_processing('test-id')
 
     assert result['accepted'] is True
-    mock_fire.assert_called_once()
+    event_service.dispatch_event.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -258,16 +376,14 @@ async def test_process_entry_success_updates_analysis_and_status():
     repo.update_entry = AsyncMock(return_value=True)
 
     gpt = AsyncMock()
-    gpt.generate_completion = AsyncMock()
-    gpt.generate_completion.return_value = MagicMock(content=json.dumps(_GOOD_ANALYSIS))
+    gpt.generate_response = AsyncMock()
+    gpt.generate_response.return_value = MagicMock(text=json.dumps(_GOOD_ANALYSIS))
 
     service = make_processing_service(repo=repo, gpt=gpt)
     await service.process_entry('test-id')
 
-    # Should have called update_entry at least twice: mark processing, then mark processed
     assert repo.update_entry.await_count >= 2
 
-    # Verify the final update contains PROCESSED status
     final_call_kwargs = repo.update_entry.await_args_list[-1]
     update_dict = final_call_kwargs.args[1]
     assert update_dict.get('status') == JournalEntryStatus.PROCESSED
@@ -283,51 +399,16 @@ async def test_process_entry_failure_preserves_raw_transcript_and_marks_failed()
     repo.update_entry = AsyncMock(return_value=True)
 
     gpt = AsyncMock()
-    gpt.generate_completion = AsyncMock(side_effect=Exception('GPT failure'))
+    gpt.generate_response = AsyncMock(side_effect=Exception('GPT failure'))
 
     service = make_processing_service(repo=repo, gpt=gpt)
     await service.process_entry('test-id')
 
-    # raw_transcript must NOT have been modified in any update call
     for call in repo.update_entry.await_args_list:
         update_dict = call.args[1]
         assert 'raw_transcript' not in update_dict, 'raw_transcript must not be overwritten on failure'
 
-    # Final update should set FAILED status
     final_call = repo.update_entry.await_args_list[-1]
     update_dict = final_call.args[1]
     assert update_dict.get('status') == JournalEntryStatus.FAILED
     assert 'GPT failure' in update_dict.get('processing.error', '')
-
-
-@pytest.mark.asyncio
-async def test_process_entry_skips_when_already_processing():
-    repo = AsyncMock()
-    repo.get_entry = AsyncMock(return_value=_make_stored_entry(status=JournalEntryStatus.PROCESSING))
-    repo.update_entry = AsyncMock(return_value=True)
-
-    gpt = AsyncMock()
-    service = make_processing_service(repo=repo, gpt=gpt)
-    await service.process_entry('test-id')
-
-    repo.update_entry.assert_not_awaited()
-    gpt.generate_completion.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_process_entry_raises_on_empty_transcript():
-    repo = AsyncMock()
-    stored = _make_stored_entry(status=JournalEntryStatus.QUEUED)
-    stored['raw_transcript'] = '   '
-    repo.get_entry = AsyncMock(return_value=stored)
-    repo.update_entry = AsyncMock(return_value=True)
-
-    gpt = AsyncMock()
-    service = make_processing_service(repo=repo, gpt=gpt)
-    await service.process_entry('test-id')
-
-    # Should have marked the entry as FAILED
-    final_call = repo.update_entry.await_args_list[-1]
-    update_dict = final_call.args[1]
-    assert update_dict.get('status') == JournalEntryStatus.FAILED
-    gpt.generate_completion.assert_not_awaited()

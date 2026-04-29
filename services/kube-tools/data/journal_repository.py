@@ -52,3 +52,16 @@ class JournalRepository(MongoRepositoryAsync):
     async def delete_entry(self, entry_id: str) -> bool:
         result = await self.collection.delete_one({'entry_id': entry_id})
         return result.deleted_count > 0
+
+    async def list_entries_since(self, since: datetime, limit: int = 500) -> List[dict]:
+        cursor = (
+            self.collection
+            .find({'created_at': {'$gte': since}})
+            .sort('created_at', -1)
+            .limit(limit)
+        )
+        results = []
+        async for doc in cursor:
+            doc['_id'] = str(doc['_id'])
+            results.append(doc)
+        return results
