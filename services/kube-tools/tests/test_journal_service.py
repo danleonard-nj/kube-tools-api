@@ -31,7 +31,7 @@ def make_journal_service(repo=None, event_service=None, identity_client=None, co
         configuration.chatgpt = {'base_url': 'https://api.dan-leonard.com'}
     if gpt_client is None:
         gpt_client = AsyncMock()
-        gpt_client.generate_completion = AsyncMock(return_value=MagicMock(content=''))
+        gpt_client.generate_response = AsyncMock(return_value=MagicMock(text=''))
     return JournalService(
         journal_repository=repo,
         event_service=event_service,
@@ -133,12 +133,12 @@ async def test_create_entry_generates_title_when_no_manual_title():
     repo.update_entry = AsyncMock(return_value=True)
 
     gpt = AsyncMock()
-    gpt.generate_completion = AsyncMock(return_value=MagicMock(content='Calm morning reflections'))
+    gpt.generate_response = AsyncMock(return_value=MagicMock(text='Calm morning reflections'))
 
     service = make_journal_service(repo=repo, gpt_client=gpt)
     result = await service.create_entry({'raw_transcript': 'Today was a calm morning.'})
 
-    gpt.generate_completion.assert_awaited_once()
+    gpt.generate_response.assert_awaited_once()
     assert result['title'] == 'Calm morning reflections'
     assert result['is_manual_title'] is False
     # Confirm title was persisted
@@ -151,7 +151,7 @@ async def test_create_entry_skips_title_generation_when_manual_title_provided():
     repo.insert_entry = AsyncMock(return_value='mongo-id')
 
     gpt = AsyncMock()
-    gpt.generate_completion = AsyncMock()
+    gpt.generate_response = AsyncMock()
 
     service = make_journal_service(repo=repo, gpt_client=gpt)
     result = await service.create_entry({
@@ -159,7 +159,7 @@ async def test_create_entry_skips_title_generation_when_manual_title_provided():
         'title': 'My custom title',
     })
 
-    gpt.generate_completion.assert_not_awaited()
+    gpt.generate_response.assert_not_awaited()
     assert result['title'] == 'My custom title'
     assert result['is_manual_title'] is True
 
@@ -170,7 +170,7 @@ async def test_create_entry_continues_when_auto_title_fails():
     repo.insert_entry = AsyncMock(return_value='mongo-id')
 
     gpt = AsyncMock()
-    gpt.generate_completion = AsyncMock(side_effect=Exception('LLM error'))
+    gpt.generate_response = AsyncMock(side_effect=Exception('LLM error'))
 
     service = make_journal_service(repo=repo, gpt_client=gpt)
     result = await service.create_entry({'raw_transcript': 'Some text.'})
@@ -205,12 +205,12 @@ async def test_refresh_title_skips_update_when_manual_title_set():
     repo.get_entry = AsyncMock(return_value=stored)
 
     gpt = AsyncMock()
-    gpt.generate_completion = AsyncMock()
+    gpt.generate_response = AsyncMock()
 
     service = make_journal_service(repo=repo, gpt_client=gpt)
     result = await service.refresh_title('test-id')
 
-    gpt.generate_completion.assert_not_awaited()
+    gpt.generate_response.assert_not_awaited()
     assert result is not None  # returns existing entry unchanged
 
 
@@ -225,12 +225,12 @@ async def test_refresh_title_updates_when_no_manual_title():
     repo.update_entry = AsyncMock(return_value=True)
 
     gpt = AsyncMock()
-    gpt.generate_completion = AsyncMock(return_value=MagicMock(content='New generated title'))
+    gpt.generate_response = AsyncMock(return_value=MagicMock(text='New generated title'))
 
     service = make_journal_service(repo=repo, gpt_client=gpt)
     await service.refresh_title('test-id')
 
-    gpt.generate_completion.assert_awaited_once()
+    gpt.generate_response.assert_awaited_once()
     repo.update_entry.assert_awaited_once_with('test-id', {'title': 'New generated title'})
 
 
@@ -511,13 +511,13 @@ async def test_polish_uses_cleaned_transcript_when_present():
     repo.update_entry = AsyncMock(return_value=True)
 
     gpt = AsyncMock()
-    gpt.generate_completion = AsyncMock(return_value=MagicMock(content='Polished cleaned text.'))
+    gpt.generate_response = AsyncMock(return_value=MagicMock(text='Polished cleaned text.'))
 
     service = make_journal_service(repo=repo, gpt_client=gpt)
     result = await service.polish_transcript('test-id', ['grammar'])
 
-    gpt.generate_completion.assert_awaited_once()
-    call_kwargs = gpt.generate_completion.await_args.kwargs
+    gpt.generate_response.assert_awaited_once()
+    call_kwargs = gpt.generate_response.await_args.kwargs
     assert call_kwargs['prompt'] == 'Original cleaned text.'
 
     repo.update_entry.assert_awaited_once()
@@ -535,12 +535,12 @@ async def test_polish_falls_back_to_raw_transcript_when_no_cleaned():
     repo.update_entry = AsyncMock(return_value=True)
 
     gpt = AsyncMock()
-    gpt.generate_completion = AsyncMock(return_value=MagicMock(content='Polished raw.'))
+    gpt.generate_response = AsyncMock(return_value=MagicMock(text='Polished raw.'))
 
     service = make_journal_service(repo=repo, gpt_client=gpt)
     await service.polish_transcript('test-id', ['concise'])
 
-    call_kwargs = gpt.generate_completion.await_args.kwargs
+    call_kwargs = gpt.generate_response.await_args.kwargs
     assert call_kwargs['prompt'] == stored['raw_transcript']
 
 
@@ -561,12 +561,12 @@ async def test_polish_returns_entry_unchanged_when_no_valid_modes():
     repo.get_entry = AsyncMock(return_value=stored)
 
     gpt = AsyncMock()
-    gpt.generate_completion = AsyncMock()
+    gpt.generate_response = AsyncMock()
 
     service = make_journal_service(repo=repo, gpt_client=gpt)
     result = await service.polish_transcript('test-id', ['not_a_real_mode'])
 
-    gpt.generate_completion.assert_not_awaited()
+    gpt.generate_response.assert_not_awaited()
     assert result is not None
 
 
@@ -578,13 +578,13 @@ async def test_polish_all_modes_builds_full_system_prompt():
     repo.update_entry = AsyncMock(return_value=True)
 
     gpt = AsyncMock()
-    gpt.generate_completion = AsyncMock(return_value=MagicMock(content='Polished.'))
+    gpt.generate_response = AsyncMock(return_value=MagicMock(text='Polished.'))
 
     service = make_journal_service(repo=repo, gpt_client=gpt)
     all_modes = [m.value for m in PolishMode]
     await service.polish_transcript('test-id', all_modes)
 
-    call_kwargs = gpt.generate_completion.await_args.kwargs
+    call_kwargs = gpt.generate_response.await_args.kwargs
     system_prompt = call_kwargs['system_prompt']
     for mode in PolishMode:
         assert mode.value in system_prompt or any(
@@ -599,7 +599,7 @@ async def test_polish_propagates_gpt_exception():
     repo.get_entry = AsyncMock(return_value=stored)
 
     gpt = AsyncMock()
-    gpt.generate_completion = AsyncMock(side_effect=Exception('LLM down'))
+    gpt.generate_response = AsyncMock(side_effect=Exception('LLM down'))
 
     service = make_journal_service(repo=repo, gpt_client=gpt)
 
@@ -654,4 +654,87 @@ async def test_undo_polish_returns_none_when_no_pre_polish_exists():
 
     assert result is None
     repo.update_entry.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# JournalService — tags
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_update_entry_sets_tags():
+    stored = _make_stored_entry(status=JournalEntryStatus.PROCESSED)
+    repo = AsyncMock()
+    repo.update_entry = AsyncMock(return_value=True)
+    repo.get_entry = AsyncMock(return_value=stored)
+    event_service = AsyncMock()
+
+    service = make_journal_service(repo=repo, event_service=event_service)
+    await service.update_entry('test-id', {'tags': ['Work', ' Health ', 'work']})
+
+    update_dict = repo.update_entry.await_args.args[1]
+    # normalized: lowercased, stripped, deduplicated
+    assert update_dict['tags'] == ['work', 'health']
+    event_service.dispatch_event.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_entry_sets_empty_tags_list():
+    stored = _make_stored_entry()
+    repo = AsyncMock()
+    repo.update_entry = AsyncMock(return_value=True)
+    repo.get_entry = AsyncMock(return_value=stored)
+
+    service = make_journal_service(repo=repo)
+    await service.update_entry('test-id', {'tags': []})
+
+    update_dict = repo.update_entry.await_args.args[1]
+    assert update_dict['tags'] == []
+
+
+@pytest.mark.asyncio
+async def test_update_entry_coerces_non_list_tags_to_empty():
+    stored = _make_stored_entry()
+    repo = AsyncMock()
+    repo.update_entry = AsyncMock(return_value=True)
+    repo.get_entry = AsyncMock(return_value=stored)
+
+    service = make_journal_service(repo=repo)
+    await service.update_entry('test-id', {'tags': 'not-a-list'})
+
+    update_dict = repo.update_entry.await_args.args[1]
+    assert update_dict['tags'] == []
+
+
+@pytest.mark.asyncio
+async def test_list_tags_delegates_to_repository():
+    repo = AsyncMock()
+    repo.list_distinct_tags = AsyncMock(return_value=['health', 'travel', 'work'])
+    service = make_journal_service(repo=repo)
+
+    result = await service.list_tags()
+
+    repo.list_distinct_tags.assert_awaited_once()
+    assert result == ['health', 'travel', 'work']
+
+
+@pytest.mark.asyncio
+async def test_list_entries_passes_tags_filter_to_repository():
+    repo = AsyncMock()
+    repo.list_recent = AsyncMock(return_value=[])
+    service = make_journal_service(repo=repo)
+
+    await service.list_entries(limit=10, tags=['work', 'health'])
+
+    repo.list_recent.assert_awaited_once_with(limit=10, tags=['work', 'health'])
+
+
+@pytest.mark.asyncio
+async def test_list_entries_passes_none_when_no_tags():
+    repo = AsyncMock()
+    repo.list_recent = AsyncMock(return_value=[])
+    service = make_journal_service(repo=repo)
+
+    await service.list_entries(limit=10)
+
+    repo.list_recent.assert_awaited_once_with(limit=10, tags=None)
 

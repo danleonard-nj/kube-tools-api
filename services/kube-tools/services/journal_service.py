@@ -64,15 +64,15 @@ class JournalService:
 
     async def _generate_title(self, raw_transcript: str) -> Optional[str]:
         try:
-            result = await self._gpt.generate_completion(
+            result = await self._gpt.generate_response(
                 prompt=f'Journal entry:\n\n{raw_transcript[:1500]}',
                 model=GPTModel.GPT_4_1_NANO,
                 system_prompt=_TITLE_SYSTEM_PROMPT,
                 temperature=0.3,
                 use_cache=False,
-                max_tokens=20,
+                max_output_tokens=20,
             )
-            return result.content.strip() or None
+            return result.text.strip() or None
         except Exception as exc:
             logger.warning(f'Auto-title generation failed: {exc}')
             return None
@@ -134,14 +134,17 @@ class JournalService:
 
         return entry.model_dump()
 
-    async def list_entries(self, limit: int = 50) -> List[dict]:
-        docs = await self._repository.list_recent(limit=limit)
+    async def list_entries(self, limit: int = 50, tags: Optional[List[str]] = None) -> List[dict]:
+        docs = await self._repository.list_recent(limit=limit, tags=tags or None)
         entries = []
         for doc in docs:
             entry = JournalEntry.from_entity(doc)
             if entry:
                 entries.append(entry.model_dump())
         return entries
+
+    async def list_tags(self) -> List[str]:
+        return await self._repository.list_distinct_tags()
 
     async def get_entry(self, entry_id: str) -> Optional[dict]:
         doc = await self._repository.get_entry(entry_id)
@@ -201,9 +204,27 @@ class JournalService:
             'message': 'Processing queued',
         }
 
+    @staticmethod
+    def _normalize_tags(raw: list) -> List[str]:
+        seen: set = set()
+        result = []
+        for t in raw:
+            if not isinstance(t, str):
+                continue
+            clean = t.strip().lower()
+            if clean and clean not in seen:
+                seen.add(clean)
+                result.append(clean)
+        return result
+
     async def update_entry(self, entry_id: str, body: dict) -> Optional[dict]:
-        allowed_fields = {'title', 'raw_transcript', 'status'}
+        allowed_fields = {'title', 'raw_transcript', 'status', 'tags'}
         update = {k: v for k, v in body.items() if k in allowed_fields}
+
+        if 'tags' in update:
+            if not isinstance(update['tags'], list):
+                update['tags'] = []
+            update['tags'] = self._normalize_tags(update['tags'])
         if not update:
             return await self.get_entry(entry_id)
 
@@ -262,14 +283,14 @@ class JournalService:
             + '\n'.join(mode_lines)
         )
 
-        result = await self._gpt.generate_completion(
+        result = await self._gpt.generate_response(
             prompt=source_text,
             model=GPTModel.GPT_4O,
             system_prompt=system_prompt,
             temperature=0.3,
             use_cache=False,
         )
-        polished = result.content.strip()
+        polished = result.text.strip()
 
         await self._repository.update_entry(entry_id, {
             'pre_polish_transcript': source_text,

@@ -14,15 +14,20 @@ logger = get_logger(__name__)
 
 _INSIGHTS_SYSTEM_PROMPT = """\
 You are a thoughtful personal journal analyst performing a windowed retrospective.
-You are given a structured digest of journal entries from a specific recent period.
-Each entry includes its date, short and detailed summaries, key events, stressors, \
-positive developments, open loops, emotional tone, themes, symptoms noted, and open action items.
+You are given a structured digest of journal entries (or pre-summarised chunk digests) \
+from a specific recent period.
+Each entry or digest may include: date, title, short and detailed summaries, a brief \
+transcript excerpt in the writer's own words, key events, people mentioned, places and \
+contexts, stressors, positive developments, open loops, emotional tone, themes, \
+symptoms noted, and open action items.
 
 Your task is to synthesise all of this into a rich, human-readable insight report.
 
 Rules:
 - Do not invent facts not present in the provided entries.
+- Use transcript excerpts as ground-truth voice when they add detail beyond the summaries.
 - Identify patterns, recurring themes, and meaningful shifts across the window.
+- Note recurring people, places, or contexts where relevant.
 - Highlight any unresolved action items or repeated concerns.
 - Describe the mood arc as a narrative, not just labels.
 - Return strict JSON only — no markdown, no code fences, no commentary.
@@ -33,11 +38,43 @@ Return JSON in exactly this shape:
   "mood_arc": "One to two sentence description of how mood evolved across the window.",
   "dominant_themes": ["theme_a", "theme_b"],
   "key_facts": ["Notable fact or event extracted from entries"],
+  "people_and_contexts": ["Recurring person, place, or situation worth noting"],
   "open_action_items": ["Unresolved action item"],
   "patterns_of_concern": ["Any recurring symptom, worry, or risk indicator — omit if none"],
   "positive_highlights": ["Wins, moments of clarity, or positive developments — omit if none"]
 }
 """
+
+_CHUNK_SYSTEM_PROMPT = """\
+You are a personal journal analyst condensing a small batch of journal entries into a \
+compact intermediate digest for a larger rollup analysis.
+Each entry may include: date, title, short and detailed summaries, a brief transcript \
+excerpt, key events, people mentioned, places/contexts, stressors, positive developments, \
+open loops, themes, mood, symptoms, and action items.
+
+Return strict JSON only — no markdown, no code fences, no commentary.
+
+Return JSON in exactly this shape:
+{
+  "date_range": "YYYY-MM-DD to YYYY-MM-DD",
+  "entry_count": 0,
+  "narrative": "Two to three sentence factual summary of this sub-period.",
+  "key_events": ["Notable event"],
+  "people_mentioned": ["Person name"],
+  "places_or_contexts": ["Place or context"],
+  "stressors": ["Stressor"],
+  "positive_developments": ["Positive development"],
+  "open_loops": ["Unresolved item"],
+  "themes": ["theme"],
+  "mood_summary": "One sentence describing overall mood of this sub-period.",
+  "action_items": ["action item"],
+  "symptoms": ["symptom noted"]
+}
+"""
+
+_CHUNK_THRESHOLD = 20   # entries above which map-reduce chunking is used
+_CHUNK_SIZE = 15        # entries per chunk in the map phase
+_TRANSCRIPT_EXCERPT_LEN = 400  # max chars of cleaned_transcript included per entry
 
 
 class JournalInsightsService:
@@ -96,12 +133,17 @@ class JournalInsightsService:
         """Distil a single processed entry into the structured digest sent to the LLM."""
         analysis = doc.get('analysis') or {}
         mood = analysis.get('mood') or {}
+        cleaned = doc.get('cleaned_transcript') or ''
+        excerpt = cleaned[:_TRANSCRIPT_EXCERPT_LEN].rstrip() if cleaned else None
         return {
             'date': self._date_str(doc.get('created_at')),
             'title': doc.get('title'),
             'summary_short': analysis.get('summary_short'),
             'summary_detailed': analysis.get('summary_detailed'),
+            'transcript_excerpt': excerpt,
             'key_events': analysis.get('key_events') or [],
+            'people_mentioned': analysis.get('people_mentioned') or [],
+            'places_or_contexts': analysis.get('places_or_contexts') or [],
             'stressors': analysis.get('stressors') or [],
             'positive_developments': analysis.get('positive_developments') or [],
             'open_loops': analysis.get('open_loops') or [],
@@ -115,8 +157,132 @@ class JournalInsightsService:
             'risk_flags': analysis.get('risk_flags') or {},
         }
 
+    @staticmethod
+    def _render_entry_as_text(fact: dict) -> str:
+        """Render a single extracted-facts dict as a compact structured-text block."""
+        lines: List[str] = []
+
+        # Header
+        date = fact.get('date') or 'unknown date'
+        title = fact.get('title')
+        mood = fact.get('mood') or {}
+        mood_label = mood.get('label') or ''
+        mood_score = mood.get('score')
+        mood_str = f'{mood_label} ({mood_score}/10)' if mood_score is not None else mood_label
+        header = f'[{date}]'
+        if title:
+            header += f'  "{title}"'
+        if mood_str:
+            header += f'  |  Mood: {mood_str}'
+        lines.append(header)
+
+        # Summaries
+        if fact.get('summary_short'):
+            lines.append(fact['summary_short'])
+        if fact.get('summary_detailed'):
+            lines.append(fact['summary_detailed'])
+
+        # Verbatim excerpt
+        if fact.get('transcript_excerpt'):
+            lines.append(f'> {fact["transcript_excerpt"]}')
+
+        # Structured fields — only emit non-empty lists
+        def _inline(items: list) -> str:
+            return ' · '.join(str(x) for x in items if x)
+
+        if fact.get('key_events'):
+            lines.append(f'Key events: {_inline(fact["key_events"])}')
+        if fact.get('people_mentioned'):
+            lines.append(f'People: {_inline(fact["people_mentioned"])}')
+        if fact.get('places_or_contexts'):
+            lines.append(f'Places/contexts: {_inline(fact["places_or_contexts"])}')
+        if fact.get('stressors'):
+            lines.append(f'Stressors: {_inline(fact["stressors"])}')
+        if fact.get('positive_developments'):
+            lines.append(f'Positives: {_inline(fact["positive_developments"])}')
+        if fact.get('open_loops'):
+            lines.append(f'Open loops: {_inline(fact["open_loops"])}')
+        if fact.get('action_items'):
+            lines.append(f'Action items: {_inline(fact["action_items"])}')
+        if fact.get('symptoms'):
+            lines.append(f'Symptoms: {_inline(fact["symptoms"])}')
+        if fact.get('themes'):
+            lines.append(f'Themes: {_inline(fact["themes"])}')
+
+        return '\n'.join(lines)
+
+    @classmethod
+    def _render_facts_as_text(cls, facts: List[dict]) -> str:
+        """Render a list of extracted-facts dicts as a separator-delimited text block."""
+        separator = '---'
+        blocks = [separator]
+        for fact in facts:
+            blocks.append(cls._render_entry_as_text(fact))
+            blocks.append(separator)
+        return '\n'.join(blocks)
+
+    @staticmethod
+    def _render_chunk_digest_as_text(digest: dict) -> str:
+        """Render an intermediate chunk digest (JSON dict) as structured text."""
+        lines: List[str] = []
+        date_range = digest.get('date_range') or 'unknown range'
+        count = digest.get('entry_count', '?')
+        lines.append(f'[{date_range}]  ({count} entries)')
+        if digest.get('narrative'):
+            lines.append(digest['narrative'])
+        if digest.get('mood_summary'):
+            lines.append(f'Mood: {digest["mood_summary"]}')
+
+        def _inline(items) -> str:
+            return ' · '.join(str(x) for x in (items or []) if x)
+
+        for label, key in [
+            ('Key events', 'key_events'),
+            ('People', 'people_mentioned'),
+            ('Places/contexts', 'places_or_contexts'),
+            ('Stressors', 'stressors'),
+            ('Positives', 'positive_developments'),
+            ('Open loops', 'open_loops'),
+            ('Action items', 'action_items'),
+            ('Symptoms', 'symptoms'),
+            ('Themes', 'themes'),
+        ]:
+            if digest.get(key):
+                lines.append(f'{label}: {_inline(digest[key])}')
+        return '\n'.join(lines)
+
+    async def _summarize_chunk(self, chunk_facts: List[dict]) -> dict:
+        """Map phase: condense one chronological chunk into an intermediate digest."""
+        prompt = (
+            f'The following is a structured batch of {len(chunk_facts)} journal entries.\n\n'
+            + self._render_facts_as_text(chunk_facts)
+        )
+        try:
+            result = await self._gpt.generate_response(
+                prompt=prompt,
+                system_prompt=_CHUNK_SYSTEM_PROMPT,
+                model=GPTModel.GPT_5_5,
+                use_cache=False,
+            )
+            content = result.text.strip()
+            if content.startswith('```'):
+                lines = content.splitlines()
+                content = '\n'.join(
+                    line for line in lines
+                    if not line.strip().startswith('```')
+                )
+            return json.loads(content)
+        except Exception as exc:
+            logger.warning(f'Chunk summarization failed: {exc}')
+            return {'error': str(exc), 'entry_count': len(chunk_facts)}
+
     async def _build_llm_summary(self, processed: List[dict], days: int) -> dict:
-        """Use an LLM to produce a rich windowed narrative over the processed entries."""
+        """Use an LLM to produce a rich windowed narrative over the processed entries.
+
+        For windows with more than _CHUNK_THRESHOLD entries a map-reduce strategy is
+        used: entries are split into chronological chunks, each chunk is condensed into
+        an intermediate digest, and those digests are fed to the final synthesis call.
+        """
         if not processed:
             return {'error': 'no_processed_entries'}
 
@@ -128,22 +294,39 @@ class JournalInsightsService:
 
         facts = [self._extract_facts(d) for d in sorted_entries]
 
-        prompt = (
-            f'The following is a structured digest of {len(facts)} journal '
-            f'entries from the last {days} days, ordered oldest to newest.\n\n'
-            + json.dumps(facts, indent=2, default=str)
-        )
-
-        try:
-            result = await self._gpt.generate_completion(
-                prompt=prompt,
-                system_prompt=_INSIGHTS_SYSTEM_PROMPT,
-                model=GPTModel.GPT_5,
-                use_cache=False,
-                temperature=0.4,
+        # --- map phase (only when there are many entries) ---
+        if len(facts) > _CHUNK_THRESHOLD:
+            chunks = [facts[i:i + _CHUNK_SIZE] for i in range(0, len(facts), _CHUNK_SIZE)]
+            logger.info(
+                f'LLM summary: chunking {len(facts)} entries into {len(chunks)} chunks'
+            )
+            digest: list = []
+            for chunk in chunks:
+                digest.append(await self._summarize_chunk(chunk))
+            digest_blocks = '\n---\n'.join(
+                self._render_chunk_digest_as_text(d) for d in digest
+            )
+            prompt = (
+                f'The following are {len(digest)} intermediate digests covering the last '
+                f'{days} days ({len(facts)} total entries), ordered oldest to newest.\n\n'
+                f'---\n{digest_blocks}\n---'
+            )
+        else:
+            prompt = (
+                f'The following is a structured digest of {len(facts)} journal '
+                f'entries from the last {days} days, ordered oldest to newest.\n\n'
+                + self._render_facts_as_text(facts)
             )
 
-            content = result.content.strip()
+        try:
+            result = await self._gpt.generate_response(
+                prompt=prompt,
+                system_prompt=_INSIGHTS_SYSTEM_PROMPT,
+                model=GPTModel.GPT_5_5,
+                use_cache=False,
+            )
+
+            content = result.text.strip()
 
             # Strip any accidental markdown fences
             if content.startswith('```'):

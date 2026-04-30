@@ -28,10 +28,13 @@ class JournalRepository(MongoRepositoryAsync):
             doc['_id'] = str(doc['_id'])
         return doc
 
-    async def list_recent(self, limit: int = 50) -> List[dict]:
+    async def list_recent(self, limit: int = 50, tags: Optional[List[str]] = None) -> List[dict]:
+        query: Dict = {}
+        if tags:
+            query['tags'] = {'$all': tags}
         cursor = (
             self.collection
-            .find({})
+            .find(query)
             .sort('created_at', -1)
             .limit(limit)
         )
@@ -40,6 +43,10 @@ class JournalRepository(MongoRepositoryAsync):
             doc['_id'] = str(doc['_id'])
             results.append(doc)
         return results
+
+    async def list_distinct_tags(self) -> List[str]:
+        results = await self.collection.distinct('tags', {})
+        return sorted(t for t in results if t)
 
     async def update_entry(self, entry_id: str, update: dict) -> bool:
         update['updated_at'] = datetime.utcnow()

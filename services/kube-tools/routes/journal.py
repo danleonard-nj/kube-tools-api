@@ -7,10 +7,11 @@ GET    /api/journal/entries                              — list recent entries
 GET    /api/journal/entries/<entry_id>                   — get full entry
 POST   /api/journal/entries/<entry_id>/process           — request/retry processing
 POST   /api/journal/entries/<entry_id>/title             — refresh auto-title
-PATCH  /api/journal/entries/<entry_id>                   — update title/transcript
+PATCH  /api/journal/entries/<entry_id>                   — update title/transcript/tags
 DELETE /api/journal/entries/<entry_id>                   — delete entry
 POST   /api/journal/entries/<entry_id>/polish            — LLM-polish transcript
 POST   /api/journal/entries/<entry_id>/polish/undo       — undo last polish
+GET    /api/journal/tags                                 — list all distinct tags
 """
 from __future__ import annotations
 
@@ -46,7 +47,8 @@ async def list_journal_entries(container):
     service: JournalService = container.resolve(JournalService)
 
     limit = min(int(request.args.get('limit', 50)), 200)
-    result = await service.list_entries(limit=limit)
+    tags = request.args.getlist('tag') or None
+    result = await service.list_entries(limit=limit, tags=tags)
     return result
 
 
@@ -112,6 +114,14 @@ async def get_journal_insights(container):
     days = min(int(request.args.get('days', 14)), 90)
     result = await service.get_insights(days=days)
     return result
+
+
+@journal_bp.configure('/api/journal/tags', methods=['GET'], auth_scheme='default')
+async def list_journal_tags(container):
+    """Return a sorted list of all distinct tags across all journal entries."""
+    service: JournalService = container.resolve(JournalService)
+    tags = await service.list_tags()
+    return {'tags': tags}
 
 
 _VALID_POLISH_MODES = {'grammar', 'organize', 'concise', 'expand', 'tone'}

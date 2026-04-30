@@ -79,6 +79,7 @@ class JournalEntry(BaseModel):
     is_manual_title: bool = False
     source: str = JournalSource.VOICE
     status: str = JournalEntryStatus.CREATED
+    tags: List[str] = Field(default_factory=list)
     segments: List[JournalSegment] = Field(default_factory=list)
     raw_transcript: str = ''
     cleaned_transcript: Optional[str] = None
