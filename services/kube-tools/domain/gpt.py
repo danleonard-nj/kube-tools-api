@@ -35,6 +35,12 @@ class GPTModel:
     GPT_5_MINI = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-5-mini"
     GPT_5_NANO = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-5-nano"
 
+    GPT_5_4_NANO = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-5.4-nano"
+
+    GPT_5_5 = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-5.5"
+    GPT_5_5_MINI = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-5.5-mini"
+    GPT_5_5_PRO = DEBUG_GPT_MODEL if IS_DEBUG_MODE else "gpt-5.5-pro"
+
 
 def get_content(parsed):
     return (

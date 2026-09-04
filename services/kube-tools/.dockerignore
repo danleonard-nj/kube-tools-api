@@ -3,3 +3,7 @@ config.dev.json
 scripts/
 tests/
 debug/
+prompts/
+*.webm
+/__pycache__/
+*.ipynb

@@ -20,7 +20,7 @@ from services.transcription.response_parsing import extract_openai_text_and_segm
 logger = get_logger(__name__)
 
 
-class OpenAIProvider(TranscriptionProvider):
+class OpenAISpeechProvider(TranscriptionProvider):
     name = "openai"
 
     def __init__(

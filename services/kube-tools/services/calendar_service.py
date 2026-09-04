@@ -20,6 +20,14 @@ from utilities.utils import strip_json_backticks
 
 logger = get_logger(__name__)
 
+# The generated event JSON is small; cap output as a guard rail against runaway
+# generations. Kept well above the real payload size so light reasoning models
+# still have headroom.
+EVENT_GENERATION_MAX_OUTPUT_TOKENS = 1500
+
+# Feature flag to disable the web_search tool without a deploy if it regresses latency.
+WEB_SEARCH_FEATURE_KEY = 'calendar-event-web-search'
+
 
 class EventColor(StrEnum):
     BLUE = "7"
@@ -37,8 +45,9 @@ def ensure_datetime(
 def _get_system_prompt() -> str:
     return f'''You are a helpful assistant that generates JSON Google Calendar events based on user input.
 Your task is to create a JSON object that represents a Google Calendar event.
-If the location provided is vague or incomplete, use web_search to resolve the full address.
-Try to get the most granular address possible (e.g., full venue address).
+Only use web_search if the location is a named venue or business whose address is
+genuinely unknown and required. If the user already gave an address, or no location
+is involved, do not search.
 
 The JSON object must look exactly like this:
 {SAMPLE_CALENDAR_EVENT_JSON}
@@ -59,7 +68,7 @@ Current date and time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Instructions:
 - Use a descriptive title for the event
 - Include additional user requests in the description field
-- For recurrence, use RRULE format (search if unsure of syntax)
+- For recurrence, use RFC 5545 RRULE format
 - Output ONLY the JSON object{image_instruction}"""
 
 
@@ -81,6 +90,10 @@ class CalendarService:
 
     async def _get_calendar_event_gpt_model(self):
         return await self._feature_client.is_enabled('gpt-model-calendar-event-service')
+
+    async def _is_web_search_enabled(self) -> bool:
+        return bool(await self._feature_client.is_enabled(WEB_SEARCH_FEATURE_KEY))
+
 
     async def create_calendar_event(
         self,
@@ -159,6 +172,32 @@ class CalendarService:
         )
         event.colorId = EventColor.BLUE
         return event
+    
+
+    async def auto_create_calendar_event(
+        self,
+        prompt: Optional[str] = None,
+        image_bytes: Optional[bytes] = None,
+        text: Optional[str] = None
+    ) -> dict:
+        logger.info(f'Auto creating calendar event: {prompt}')
+        event = await self.create_event_from_input(
+            prompt=prompt,
+            image_bytes=image_bytes,
+            text=text
+        )
+
+        logger.info(f'Generated event: {event}')
+
+        model = GoogleCalendarEvent.model_validate(event)
+
+        # Save the event
+        result = await self.create_calendar_event(model)
+
+        logger.info(f'Event created: {result}')
+
+        return result
+
 
     async def create_event_from_input(
         self,
@@ -176,7 +215,15 @@ class CalendarService:
         system_prompt = _get_system_prompt()
         user_prompt = _get_user_prompt(locality, text or prompt, has_image=bool(image_bytes))
 
-        logger.info(f'Creating calendar event with model: {model}')
+        tools = (
+            [{'type': GptResponseToolType.WEB_SEARCH_PREVIEW}]
+            if await self._is_web_search_enabled()
+            else []
+        )
+
+        logger.info(
+            f'Creating calendar event with model: {model} '
+            f'(web_search={"on" if tools else "off"})')
 
         # Generate response with or without image
         if image_bytes:
@@ -185,14 +232,16 @@ class CalendarService:
                 prompt=user_prompt,
                 system_prompt=system_prompt,
                 model=model,
-                custom_tools=[{'type': GptResponseToolType.WEB_SEARCH_PREVIEW}]
+                custom_tools=tools,
+                max_output_tokens=EVENT_GENERATION_MAX_OUTPUT_TOKENS
             )
         else:
             result = await self._gpt_client.generate_response(
                 prompt=user_prompt,
                 system_prompt=system_prompt,
                 model=model,
-                custom_tools=[{'type': GptResponseToolType.WEB_SEARCH_PREVIEW}]
+                custom_tools=tools,
+                max_output_tokens=EVENT_GENERATION_MAX_OUTPUT_TOKENS
             )
 
         logger.info(f'Used {result.usage} tokens with model {model}')

@@ -130,7 +130,9 @@ async def save_client(container):
         client_name=client_name,
         client_id=client_id,
         client_secret=client_secret,
-        refresh_token=refresh_token
+        refresh_token=refresh_token,
+        scopes=body.get('scopes'),
+        token=body.get('token')
     )
     return {"success": True, "message": f"Client '{client_name}' saved with fresh token."}
 

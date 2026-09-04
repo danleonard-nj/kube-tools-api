@@ -24,7 +24,6 @@ from framework.logger import get_logger
 from models.openai_config import OpenAIConfig
 from models.transcription_config import TranscriptionConfig
 from services.transcription import PIPELINE_VERSION
-from services.transcription.dsp import get_audio_mime_type, preprocess_for_transcription
 from services.transcription.models import (
     AudioChunk, ChunkPlanEntry, PreprocessResult, WordToken,
 )
@@ -37,7 +36,7 @@ from services.transcription.providers import (
 )
 from services.transcription.providers.azure_provider import AzureSpeechProvider
 from services.transcription.providers.google_provider import GoogleSpeechProvider
-from services.transcription.providers.openai_provider import OpenAIProvider
+from services.transcription.providers.openai_provider import OpenAISpeechProvider
 from services.transcription.providers.whisper_provider import WhisperProvider
 from services.transcription.response_parsing import globalize_chunk_result
 from services.transcription.segmentation import (
@@ -47,6 +46,27 @@ from utilities.memory import release_memory
 from utilities.timing import log_stage_timing
 
 logger = get_logger(__name__)
+
+
+def _get_audio_mime_type(filename: str) -> str:
+    from services.transcription.dsp.audio_utils import get_audio_mime_type
+
+    return get_audio_mime_type(filename)
+
+
+def _preprocess_for_transcription(
+    audio_segment: AudioSegment,
+    *,
+    debug_tag: Optional[str],
+    return_waveform_overlay: bool,
+) -> PreprocessResult:
+    from services.transcription.dsp.pipeline import preprocess_for_transcription
+
+    return preprocess_for_transcription(
+        audio_segment,
+        debug_tag=debug_tag,
+        return_waveform_overlay=return_waveform_overlay,
+    )
 
 
 TAIL_PAD_MS=1500  # Silence to append to the final chunk to help the model finalise decoding
@@ -231,7 +251,7 @@ class TranscriptionService:
         transcription_repository: TranscriptionHistoryRepository,
         transcription_run_repository: TranscriptionRunRepository,
         transcription_config: TranscriptionConfig,
-        openai_provider: OpenAIProvider,
+        openai_provider: OpenAISpeechProvider,
         google_provider: GoogleSpeechProvider,
         azure_provider: AzureSpeechProvider,
         whisper_provider: WhisperProvider,
@@ -303,7 +323,7 @@ class TranscriptionService:
             )
 
             with log_stage_timing(logger, "transcribe_audio.get_mime", fields={"filename": filename}):
-                _ = get_audio_mime_type(filename)
+                _ = _get_audio_mime_type(filename)
 
             audio_segment = self._decode_audio(audio_file, filename)
             # Compute audio stats once up-front so we can drop the decoded
@@ -316,7 +336,7 @@ class TranscriptionService:
                 logger, "transcribe_audio.preprocess",
                 fields={"filename": filename, "audio_ms": audio_ms},
             ):
-                pre: PreprocessResult = preprocess_for_transcription(
+                pre: PreprocessResult = _preprocess_for_transcription(
                     audio_segment,
                     debug_tag=filename,
                     return_waveform_overlay=True,
@@ -407,6 +427,8 @@ class TranscriptionService:
         try:
             if ext == "webm":
                 return AudioSegment.from_file(io.BytesIO(data), format="webm", codec="opus")
+            if ext in {"amr", "awb"}:
+                return AudioSegment.from_file(io.BytesIO(data), format="amr")
             return AudioSegment.from_file(io.BytesIO(data))
         except Exception as exc:
             raise TranscriptionServiceError(f"Failed to load audio file: {exc}") from exc

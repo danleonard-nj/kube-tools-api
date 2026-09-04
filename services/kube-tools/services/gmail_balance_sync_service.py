@@ -175,14 +175,16 @@ class GmailBankSyncService:
         </html>
         """
 
+        logger.info('No-op (Brevo spam filter)')
+
         # Send notification about the mismatch
-        await self._sib_client.send_email(
-            recipient='dcl525@gmail.com',
-            subject='Bank Key Mismatch Detected',
-            html_body=html,
-            from_email='me@dan-leonard.com',
-            from_name='Kubetools Gmail Balance Sync Service'
-        )
+        # await self._sib_client.send_email(
+        #     recipient='dcl525@gmail.com',
+        #     subject='Bank Key Mismatch Detected',
+        #     html_body=html,
+        #     from_email='me@dan-leonard.com',
+        #     from_name='Kubetools Gmail Balance Sync Service'
+        # )
 
     def _handle_account_specific_balance_sync(
         self,

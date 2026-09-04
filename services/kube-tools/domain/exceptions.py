@@ -79,12 +79,6 @@ class GmailBalanceSyncException(Exception):
     def __init__(self, message, *args: object) -> None:
         super().__init__(message)
 
-
-class InvalidTorrentSearchException(Exception):
-    def __init__(self, message, *args: object) -> None:
-        super().__init__(message)
-
-
 class PodcastConfigurationException(Exception):
     def __init__(self, message, *args: object) -> None:
         super().__init__(message)

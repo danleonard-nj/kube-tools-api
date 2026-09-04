@@ -19,3 +19,4 @@ from routes.transcription import transcription_bp
 from routes.stock_monitor import stock_monitor_bp
 from routes.scheduler import scheduler_bp
 from routes.journal import journal_bp
+from routes.tasks import tasks_bp

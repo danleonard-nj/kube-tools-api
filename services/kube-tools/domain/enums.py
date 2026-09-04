@@ -20,6 +20,8 @@ class BankKey(enum.StrEnum):
     Bitcoin = 'coinbase-bitcoin'
     Solana = 'coinbase-solana'
     Robinhood = 'robinhood'
+    FidelityIndividual = 'fidelity-individual'
+    FidelityRetirement = 'fidelity-retirement'
 
     @classmethod
     def values(

@@ -7,8 +7,8 @@ The Silero V5 model requires fixed window sizes: 512 samples at 16 kHz
 (=32 ms).  We expose this as ``FRAME_MS`` for callers that need to
 convert frame indices ↔ time.
 
-If ``silero-vad`` (or its torch dependency) cannot be imported, this
-module raises at import time — there is intentionally no fallback.
+If ``silero-vad`` (or its torch dependency) cannot be imported, the
+transcription path raises on first use — there is intentionally no fallback.
 """
 
 from __future__ import annotations
@@ -17,10 +17,6 @@ import threading
 from typing import List, Tuple
 
 import numpy as np
-
-# Eager imports — fail loudly at import time if the dependency is missing.
-import torch
-from silero_vad import load_silero_vad
 
 
 VAD_SR = 16_000
@@ -35,12 +31,20 @@ _model = None
 _model_lock = threading.Lock()
 
 
+def _get_torch_module():
+    import torch
+
+    return torch
+
+
 def _get_model():
     """Return the Silero VAD model, loading it on first use."""
     global _model
     if _model is None:
         with _model_lock:
             if _model is None:
+                from silero_vad import load_silero_vad
+
                 _model = load_silero_vad()
     return _model
 
@@ -73,6 +77,7 @@ def compute_speech_probabilities(mono_16k_f32: np.ndarray) -> np.ndarray:
         )
 
     model = _get_model()
+    torch = _get_torch_module()
     model.reset_states()  # important: state carries across calls otherwise
 
     probs = np.empty(n_frames, dtype=np.float32)

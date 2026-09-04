@@ -19,9 +19,8 @@ from clients.storage_client import StorageClient
     # lazy-loads its model on first transcribe() so startup is cheap.
 from services.transcription.providers.azure_provider import AzureSpeechProvider
 from services.transcription.providers.google_provider import GoogleSpeechProvider
-from services.transcription.providers.openai_provider import OpenAIProvider
+from services.transcription.providers.openai_provider import OpenAISpeechProvider
 from services.transcription.providers.whisper_provider import WhisperProvider
-from clients.torrent_client import TorrentClient
 from clients.twilio_gateway import TwilioGatewayClient
 from data.android_repository import AndroidNetworkDiagnosticsRepository
 from data.api_event_repository import ApiEventRepository
@@ -99,7 +98,6 @@ from services.podcast_service import PodcastService
 from services.redis_service import RedisService
 from services.reverse_geocoding_service import GoogleReverseGeocodingService
 from services.conversation_service import ConversationService
-from services.torrent_service import TorrentService
 from services.ts_push_service import TruthSocialConfig, TruthSocialPushService
 from services.usage_service import UsageService
 from openai import AsyncOpenAI
@@ -112,6 +110,23 @@ from services.journal_service import JournalService
 from services.journal_processing_service import JournalProcessingService
 from services.journal_insights_service import JournalInsightsService
 from data.journal_repository import JournalRepository
+from data.journal_attachment_repository import JournalAttachmentRepository
+from data.google.google_tasks_repository import TaskRepository
+from models.task_models import TaskConfig
+from services.task_service import TaskService
+from anthropic import AsyncAnthropic
+from google import genai
+from openai import AsyncOpenAI
+
+from framework.di.service_collection import ServiceCollection
+from services.llm.llm_provider import (
+    AnthropicLLMProvider,
+    ChatGPTProvider,
+    GoogleLLMProvider,
+)
+from models.anthropic_config import AnthropicConfig
+from models.google_config import GoogleConfig
+from models.openai_config import OpenAIConfig
 
 
 def configure_azure_ad(container):
@@ -171,6 +186,15 @@ def configure_openai_client(
     client = AsyncOpenAI(api_key=openai_config.api_key)
     return client
 
+def configure_anthropic_client(container: ServiceCollection) -> AsyncAnthropic:
+    anthropic_config = container.resolve(AnthropicConfig)
+    return AsyncAnthropic(api_key=anthropic_config.api_key)
+
+
+def configure_google_client(container: ServiceCollection) -> genai.Client:
+    google_config = container.resolve(GoogleConfig)
+    return genai.Client(api_key=google_config.api_key)
+
 
 def register_factories(
     descriptors: ServiceCollection
@@ -190,6 +214,14 @@ def register_factories(
     descriptors.add_singleton(
         dependency_type=AsyncOpenAI,
         factory=configure_openai_client)
+    
+    descriptors.add_singleton(
+        dependency_type=AsyncAnthropic,
+        factory=configure_anthropic_client)
+
+    descriptors.add_singleton(
+        dependency_type=genai.Client,
+        factory=configure_google_client)
 
 
 def register_configs(descriptors):
@@ -204,6 +236,19 @@ def register_configs(descriptors):
         descriptors.add_singleton(
             dependency_type=config_type,
             factory=resolve_func)
+        
+    def register_custom_config(
+        config_type: type,
+        config_name: str,
+        key_name: str
+    ):
+        def resolve_func(provider): return (
+            config_type.model_validate(
+                getattr(provider.resolve(Configuration), key_name).get(config_name)))
+
+        descriptors.add_singleton(
+            dependency_type=config_type,
+            factory=resolve_func)
 
     register_config(CoinbaseConfig, 'coinbase')
     register_config(PodcastConfig, 'podcasts')
@@ -212,10 +257,25 @@ def register_configs(descriptors):
     register_config(PlaidConfig, 'plaid')
     register_config(TruthSocialConfig, 'truth_social')
     register_config(CalendarConfig, 'calendar')
-    register_config(OpenAIConfig, 'openai')
+    # register_config(OpenAIConfig, 'openai')
     register_config(BankingConfig, 'banking')
     register_config(StockMonitorConfig, 'stock_monitor')
     register_config(TranscriptionConfig, 'transcription')
+    register_config(TaskConfig, 'tasks')
+
+    # register_config(AnthropicConfig, 'anthropic')
+    # register_config(GoogleConfig, 'google')
+    register_custom_config(AnthropicConfig, 'anthropic', 'llm')
+    register_custom_config(GoogleConfig, 'google', 'llm')
+    register_custom_config(OpenAIConfig, 'openai', 'llm')
+
+    # anthropic_config_func = lambda config: AnthropicConfig.model_validate(config.llm.get('anthropic'))
+    # google_config_func = lambda config: GoogleConfig.model_validate(config.llm.get('google'))
+    # openai_config_func = lambda config: OpenAIConfig.model_validate(config.llm.get('openai'))
+
+    # descriptors.add_singleton(AnthropicConfig, anthropic_config_func)
+    # descriptors.add_singleton(GoogleConfig, google_config_func)
+    # descriptors.add_singleton(OpenAIConfig, openai_config_func)
 
 
 def register_gmail_services(
@@ -247,7 +307,6 @@ def register_clients(
     descriptors.add_singleton(GmailClient)
     descriptors.add_singleton(PlaidClient)
     descriptors.add_singleton(OpenWeatherClient)
-    descriptors.add_singleton(TorrentClient)
     descriptors.add_singleton(GoogleAuthClient)
     descriptors.add_singleton(CoinbaseClient)
     descriptors.add_singleton(CoinbaseRESTClient)
@@ -286,8 +345,10 @@ def register_repositories(
     descriptors.add_singleton(TranscriptionRunRepository)
     descriptors.add_singleton(TruthSocialRepository)
     descriptors.add_singleton(JournalRepository)
+    descriptors.add_singleton(JournalAttachmentRepository)
     descriptors.add_singleton(StockTickRepository)
     descriptors.add_singleton(StockAlertStateRepository)
+    descriptors.add_singleton(TaskRepository)
 
 
 def register_services(
@@ -311,7 +372,6 @@ def register_services(
     descriptors.add_singleton(WeatherService)
     descriptors.add_singleton(BankTransactionService)
     descriptors.add_singleton(BalanceSyncService)
-    descriptors.add_singleton(TorrentService)
     descriptors.add_singleton(CalendarService)
     descriptors.add_singleton(RedisService)
     descriptors.add_singleton(GoogleDriveService)
@@ -329,10 +389,18 @@ def register_services(
     descriptors.add_singleton(JournalProcessingService)
     descriptors.add_singleton(JournalService)
     descriptors.add_singleton(JournalInsightsService)
-    descriptors.add_singleton(OpenAIProvider)
+    descriptors.add_singleton(TaskService)
+    descriptors.add_singleton(OpenAISpeechProvider)
     descriptors.add_singleton(AzureSpeechProvider)
     descriptors.add_singleton(GoogleSpeechProvider)
     descriptors.add_singleton(WhisperProvider)
+
+    # Providers — resolved by concrete type so callers can ask for the
+    # specific implementation they need. The DI container will inject
+    # the SDK client + config + cache client into each constructor.
+    descriptors.add_singleton(dependency_type=ChatGPTProvider)
+    descriptors.add_singleton(dependency_type=AnthropicLLMProvider)
+    descriptors.add_singleton(dependency_type=GoogleLLMProvider)
 
 class ContainerProvider(ProviderBase):
     @classmethod

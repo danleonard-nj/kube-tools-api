@@ -1,25 +1,17 @@
-from enum import Enum, StrEnum
 import hashlib
 import json
-import openai
-from openai import AsyncOpenAI
-from framework.clients.cache_client import CacheClientAsync
-from framework.configuration import Configuration
-from typing import Any, List, Dict, Literal, Optional, Union
+from enum import StrEnum
+from typing import Dict, List, Literal, Optional, Union
 
+from framework.clients.cache_client import CacheClientAsync
 from framework.logger import get_logger
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from domain.gpt import GPTModel
 from models.openai_config import OpenAIConfig
-from openai.types.responses import ResponseIncludable
 
 logger = get_logger(__name__)
-
-
-def md5(text: str) -> str:
-    """Generate an MD5 hash for the given text."""
-    return hashlib.md5(text.encode('utf-8')).hexdigest()
 
 
 class ResponseResultModel(BaseModel):
@@ -31,47 +23,6 @@ class ResponseResultModel(BaseModel):
 class CompletionResultModel(BaseModel):
     content: str
     tokens: int
-
-
-class ToolOutputAnnotation(BaseModel):
-    type: str
-    start_index: int
-    end_index: int
-    url: str
-    title: Optional[str] = None
-
-
-class ToolOutputContent(BaseModel):
-    type: str
-    text: Optional[str] = None
-    annotations: Optional[List[ToolOutputAnnotation]] = None
-
-
-class AssistantMessage(BaseModel):
-    id: str
-    type: Literal["message"]
-    role: str
-    status: str
-    content: List[ToolOutputContent]
-
-
-class ToolCall(BaseModel):
-    id: str
-    type: str
-    status: str
-
-
-ResponseOutput = Union[AssistantMessage, ToolCall]
-
-
-class ResponsesAPIResult(BaseModel):
-    id: str
-    model: str
-    status: str
-    output: List[ResponseOutput]
-    usage: Optional[Dict[str, Any]] = None
-    created_at: Optional[float] = None
-    tools: Optional[List[Dict[str, Any]]] = None
 
 
 class GptResponseToolType(StrEnum):
@@ -97,18 +48,9 @@ class GPTClient:
         cache_client: CacheClientAsync,
         openai_client: AsyncOpenAI
     ):
-        """
-        Initialize the GPT client
-
-        Args:
-            api_key: OpenAI API key
-            cache_client: Optional cache client for caching responses
-        """
         self._api_key = config.api_key
         self._cache_client = cache_client
         self._client = openai_client
-
-        self.count = 0
 
     async def generate_completion(
         self,
@@ -160,8 +102,6 @@ class GPTClient:
             if use_cache and self._cache_client:
                 await self._cache_response(prompt, content, model, cache_ttl)
 
-            self.count += 1
-
             return CompletionResultModel(content=content, tokens=tokens)
         except Exception as e:
             logger.error(f"Error generating completion with {model}: {str(e)}")
@@ -172,7 +112,6 @@ class GPTClient:
         prompt: str,
         system_prompt: Optional[str] = None,
         model: str = "gpt-4o",
-        use_all_tools: bool = False,
         custom_tools: Optional[List[Dict[Literal['type'], GptResponseToolType]]] = None,
         temperature: float = 1.0,
         use_cache: bool = True,
@@ -186,22 +125,6 @@ class GPTClient:
                 return ResponseResultModel.model_validate(cached)
 
         tools = custom_tools or []
-
-        # TODO: Remove this?
-        if use_all_tools:
-            tools = [
-                {"type": GptResponseToolType.WEB_SEARCH_PREVIEW},
-                {"type": GptResponseToolType.FILE_SEARCH},
-                {"type": GptResponseToolType.COMPUTER_USE},
-                {"type": GptResponseToolType.CODE_INTERPRETER},
-                {"type": GptResponseToolType.RETRIEVAL},
-                {"type": GptResponseToolType.FUNCTION},
-                {"type": GptResponseToolType.IMAGE_GENERATION},
-                {"type": GptResponseToolType.IMAGE_EDITING},
-                {"type": GptResponseToolType.TEXT_TO_SPEECH},
-                {"type": GptResponseToolType.TEXT_GENERATION},
-                {"type": GptResponseToolType.BROWSER}
-            ]
 
         logger.info(f"Calling responses.create with model={model} and tools={tools}")
         try:
@@ -235,32 +158,30 @@ class GPTClient:
         system_prompt: str = None,
         model: str = "gpt-4o",
         temperature: float = 1.0,
-        custom_tools: list = None
-    ) -> str:
+        custom_tools: list = None,
+        max_output_tokens: Optional[int] = None
+    ) -> ResponseResultModel:
         """
-        Send an image and prompt (with optional system prompt and tools) to GPT and return the response content as string.
-        Detects image type for correct MIME.
-        Only includes tools if a valid function tool is provided.
+        Send an image and prompt (with optional system prompt and tools) to GPT
+        and return the response. `image_bytes` must be a data URL or image URL.
         """
 
-        messages = []
-        # if system_prompt:
-        #     messages.append({'role': 'system', 'content': system_prompt})
-
-        messages.append({
+        messages = [{
             'role': 'user',
             'content': [
                 {'type': 'input_text', 'text': prompt},
                 {'type': 'input_image', 'image_url': image_bytes}
             ]
-        })
-        logger.info(f"Sending image, prompt, and tools to GPT")
+        }]
+
+        logger.info("Sending image, prompt, and tools to GPT")
         return await self.generate_response(
             model=model,
             prompt=messages,
             system_prompt=system_prompt,
             temperature=temperature,
-            custom_tools=custom_tools
+            custom_tools=custom_tools,
+            max_output_tokens=max_output_tokens
         )
 
     async def _get_cached_response(self, prompt: Union[str, List, Dict], model: str):
@@ -268,15 +189,7 @@ class GPTClient:
         if not self._cache_client:
             return None
 
-        # Handle both string prompts and list/dict prompts for caching
-        if isinstance(prompt, str):
-            prompt_hash = hashlib.sha256(prompt.encode('utf-8')).hexdigest()
-        else:
-            # For complex prompt structures (lists, dicts), serialize to JSON first
-            prompt_str = json.dumps(prompt, sort_keys=True)
-            prompt_hash = hashlib.sha256(prompt_str.encode('utf-8')).hexdigest()
-
-        cache_key = f"gpt_response:{model}:{prompt_hash}"
+        cache_key = f"gpt_response:{model}:{self._prompt_hash(prompt)}"
 
         cached = await self._cache_client.get_json(cache_key)
         if cached and 'content' in cached:
@@ -288,18 +201,17 @@ class GPTClient:
         if not self._cache_client:
             return
 
-        # Handle both string prompts and list/dict prompts for caching
-        if isinstance(prompt, str):
-            prompt_hash = hashlib.sha256(prompt.encode('utf-8')).hexdigest()
-        else:
-            # For complex prompt structures (lists, dicts), serialize to JSON first
-            prompt_str = json.dumps(prompt, sort_keys=True)
-            prompt_hash = hashlib.sha256(prompt_str.encode('utf-8')).hexdigest()
-
-        cache_key = f"gpt_response:{model}:{prompt_hash}"
+        cache_key = f"gpt_response:{model}:{self._prompt_hash(prompt)}"
 
         await self._cache_client.set_json(
             cache_key,
             data,
             ttl=ttl
         )
+
+    @staticmethod
+    def _prompt_hash(prompt: Union[str, List, Dict]) -> str:
+        """Stable hash for a prompt, whether it's a string or a structured payload."""
+        if not isinstance(prompt, str):
+            prompt = json.dumps(prompt, sort_keys=True)
+        return hashlib.sha256(prompt.encode('utf-8')).hexdigest()

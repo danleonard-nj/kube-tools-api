@@ -37,6 +37,7 @@ RUN python -m pip install \
 RUN python -m pip install uvloop
 
 COPY . .
+# RUN sed -i 's/\r$//' startup.sh && chmod +x startup.sh
 
 # RUN apt-get update && apt-get dist-upgrade -y
 

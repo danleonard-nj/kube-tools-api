@@ -30,7 +30,9 @@ class GoogleAuthService:
         client_id: str,
         client_secret: str,
         refresh_token: str,
-        token_uri: str = "https://oauth2.googleapis.com/token"
+        token_uri: str = "https://oauth2.googleapis.com/token",
+        scopes: list[str] = None,
+        token: str = None
     ) -> bool:
         """Save client info and immediately fetch/store a token"""
         ArgumentNullException.if_none_or_whitespace(client_name, "client_name")
@@ -40,12 +42,12 @@ class GoogleAuthService:
 
         # Create credentials and fetch initial token
         creds = Credentials(
-            token=None,
+            token=token,
             refresh_token=refresh_token,
             token_uri=token_uri,
             client_id=client_id,
             client_secret=client_secret,
-            scopes=[]  # Will be set per request
+            scopes=scopes or []  # Will be set per request
         )
         creds.refresh(Request())        # Store credentials as dict using Google's built-in serialization
         creds_dict = json.loads(creds.to_json())

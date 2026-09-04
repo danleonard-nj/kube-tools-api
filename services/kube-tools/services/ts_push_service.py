@@ -53,6 +53,8 @@ SUMMARY_PROMPT_TEMPLATE = (
 REPOST_TITLE_MARKER = "No Title"
 REPOST_EMPTY_SUMMARY = "<p></p>"
 
+SEND_ON_REPOST = False  # Whether to send notifications for reposts (which lack AI summaries)
+
 
 class TruthSocialPushService:
     def __init__(
@@ -429,7 +431,9 @@ class TruthSocialPushService:
         results, db_records = self._build_post_records(filtered, summaries, meta)
 
         await self._persist_posts(db_records)
-        await self._notify_recipients(results)
+
+        email_results = results if SEND_ON_REPOST else [r for r in results if r['id'] not in meta.repost_ids]
+        await self._notify_recipients(email_results)
         await self._update_cache_timestamp(entries)
 
         return results

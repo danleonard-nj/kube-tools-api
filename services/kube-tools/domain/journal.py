@@ -60,6 +60,11 @@ class JournalAnalysis(BaseModel):
     symptoms: List[str] = Field(default_factory=list)
     action_items: List[str] = Field(default_factory=list)
     risk_flags: Optional[JournalRiskFlags] = None
+    # Per-stage usage (two-stage pipeline)
+    summary_usage: Optional[dict[str, Any]] = None
+    extraction_usage: Optional[dict[str, Any]] = None
+    # Legacy single-call usage — kept for backward compatibility with old entries
+    usage: Optional[dict[str, Any]] = None
 
 
 class JournalProcessingMetadata(BaseModel):
@@ -79,6 +84,7 @@ class JournalEntry(BaseModel):
     is_manual_title: bool = False
     source: str = JournalSource.VOICE
     status: str = JournalEntryStatus.CREATED
+    tags: List[str] = Field(default_factory=list)
     segments: List[JournalSegment] = Field(default_factory=list)
     raw_transcript: str = ''
     cleaned_transcript: Optional[str] = None
@@ -95,3 +101,21 @@ class JournalEntry(BaseModel):
             return None
         data.pop('_id', None)
         return JournalEntry.model_validate(data)
+
+
+class JournalAttachment(BaseModel):
+    attachment_id: str
+    entry_id: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    created_at: Any
+
+    @staticmethod
+    def from_entity(data: dict) -> Optional['JournalAttachment']:
+        if not data:
+            return None
+        data = dict(data)
+        data.pop('_id', None)
+        data.pop('gridfs_id', None)
+        return JournalAttachment.model_validate(data)

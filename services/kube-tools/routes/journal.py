@@ -6,15 +6,17 @@ POST   /api/journal/entries                              — create journal entr
 GET    /api/journal/entries                              — list recent entries
 GET    /api/journal/entries/<entry_id>                   — get full entry
 POST   /api/journal/entries/<entry_id>/process           — request/retry processing
+POST   /api/journal/entries/<entry_id>/reprocess         — re-queue analysis regeneration
 POST   /api/journal/entries/<entry_id>/title             — refresh auto-title
-PATCH  /api/journal/entries/<entry_id>                   — update title/transcript
+PATCH  /api/journal/entries/<entry_id>                   — update title/transcript/tags
 DELETE /api/journal/entries/<entry_id>                   — delete entry
 POST   /api/journal/entries/<entry_id>/polish            — LLM-polish transcript
 POST   /api/journal/entries/<entry_id>/polish/undo       — undo last polish
+GET    /api/journal/tags                                 — list all distinct tags
 """
 from __future__ import annotations
 
-from quart import request
+from quart import request, Response
 
 from framework.logger.providers import get_logger
 from framework.rest.blueprints.meta import MetaBlueprint
@@ -46,7 +48,8 @@ async def list_journal_entries(container):
     service: JournalService = container.resolve(JournalService)
 
     limit = min(int(request.args.get('limit', 50)), 200)
-    result = await service.list_entries(limit=limit)
+    tags = request.args.getlist('tag') or None
+    result = await service.list_entries(limit=limit, tags=tags)
     return result
 
 
@@ -68,6 +71,27 @@ async def process_journal_entry(container, entry_id: str):
     processing_service: JournalProcessingService = container.resolve(JournalProcessingService)
     await processing_service.process_entry(entry_id)
     return {'entry_id': entry_id, 'accepted': True}, 202
+
+
+@journal_bp.configure('/api/journal/entries/<entry_id>/reprocess', methods=['POST'], auth_scheme='default')
+async def reprocess_journal_entry(container, entry_id: str):
+    """Queue analysis regeneration for a journal entry.
+
+    Optional query param:
+    - force=true|false (default: true)
+    """
+    service: JournalService = container.resolve(JournalService)
+
+    force_raw = (request.args.get('force') or 'true').strip().lower()
+    force = force_raw not in {'0', 'false', 'no', 'off'}
+
+    try:
+        result = await service.request_processing(entry_id, force=force)
+    except JournalServiceError:
+        return {'error': 'Entry not found'}, 404
+
+    status_code = 202 if result.get('accepted') else 409
+    return result, status_code
 
 
 @journal_bp.configure('/api/journal/entries/<entry_id>/title', methods=['POST'], auth_scheme='default')
@@ -114,6 +138,14 @@ async def get_journal_insights(container):
     return result
 
 
+@journal_bp.configure('/api/journal/tags', methods=['GET'], auth_scheme='default')
+async def list_journal_tags(container):
+    """Return a sorted list of all distinct tags across all journal entries."""
+    service: JournalService = container.resolve(JournalService)
+    tags = await service.list_tags()
+    return {'tags': tags}
+
+
 _VALID_POLISH_MODES = {'grammar', 'organize', 'concise', 'expand', 'tone'}
 
 
@@ -154,3 +186,76 @@ async def undo_journal_entry_polish(container, entry_id: str):
     if not entry:
         return {'error': 'No polish to undo for this entry'}, 404
     return entry
+
+
+# ---------------------------------------------------------------------------
+# Attachments
+# ---------------------------------------------------------------------------
+
+@journal_bp.configure('/api/journal/entries/<entry_id>/attachments', methods=['POST'], auth_scheme='default')
+async def upload_journal_attachment(container, entry_id: str):
+    """Upload a file attachment for a journal entry (multipart/form-data, field: ``file``)."""
+    service: JournalService = container.resolve(JournalService)
+
+    files = await request.files
+    if 'file' not in files:
+        return {'error': 'No file provided. Use the "file" form field.'}, 400
+
+    upload = files['file']
+    if not upload.filename:
+        return {'error': 'Invalid file: missing filename'}, 400
+
+    data = upload.read()
+    content_type = upload.content_type or 'application/octet-stream'
+
+    result = await service.upload_attachment(
+        entry_id=entry_id,
+        filename=upload.filename,
+        content_type=content_type,
+        data=data,
+    )
+    if result is None:
+        return {'error': 'Entry not found'}, 404
+    return result, 201
+
+
+@journal_bp.configure('/api/journal/entries/<entry_id>/attachments', methods=['GET'], auth_scheme='default')
+async def list_journal_attachments(container, entry_id: str):
+    """List attachment metadata for a journal entry."""
+    service: JournalService = container.resolve(JournalService)
+
+    attachments = await service.list_attachments(entry_id)
+    if attachments is None:
+        return {'error': 'Entry not found'}, 404
+    return attachments
+
+
+@journal_bp.configure('/api/journal/entries/<entry_id>/attachments/<attachment_id>', methods=['GET'], auth_scheme='default')
+async def download_journal_attachment(container, entry_id: str, attachment_id: str):
+    """Download the raw file data for an attachment."""
+    service: JournalService = container.resolve(JournalService)
+
+    result = await service.download_attachment(entry_id=entry_id, attachment_id=attachment_id)
+    if not result:
+        return {'error': 'Attachment not found'}, 404
+
+    return Response(
+        result['data'],
+        status=200,
+        headers={
+            'Content-Type': result['content_type'],
+            'Content-Disposition': f'attachment; filename="{result["filename"]}"',
+            'Content-Length': str(len(result['data'])),
+        },
+    )
+
+
+@journal_bp.configure('/api/journal/entries/<entry_id>/attachments/<attachment_id>', methods=['DELETE'], auth_scheme='default')
+async def delete_journal_attachment(container, entry_id: str, attachment_id: str):
+    """Delete an attachment and its stored data."""
+    service: JournalService = container.resolve(JournalService)
+
+    deleted = await service.delete_attachment(entry_id=entry_id, attachment_id=attachment_id)
+    if not deleted:
+        return {'error': 'Attachment not found'}, 404
+    return {'deleted': True}, 200

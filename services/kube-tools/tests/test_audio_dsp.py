@@ -71,6 +71,8 @@ class TestGetAudioMimeType:
         assert get_audio_mime_type("test.wav") == "audio/wav"
         assert get_audio_mime_type("test.flac") == "audio/flac"
         assert get_audio_mime_type("test.webm") == "audio/webm"
+        assert get_audio_mime_type("test.amr") == "audio/amr"
+        assert get_audio_mime_type("test.awb") == "audio/amr-wb"
 
     def test_unknown_format(self):
         assert get_audio_mime_type("test.xyz") == "audio/mpeg"

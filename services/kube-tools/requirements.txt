@@ -1,4 +1,4 @@
-framework==0.5.0
+framework
 pandas
 kubernetes
 xmltodict
@@ -48,7 +48,7 @@ pytz
 # faster-whisper
 # Fallback if faster-whisper is unavailable:
 # openai-whisper
-# azure-identity
+azure-identity
 # azure-mgmt-resource
 # azure-mgmt-compute
 # azure-mgmt-storage
@@ -63,3 +63,7 @@ pytz
 google-cloud-speech
 faster-whisper
 # openai-whisper
+anthropic
+azure-servicebus
+google-genai
+motor

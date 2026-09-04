@@ -24,6 +24,8 @@ def get_audio_mime_type(filename: str) -> str:
         'ogg': 'audio/ogg',
         'oga': 'audio/ogg',
         'webm': 'audio/webm',
+        'amr': 'audio/amr',
+        'awb': 'audio/amr-wb',
         'mpeg': 'audio/mpeg',
         'mpga': 'audio/mpeg',
     }
