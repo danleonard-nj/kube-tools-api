@@ -3,7 +3,7 @@ import asyncio
 import logging
 from framework.logger import get_logger
 from framework.configuration import Configuration
-import httpx
+import httpx2 as httpx
 from datetime import datetime, timedelta, date
 from collections import defaultdict
 from typing import Dict, List, Any

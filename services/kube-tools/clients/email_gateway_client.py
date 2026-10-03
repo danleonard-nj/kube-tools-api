@@ -5,7 +5,7 @@ from domain.auth import AuthClient, ClientScope
 from domain.email_gateway import EmailGatewayRequest
 from framework.configuration import Configuration
 from framework.logger.providers import get_logger
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 
 logger = get_logger(__name__)
 

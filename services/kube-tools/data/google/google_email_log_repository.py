@@ -1,7 +1,7 @@
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 from framework.mongo.mongo_repository import MongoRepositoryAsync
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 from domain.mongo import MongoCollection, MongoDatabase
 from domain.google import (
@@ -16,7 +16,7 @@ from domain.google import (
 class GoogleEmailLogRepository(MongoRepositoryAsync):
     def __init__(
         self,
-        client: AsyncIOMotorClient
+        client: AsyncMongoClient
     ):
         super().__init__(
             client=client,

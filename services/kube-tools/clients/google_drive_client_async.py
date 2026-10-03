@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 
 import aiofiles
-import httpx
+import httpx2 as httpx
 from domain.drive import (GoogleDriveFileDetailsRequestModel,
                           GoogleDriveFileExistsRequestModel,
                           GoogleDrivePermissionRequestModel,
@@ -12,7 +12,7 @@ from domain.drive import (GoogleDriveFileDetailsRequestModel,
 from domain.google import GoogleClientScope
 from framework.logger import get_logger
 from framework.validators.nulls import none_or_whitespace
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 from services.google_auth_service import GoogleAuthService
 from tenacity import (RetryError, before_sleep_log, retry,
                       retry_if_exception_type, stop_after_attempt,

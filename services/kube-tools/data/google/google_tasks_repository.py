@@ -27,7 +27,7 @@ from datetime import datetime
 
 import pymongo
 from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 from pymongo import ReturnDocument
 
 from domain.mongo import MongoDatabase
@@ -58,7 +58,7 @@ def _dependency_from_doc(doc: dict) -> TaskDependency:
 
 
 class TaskRepository(MongoRepositoryAsync):
-    def __init__(self, client: AsyncIOMotorClient):
+    def __init__(self, client: AsyncMongoClient):
         super().__init__(
             client=client,
             database=MongoDatabase.Google,

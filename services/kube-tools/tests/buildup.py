@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 from framework.clients import CacheClientAsync
 from framework.di.service_provider import ServiceCollection, ServiceProvider
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 from utilities.provider import ContainerProvider
 
@@ -15,7 +15,7 @@ MONGO_HOST = os.environ.get('MONGO_HOST') or 'localhost'
 
 
 def configure_test_client(container):
-    client = AsyncIOMotorClient(F'mongodb://{MONGO_HOST}:27017')
+    client = AsyncMongoClient(F'mongodb://{MONGO_HOST}:27017')
     return client
 
 
@@ -42,7 +42,7 @@ class ApplicationBase(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         services = ContainerProvider.configure_container()
         services.add_singleton(
-            dependency_type=AsyncIOMotorClient,
+            dependency_type=AsyncMongoClient,
             factory=configure_test_client)
 
         services.add_singleton(

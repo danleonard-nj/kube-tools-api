@@ -21,7 +21,7 @@ from email.utils import parsedate_to_datetime
 from datetime import datetime, timezone
 from typing import Optional
 
-import httpx
+import httpx2 as httpx
 from framework.logger import get_logger
 
 from models.transcription_config import TranscriptionConfig

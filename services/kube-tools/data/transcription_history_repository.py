@@ -1,13 +1,13 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from framework.mongo.mongo_repository import MongoRepositoryAsync
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 
 class TranscriptionHistoryRepository(MongoRepositoryAsync):
     """Repository for storing and retrieving transcription history."""
 
-    def __init__(self, client: AsyncIOMotorClient):
+    def __init__(self, client: AsyncMongoClient):
         super().__init__(
             client=client,
             database='Transcriptions',

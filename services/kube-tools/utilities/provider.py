@@ -57,7 +57,7 @@ from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration.configuration import Configuration
 from framework.di.service_collection import ServiceCollection
 from framework.di.static_provider import ProviderBase
-from httpx import AsyncClient, Limits
+from httpx2 import AsyncClient, Limits
 from models.bank_config import BankingConfig, PlaidConfig
 from models.calendar_models import CalendarConfig
 from models.coinbase_models import CoinbaseConfig
@@ -66,7 +66,7 @@ from models.openai_config import OpenAIConfig
 from models.podcast_config import PodcastConfig
 from models.stock_monitor_config import StockMonitorConfig
 from models.transcription_config import TranscriptionConfig
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 from services.acr_purge_service import AcrPurgeService
 from services.acr_service import AcrService
 from services.android_service import AndroidService
@@ -174,7 +174,7 @@ def configure_mongo_client(
     configuration = container.resolve(Configuration)
 
     connection_string = configuration.mongo.get('connection_string')
-    client = AsyncIOMotorClient(connection_string)
+    client = AsyncMongoClient(connection_string)
 
     return client
 
@@ -208,7 +208,7 @@ def register_factories(
         factory=configure_azure_ad)
 
     descriptors.add_singleton(
-        dependency_type=AsyncIOMotorClient,
+        dependency_type=AsyncMongoClient,
         factory=configure_mongo_client)
 
     descriptors.add_singleton(

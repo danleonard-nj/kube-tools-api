@@ -1,12 +1,12 @@
 from domain.queries import GetWeatherByZipCodeCardinalityKeyQuery
 from framework.mongo.mongo_repository import MongoRepositoryAsync
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 
 class WeatherRepository(MongoRepositoryAsync):
     def __init__(
         self,
-        client: AsyncIOMotorClient
+        client: AsyncMongoClient
     ):
         super().__init__(
             client=client,

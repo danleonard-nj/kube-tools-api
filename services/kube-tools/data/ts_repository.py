@@ -2,7 +2,7 @@ from typing import Optional
 from bson import ObjectId
 from framework.mongo.mongo_repository import MongoRepositoryAsync
 from framework.logger import get_logger
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 from domain.mongo import MongoCollection, MongoDatabase
 
@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 class TruthSocialRepository(MongoRepositoryAsync):
     def __init__(
         self,
-        client: AsyncIOMotorClient
+        client: AsyncMongoClient
     ):
         super().__init__(
             client=client,

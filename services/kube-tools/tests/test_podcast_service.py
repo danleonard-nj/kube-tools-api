@@ -138,7 +138,7 @@ def test__send_email_success():
 def test__get_feed_request():
     service = make_service()
     feed = MagicMock(feed='url')
-    with patch('httpx.AsyncClient.get', new_callable=AsyncMock) as mock_get:
+    with patch('httpx2.AsyncClient.get', new_callable=AsyncMock) as mock_get:
         mock_get.return_value = MagicMock()
         result = asyncio.run(service._get_feed_request(feed))
         assert mock_get.called

@@ -7,3 +7,11 @@ prompts/
 *.webm
 /__pycache__/
 *.ipynb
+.venv/
+.git/
+.pytest_cache/
+.benchmarks/
+.vscode/
+.VSCodeCounter/
+**/__pycache__/
+*.egg-info/

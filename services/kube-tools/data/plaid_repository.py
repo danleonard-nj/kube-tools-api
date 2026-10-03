@@ -1,5 +1,5 @@
 from framework.mongo.mongo_repository import MongoRepositoryAsync
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 from typing import Optional
 from framework.logger import get_logger
 
@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 class PlaidAdminItemRepository(MongoRepositoryAsync):
     def __init__(
         self,
-        client: AsyncIOMotorClient
+        client: AsyncMongoClient
     ):
         super().__init__(
             client=client,
@@ -27,7 +27,7 @@ class PlaidAdminItemRepository(MongoRepositoryAsync):
 class PlaidAccountRepository(MongoRepositoryAsync):
     def __init__(
         self,
-        client: AsyncIOMotorClient
+        client: AsyncMongoClient
     ):
         super().__init__(
             client=client,
@@ -56,7 +56,7 @@ class PlaidAccountRepository(MongoRepositoryAsync):
 class PlaidTransactionRepository(MongoRepositoryAsync):
     def __init__(
         self,
-        client: AsyncIOMotorClient
+        client: AsyncMongoClient
     ):
         super().__init__(
             client=client,
@@ -105,7 +105,7 @@ class PlaidTransactionRepository(MongoRepositoryAsync):
 class PlaidSyncRepository(MongoRepositoryAsync):
     def __init__(
         self,
-        client: AsyncIOMotorClient
+        client: AsyncMongoClient
     ):
         super().__init__(
             client=client,

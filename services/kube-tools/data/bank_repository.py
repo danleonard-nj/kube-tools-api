@@ -3,13 +3,13 @@ from domain.queries import (GetBalanceByBankKeyQuery, GetBalanceHistoryQuery,
                             GetTransactionsByTransactionBksQuery,
                             GetTransactionsQuery)
 from framework.mongo.mongo_repository import MongoRepositoryAsync
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 
 class BankBalanceRepository(MongoRepositoryAsync):
     def __init__(
         self,
-        client: AsyncIOMotorClient
+        client: AsyncMongoClient
     ):
         super().__init__(
             client=client,
@@ -57,7 +57,7 @@ class BankBalanceRepository(MongoRepositoryAsync):
 class BankTransactionsRepository(MongoRepositoryAsync):
     def __init__(
         self,
-        client: AsyncIOMotorClient
+        client: AsyncMongoClient
     ):
         super().__init__(
             client=client,
@@ -102,7 +102,7 @@ class BankTransactionsRepository(MongoRepositoryAsync):
 class BankWebhooksRepository(MongoRepositoryAsync):
     def __init__(
         self,
-        client: AsyncIOMotorClient
+        client: AsyncMongoClient
     ):
         super().__init__(
             client=client,

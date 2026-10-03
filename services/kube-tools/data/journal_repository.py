@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 from framework.logger import get_logger
 from framework.mongo.mongo_repository import MongoRepositoryAsync
@@ -13,7 +13,7 @@ _COLLECTION = 'JournalEntries'
 
 
 class JournalRepository(MongoRepositoryAsync):
-    def __init__(self, client: AsyncIOMotorClient):
+    def __init__(self, client: AsyncMongoClient):
         super().__init__(client=client, database=_DATABASE, collection=_COLLECTION)
 
     async def insert_entry(self, document: dict) -> str:

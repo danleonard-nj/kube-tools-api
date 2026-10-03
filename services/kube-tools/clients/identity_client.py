@@ -10,7 +10,7 @@ from framework.configuration.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
 from framework.validators.nulls import none_or_whitespace
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 
 from utilities.utils import fire_task
 

@@ -5,7 +5,7 @@ from framework.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
 from framework.uri import build_url
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 
 logger = get_logger(__name__)
 

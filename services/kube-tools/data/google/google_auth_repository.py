@@ -1,6 +1,6 @@
 import datetime
 from framework.mongo.mongo_repository import MongoRepositoryAsync
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 from utilities.utils import DateTimeUtil
 
@@ -8,7 +8,7 @@ from utilities.utils import DateTimeUtil
 class GoogleAuthRepository(MongoRepositoryAsync):
     def __init__(
         self,
-        client: AsyncIOMotorClient
+        client: AsyncMongoClient
     ):
         super().__init__(
             client=client,

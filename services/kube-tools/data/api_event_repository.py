@@ -1,13 +1,13 @@
 from domain.queries import (GetApiEventsByLogIdsQuery, GetApiEventsQuery,
                             GetErrorApiEventsQuery)
 from framework.mongo.mongo_repository import MongoRepositoryAsync
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 
 class ApiEventRepository(MongoRepositoryAsync):
     def __init__(
         self,
-        client: AsyncIOMotorClient
+        client: AsyncMongoClient
     ):
         super().__init__(
             client=client,

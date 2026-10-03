@@ -4,7 +4,7 @@ from domain.bank import (PlaidBalanceRequest, PlaidTransactionRequestOptions,
                          PlaidTransactionsRequest, PlaidTransactionsSyncRequest)
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 
 from models.bank_config import PlaidConfig
 

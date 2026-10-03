@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple
 import uuid
 
 import feedparser
-import httpx
+import httpx2 as httpx
 from clients.email_gateway_client import EmailGatewayClient
 from clients.google_drive_client_async import (GoogleDriveClientAsync)
 from data.podcast_repository import PodcastRepository
@@ -20,7 +20,7 @@ from framework.clients.feature_client import FeatureClientAsync
 from framework.configuration.configuration import Configuration
 from framework.exceptions.nulls import ArgumentNullException
 from framework.logger.providers import get_logger
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 from models.podcast_config import PodcastConfig
 from services.event_service import EventService
 from services.google_drive_upload_helper import GoogleDriveUploadHelper

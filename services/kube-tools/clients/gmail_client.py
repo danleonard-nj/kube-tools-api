@@ -18,7 +18,7 @@ from framework.exceptions.nulls import ArgumentNullException
 from framework.logger import get_logger
 from framework.uri import build_url
 from framework.validators.nulls import none_or_whitespace
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 from services.google_auth_service import GoogleAuthService
 
 logger = get_logger(__name__)

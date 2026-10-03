@@ -1,7 +1,7 @@
 from typing import Optional
 
 from framework.logger import get_logger
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 
 logger = get_logger(__name__)
 

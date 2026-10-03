@@ -9,7 +9,8 @@ from datetime import datetime
 from typing import List, Optional
 
 from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
+from gridfs import AsyncGridFSBucket
+from pymongo import AsyncMongoClient
 
 from framework.logger import get_logger
 from framework.mongo.mongo_repository import MongoRepositoryAsync
@@ -22,9 +23,9 @@ _GRIDFS_BUCKET = 'JournalFiles'
 
 
 class JournalAttachmentRepository(MongoRepositoryAsync):
-    def __init__(self, client: AsyncIOMotorClient):
+    def __init__(self, client: AsyncMongoClient):
         super().__init__(client=client, database=_DATABASE, collection=_COLLECTION)
-        self._gridfs = AsyncIOMotorGridFSBucket(
+        self._gridfs = AsyncGridFSBucket(
             client[_DATABASE], bucket_name=_GRIDFS_BUCKET,
         )
 

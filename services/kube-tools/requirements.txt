@@ -1,4 +1,4 @@
-framework
+framework==6.1.1
 pandas
 kubernetes
 xmltodict
@@ -66,4 +66,5 @@ faster-whisper
 anthropic
 azure-servicebus
 google-genai
-motor
+pymongo>=4.9
+httpx2

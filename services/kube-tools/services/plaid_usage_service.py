@@ -1,6 +1,6 @@
 from typing import Any, List, Dict, Optional, Tuple
 from framework.logger import get_logger
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 import json
 import datetime
 import json

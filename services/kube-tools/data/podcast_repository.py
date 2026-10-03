@@ -1,5 +1,5 @@
 from framework.mongo.mongo_repository import MongoRepositoryAsync
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 from domain.mongo import MongoCollection, MongoDatabase
 
@@ -7,7 +7,7 @@ from domain.mongo import MongoCollection, MongoDatabase
 class PodcastRepository(MongoRepositoryAsync):
     def __init__(
         self,
-        client: AsyncIOMotorClient
+        client: AsyncMongoClient
     ):
         super().__init__(
             client=client,

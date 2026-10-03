@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
 import feedparser
-import httpx
+import httpx2 as httpx
 
 from clients.gpt_client import GPTClient
 from clients.sib_client import SendInBlueClient

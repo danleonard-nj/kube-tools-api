@@ -4,7 +4,7 @@ from domain.google import GoogleMapsException
 from framework.configuration import Configuration
 from framework.logger import get_logger
 from framework.uri import build_url
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 
 logger = get_logger(__name__)
 

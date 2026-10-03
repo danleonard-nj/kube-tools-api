@@ -9,7 +9,6 @@ from routes.mongo_backup import mongo_backup_bp
 from routes.podcasts import podcasts_bp
 from routes.usage import usage_bp
 from routes.weather import weather_bp
-from routes.torrents import torrent_bp
 from routes.redis import redis_bp
 from routes.conversation import conversation_bp
 from routes.android import android_bp

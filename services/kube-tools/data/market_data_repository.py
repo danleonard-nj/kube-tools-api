@@ -1,7 +1,7 @@
 
 import datetime
 from framework.mongo.mongo_repository import MongoRepositoryAsync
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 # TODO: Implement
 
@@ -9,7 +9,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 class MarketDataRepository(MongoRepositoryAsync):
     def __init__(
         self,
-        client: AsyncIOMotorClient
+        client: AsyncMongoClient
     ):
         super().__init__(
             client=client,

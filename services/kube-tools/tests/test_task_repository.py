@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 from data.google.google_tasks_repository import TaskRepository
 from domain.mongo import MongoDatabase
@@ -23,7 +23,7 @@ MONGO_HOST = os.environ.get('MONGO_HOST') or 'localhost'
 
 @pytest_asyncio.fixture
 async def repository():
-    client = AsyncIOMotorClient(f'mongodb://{MONGO_HOST}:27017')
+    client = AsyncMongoClient(f'mongodb://{MONGO_HOST}:27017')
     repo = TaskRepository(client)
     await repo.ensure_indexes()
 
