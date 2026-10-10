@@ -1,7 +1,7 @@
 """Journal service - CRUD and async processing dispatch."""
 import uuid
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 from clients.gpt_client import GPTClient
 from clients.identity_client import IdentityClient
@@ -134,6 +134,7 @@ class JournalService:
             is_manual_title=bool(manual_title),
             source=body.get('source', JournalSource.VOICE),
             status=JournalEntryStatus.QUEUED,
+            tags=self._normalize_tags(body.get('tags') or []),
             segments=segments,
             raw_transcript=body.get('raw_transcript', ''),
             cleaned_transcript=None,
@@ -162,6 +163,33 @@ class JournalService:
 
     async def list_tags(self) -> List[str]:
         return await self._repository.list_distinct_tags()
+
+    async def list_tag_counts(self) -> List[dict]:
+        return await self._repository.count_tags()
+
+    async def search_entries(
+        self,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+        tags: Optional[List[str]] = None,
+        text: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Tuple[List[dict], int]:
+        """Raw entry documents newest first, and the total match count.
+
+        Bounds are naive UTC (start inclusive, end exclusive). Tags are
+        normalised the way they are stored, so a filter matches regardless of
+        case or spacing.
+        """
+        return await self._repository.search_entries(
+            start=start,
+            end=end,
+            tags=self._normalize_tags(tags or []) or None,
+            text=(text or '').strip() or None,
+            limit=limit,
+            offset=offset,
+        )
 
     async def get_entry(self, entry_id: str) -> Optional[dict]:
         doc = await self._repository.get_entry(entry_id)
@@ -239,6 +267,16 @@ class JournalService:
         if not update:
             return await self.get_entry(entry_id)
 
+        if 'title' in update:
+            # A title the user changed is theirs: auto-titling must leave it
+            # alone. Compared with the stored one, so a client that sends the
+            # unchanged title back on every save does not freeze an auto-title.
+            title = (update['title'] or '').strip() or None
+            update['title'] = title
+            current = await self._repository.get_entry(entry_id)
+            if current is not None and title != current.get('title'):
+                update['is_manual_title'] = bool(title)
+
         raw_transcript_changed = 'raw_transcript' in update
         cleaned_transcript_changed = 'cleaned_transcript' in update
 
@@ -268,6 +306,34 @@ class JournalService:
 
     async def delete_entry(self, entry_id: str) -> bool:
         return await self._repository.delete_entry(entry_id)
+
+    async def set_title(self, entry_id: str, title: str) -> Optional[dict]:
+        """Set a manual title, which auto-titling then leaves alone."""
+        title = title.strip()
+        if not title:
+            raise ValueError('title must not be empty')
+        updated = await self._repository.update_entry(
+            entry_id, {'title': title, 'is_manual_title': True})
+        if not updated:
+            return None
+        return await self.get_entry(entry_id)
+
+    async def update_tags(self, entry_id: str, add: List[str], remove: List[str]) -> Optional[dict]:
+        """Add and remove tags, keeping the existing order.
+
+        Tags are normalised as they are stored. Removal is applied first, so a
+        tag in both lists ends up present.
+        """
+        doc = await self._repository.get_entry(entry_id)
+        if not doc:
+            return None
+
+        removing = set(self._normalize_tags(remove))
+        kept = [tag for tag in self._normalize_tags(doc.get('tags') or []) if tag not in removing]
+        tags = kept + [tag for tag in self._normalize_tags(add) if tag not in kept]
+
+        await self._repository.update_entry(entry_id, {'tags': tags})
+        return await self.get_entry(entry_id)
 
     async def polish_transcript(self, entry_id: str, modes: list) -> Optional[dict]:
         """Apply lightweight LLM edits to cleaned_transcript (or raw_transcript).

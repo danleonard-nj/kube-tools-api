@@ -1,4 +1,5 @@
-framework==6.1.1
+# The `mcp` extra brings in the MCP SDK that framework.mcp.MCPBlueprint serves.
+framework[mcp]==6.2.0
 pandas
 kubernetes
 xmltodict

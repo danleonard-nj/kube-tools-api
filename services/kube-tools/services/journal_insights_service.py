@@ -1,7 +1,7 @@
 """Journal insights service — rollup analytics over recent processed entries."""
 import json
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from typing import Dict, List, Optional
 
 from clients.gpt_client import GPTClient
@@ -107,6 +107,106 @@ class JournalInsightsService:
             'themes': self._build_themes(processed),
             'recent_moods': self._build_recent_moods(processed),
         }
+
+    async def get_stats(
+        self,
+        start: datetime,
+        end: datetime,
+        zone: tzinfo,
+        max_entries: int = 2000,
+    ) -> dict:
+        """Counts and trends over a date range, without any LLM call.
+
+        `start` (inclusive) and `end` (exclusive) are naive UTC, like the stored
+        `created_at`; days are reported in `zone`. Unlike `get_insights`, the
+        window is arbitrary rather than counted back from today.
+        """
+        docs, total = await self._repository.search_entries(start=start, end=end, limit=max_entries)
+
+        def local_day(doc: dict) -> Optional[date]:
+            created_at = self._parse_dt(doc.get('created_at'))
+            if created_at is None:
+                return None
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            return created_at.astimezone(zone).date()
+
+        days = {doc.get('entry_id'): local_day(doc) for doc in docs}
+        entry_days = {day for day in days.values() if day}
+        processed = [doc for doc in docs if doc.get('analysis')]
+
+        moods_by_day: Dict[date, List[int]] = defaultdict(list)
+        themes: Counter = Counter()
+        people: Counter = Counter()
+        stressors: Counter = Counter()
+        theme_last_seen: Dict[str, date] = {}
+        open_items: List[dict] = []
+
+        for doc in processed:  # newest first
+            analysis = doc['analysis']
+            day = days.get(doc.get('entry_id'))
+            score = (analysis.get('mood') or {}).get('score')
+            if isinstance(score, (int, float)) and day:
+                moods_by_day[day].append(score)
+            for theme in analysis.get('themes') or []:
+                themes[theme] += 1
+                if day and (theme not in theme_last_seen or day > theme_last_seen[theme]):
+                    theme_last_seen[theme] = day
+            people.update(analysis.get('people_mentioned') or [])
+            stressors.update(analysis.get('stressors') or [])
+            for kind, field in (('action_item', 'action_items'), ('open_loop', 'open_loops')):
+                for text in analysis.get(field) or []:
+                    if text:
+                        open_items.append({
+                            'kind': kind,
+                            'text': text,
+                            'date': day.isoformat() if day else None,
+                            'entry_id': doc.get('entry_id'),
+                        })
+
+        scores = [score for day_scores in moods_by_day.values() for score in day_scores]
+        last_day = (end.replace(tzinfo=timezone.utc).astimezone(zone) - timedelta(microseconds=1)).date()
+
+        return {
+            'entry_count': len(docs),
+            'truncated': total > len(docs),
+            'entries_awaiting_analysis': len(docs) - len(processed),
+            'days_with_entries': len(entry_days),
+            'longest_streak_days': self._longest_run(entry_days),
+            'streak_at_end_days': self._run_ending(entry_days, last_day),
+            'mood_average': round(sum(scores) / len(scores), 1) if scores else None,
+            'mood_daily': [
+                {'date': day.isoformat(), 'score': round(sum(values) / len(values), 1), 'entries': len(values)}
+                for day, values in sorted(moods_by_day.items())
+            ],
+            'themes': [
+                {'label': label, 'count': count, 'last_seen': theme_last_seen[label].isoformat() if label in theme_last_seen else None}
+                for label, count in themes.most_common(12)
+            ],
+            'people': [{'label': label, 'count': count} for label, count in people.most_common(12)],
+            'stressors': [{'label': label, 'count': count} for label, count in stressors.most_common(10)],
+            'open_items': open_items,
+        }
+
+    @staticmethod
+    def _longest_run(days: set) -> int:
+        longest = run = 0
+        previous = None
+        for day in sorted(days):
+            run = run + 1 if previous and (day - previous).days == 1 else 1
+            longest = max(longest, run)
+            previous = day
+        return longest
+
+    @staticmethod
+    def _run_ending(days: set, last_day: date) -> int:
+        """Consecutive days with entries ending on `last_day`, or the day before."""
+        check = last_day if last_day in days else last_day - timedelta(days=1)
+        run = 0
+        while check in days:
+            run += 1
+            check -= timedelta(days=1)
+        return run
 
     # ------------------------------------------------------------------
     # Internal builders

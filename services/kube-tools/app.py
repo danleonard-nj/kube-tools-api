@@ -8,7 +8,11 @@ from framework.logger import get_logger
 from framework.serialization.serializer import configure_serializer
 from framework.swagger.quart.swagger import Swagger
 from quart import Quart
+from data.mcp_oauth_repository import McpOAuthRepository
+from mcp_server.app import create_mcp_blueprint
 from models.email_config import EmailConfig
+from models.mcp_config import McpConfig
+from routes.mcp_consent import create_mcp_consent_blueprint
 from routes import (acr_bp, android_bp, api_event_history_bp, bank_bp,
                     calendar_bp, conversation_bp, google_bp, kubernetes_bp,
                     location_history_bp, mongo_backup_bp, podcasts_bp,
@@ -52,6 +56,15 @@ app.register_blueprint(stock_monitor_bp)
 app.register_blueprint(scheduler_bp)
 app.register_blueprint(journal_bp)
 app.register_blueprint(tasks_bp)
+
+# The journal MCP server and its OAuth authorization server, reached through the
+# API gateway. Registered here, before serving, so the config is read directly
+# rather than from the container (which is built in the serving loop, below);
+# the OAuth provider resolves McpAuthService from the container on first use.
+mcp_config = McpConfig.from_section(getattr(Configuration(), 'mcp', None))
+if mcp_config.enabled:
+    app.register_blueprint(create_mcp_blueprint(mcp_config))
+    app.register_blueprint(create_mcp_consent_blueprint(mcp_config))
 
 # NOTE: Build the DI container *inside* the serving event loop. Building it at
 # module-import time causes AsyncMongoClient (and any other loop-bound
@@ -117,6 +130,14 @@ async def startup():
 
     RequestContextProvider.initialize_provider(
         app=app)
+
+    # MCP OAuth indexes: idempotent housekeeping, so a Mongo blip here should
+    # not stop the app from starting.
+    if mcp_config.enabled:
+        try:
+            await provider.resolve(McpOAuthRepository).ensure_indexes()
+        except Exception:
+            logger.warning('Could not ensure MCP OAuth indexes', exc_info=True)
 
     await send_initial_email()
 

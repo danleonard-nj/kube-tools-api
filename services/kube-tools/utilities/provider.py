@@ -111,6 +111,9 @@ from services.journal_processing_service import JournalProcessingService
 from services.journal_insights_service import JournalInsightsService
 from data.journal_repository import JournalRepository
 from data.journal_attachment_repository import JournalAttachmentRepository
+from data.mcp_oauth_repository import McpOAuthRepository
+from models.mcp_config import McpConfig
+from services.mcp_auth_service import McpAuthService
 from data.google.google_tasks_repository import TaskRepository
 from models.task_models import TaskConfig
 from services.task_service import TaskService
@@ -269,6 +272,13 @@ def register_configs(descriptors):
     register_custom_config(GoogleConfig, 'google', 'llm')
     register_custom_config(OpenAIConfig, 'openai', 'llm')
 
+    # Optional section: absent means MCP disabled. from_section reports
+    # problems without repeating the secrets it rejected.
+    descriptors.add_singleton(
+        dependency_type=McpConfig,
+        factory=lambda provider: McpConfig.from_section(
+            getattr(provider.resolve(Configuration), 'mcp', None)))
+
     # anthropic_config_func = lambda config: AnthropicConfig.model_validate(config.llm.get('anthropic'))
     # google_config_func = lambda config: GoogleConfig.model_validate(config.llm.get('google'))
     # openai_config_func = lambda config: OpenAIConfig.model_validate(config.llm.get('openai'))
@@ -346,6 +356,7 @@ def register_repositories(
     descriptors.add_singleton(TruthSocialRepository)
     descriptors.add_singleton(JournalRepository)
     descriptors.add_singleton(JournalAttachmentRepository)
+    descriptors.add_singleton(McpOAuthRepository)
     descriptors.add_singleton(StockTickRepository)
     descriptors.add_singleton(StockAlertStateRepository)
     descriptors.add_singleton(TaskRepository)
@@ -389,6 +400,7 @@ def register_services(
     descriptors.add_singleton(JournalProcessingService)
     descriptors.add_singleton(JournalService)
     descriptors.add_singleton(JournalInsightsService)
+    descriptors.add_singleton(McpAuthService)
     descriptors.add_singleton(TaskService)
     descriptors.add_singleton(OpenAISpeechProvider)
     descriptors.add_singleton(AzureSpeechProvider)

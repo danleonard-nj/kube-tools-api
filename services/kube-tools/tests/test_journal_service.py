@@ -294,7 +294,8 @@ async def test_update_entry_title_only_does_not_requeue():
     service = make_journal_service(repo=repo, event_service=event_service)
     await service.update_entry('test-id', {'title': 'New title'})
 
-    repo.update_entry.assert_awaited_once_with('test-id', {'title': 'New title'})
+    # A changed title becomes manual, so auto-titling leaves it alone.
+    repo.update_entry.assert_awaited_once_with('test-id', {'title': 'New title', 'is_manual_title': True})
     event_service.dispatch_event.assert_not_awaited()
 
 
@@ -348,7 +349,7 @@ async def test_update_entry_ignores_unknown_fields():
 
     update_dict = repo.update_entry.await_args.args[1]
     assert 'malicious_field' not in update_dict
-    assert update_dict == {'title': 'OK'}
+    assert update_dict == {'title': 'OK', 'is_manual_title': True}
 
 
 # ---------------------------------------------------------------------------
